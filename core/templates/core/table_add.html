@@ -1,0 +1,60 @@
+{% extends "core/base.html" %}
+
+{% block title %}Add record — {{ section.section_name }}{% endblock %}
+
+{% block content %}
+
+  <h1>{{ section.section_name }}</h1>
+  <h2>Add a record</h2>
+
+  <p><a href="{{ back_url }}">← Back to {{ section.section_name }}</a></p>
+
+  <form method="post" action="">
+    {% csrf_token %}
+
+    {% for col in columns %}
+      <div>
+        <label for="field_{{ col.question_id }}">
+          <strong>{{ col.question_text }}</strong>
+        </label>
+
+        {% if col.hint %}
+          <p>{{ col.hint }}</p>
+        {% endif %}
+
+        {% if col.question_type == "number" %}
+          <input type="number" id="field_{{ col.question_id }}"
+                 name="{{ col.question_id }}" value="">
+        {% elif col.question_type == "radio" %}
+          {% for option in col.options|split:";" %}
+            <div>
+              <input type="radio" id="{{ col.question_id }}_{{ forloop.counter }}"
+                     name="{{ col.question_id }}" value="{{ option|strip }}">
+              <label for="{{ col.question_id }}_{{ forloop.counter }}">
+                {{ option|strip }}
+              </label>
+            </div>
+          {% endfor %}
+        {% elif col.question_type == "checkbox" %}
+          {% for option in col.options|split:";" %}
+            <div>
+              <input type="checkbox" id="{{ col.question_id }}_{{ forloop.counter }}"
+                     name="{{ col.question_id }}" value="{{ option|strip }}">
+              <label for="{{ col.question_id }}_{{ forloop.counter }}">
+                {{ option|strip }}
+              </label>
+            </div>
+          {% endfor %}
+        {% else %}
+          <input type="text" id="field_{{ col.question_id }}"
+                 name="{{ col.question_id }}" value="">
+        {% endif %}
+      </div>
+      <br>
+    {% endfor %}
+
+    <button type="submit">Add record</button>
+    <a href="{{ back_url }}">Cancel</a>
+  </form>
+
+{% endblock %}

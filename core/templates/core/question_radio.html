@@ -1,0 +1,45 @@
+{% extends "core/base.html" %}
+
+{% block title %}{{ question_text }} — PSS Demo{% endblock %}
+
+{% block content %}
+
+  <p><a href="{{ back_url }}">← Back</a></p>
+
+  {% if error %}
+    <p><strong>Error:</strong> {{ error }}</p>
+  {% endif %}
+
+  <form method="post" action="">
+    {% csrf_token %}
+
+    {% if guidance %}
+      <div>{{ guidance }}</div>
+    {% endif %}
+
+    <fieldset>
+      <legend><strong>{{ question_text }}</strong></legend>
+
+      {% if hint %}
+        <p>{{ hint }}</p>
+      {% endif %}
+
+      {% if suggestion is not None %}
+        <p><em>{{ provenance }}</em></p>
+      {% endif %}
+
+      {% for option in options %}
+        <div>
+          <input type="radio" id="opt_{{ forloop.counter }}" name="answer"
+                 value="{{ option }}"
+                 {% if current_answer == option or suggestion == option and current_answer is None %}checked{% endif %}>
+          <label for="opt_{{ forloop.counter }}">{{ option }}</label>
+        </div>
+      {% endfor %}
+    </fieldset>
+
+    <br>
+    <button type="submit">Continue</button>
+  </form>
+
+{% endblock %}

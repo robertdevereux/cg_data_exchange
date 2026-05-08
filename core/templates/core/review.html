@@ -1,0 +1,61 @@
+{% extends "core/base.html" %}
+
+{% block title %}Check your answers — {{ section.section_name }}{% endblock %}
+
+{% block content %}
+
+  <h1>Check your answers</h1>
+  <h2>{{ section.section_name }}</h2>
+
+  <table border="1" cellpadding="6" cellspacing="0">
+    <thead>
+      <tr>
+        <th>Question</th>
+        <th>Your answer</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+        <tr>
+          <td>{{ row.question_text }}</td>
+          <td>{{ row.answer }}</td>
+          <td><a href="{{ row.change_url }}">Change</a></td>
+        </tr>
+      {% empty %}
+        <tr>
+          <td colspan="3">No answers recorded.</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if history %}
+    <h3>Previous values</h3>
+    <table border="1" cellpadding="6" cellspacing="0">
+      <thead>
+        <tr>
+          <th>Question</th>
+          <th>Previous answer</th>
+          <th>Replaced</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for h in history %}
+          <tr>
+            <td>{{ h.question.question_text }}</td>
+            <td>{{ h.answer|default:"(removed)" }}</td>
+            <td>{{ h.confirmed_at|date:"d M Y H:i" }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+
+  <br>
+  <form method="post" action="{{ confirm_url }}">
+    {% csrf_token %}
+    <button type="submit">Confirm and save</button>
+  </form>
+
+{% endblock %}

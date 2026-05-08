@@ -1,0 +1,46 @@
+{% extends "core/base.html" %}
+
+{% block title %}{{ question_text }} — PSS Demo{% endblock %}
+
+{% block content %}
+
+  <p><a href="{{ back_url }}">← Back</a></p>
+
+  {% if error %}
+    <p><strong>Error:</strong> {{ error }}</p>
+  {% endif %}
+
+  <form method="post" action="">
+    {% csrf_token %}
+
+    {% if guidance %}
+      <div>{{ guidance }}</div>
+    {% endif %}
+
+    <div>
+      <label for="answer"><strong>{{ question_text }}</strong></label>
+
+      {% if hint %}
+        <p>{{ hint }}</p>
+      {% endif %}
+
+      {% if suggestion is not None %}
+        <p><em>{{ provenance }}</em></p>
+      {% endif %}
+
+      {% if question_type == "textarea" %}
+        <textarea id="answer" name="answer" rows="5" cols="60">{% if current_answer %}{{ current_answer }}{% elif suggestion %}{{ suggestion }}{% endif %}</textarea>
+      {% elif question_type == "number" %}
+        <input type="number" id="answer" name="answer"
+               value="{% if current_answer %}{{ current_answer }}{% elif suggestion %}{{ suggestion }}{% endif %}">
+      {% else %}
+        <input type="text" id="answer" name="answer"
+               value="{% if current_answer %}{{ current_answer }}{% elif suggestion %}{{ suggestion }}{% endif %}">
+      {% endif %}
+    </div>
+
+    <br>
+    <button type="submit">Continue</button>
+  </form>
+
+{% endblock %}

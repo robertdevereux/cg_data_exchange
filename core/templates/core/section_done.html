@@ -1,0 +1,14 @@
+{% extends "core/base.html" %}
+
+{% block title %}Section complete — {{ section.section_name }}{% endblock %}
+
+{% block content %}
+
+  <h1>Section complete</h1>
+  <h2>{{ section.section_name }}</h2>
+
+  <p>Your answers have been saved.</p>
+
+  <p><a href="/">← Return to home</a></p>
+
+{% endblock %}

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}PSS Demo{% endblock %}</title>
+</head>
+<body>
+
+  <header>
+    <p>
+      <strong>PSS Demo</strong>
+      {% if user.is_authenticated %}
+        &nbsp;|&nbsp;
+        Signed in as <strong>{{ user.username }}</strong>
+        &nbsp;|&nbsp;
+        <a href="{% url 'logout' %}">Sign out</a>
+      {% else %}
+        &nbsp;|&nbsp;
+        <a href="{% url 'login' %}">Sign in</a>
+      {% endif %}
+    </p>
+    <hr>
+  </header>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+</body>
+</html>
