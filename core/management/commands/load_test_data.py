@@ -464,15 +464,21 @@ class Command(BaseCommand):
         # ── 11. ALICE'S ANSWER HISTORY (previous value for Q_full_name) ───────
         self.stdout.write('Creating answer history for alice…')
 
-        # Key on the answer value (not confirmed_at) so the lookup is stable
-        # across runs regardless of when the command first ran.
+        # Delete any existing history records for this question (which may include
+        # duplicates created before idempotency was in place), then ensure exactly
+        # one canonical record exists with a fixed timestamp.
         confirmed_at = datetime.datetime(2026, 5, 7, 12, 0, 0, tzinfo=datetime.timezone.utc)
-        if not AnswerHistory.objects.filter(
+        existing = AnswerHistory.objects.filter(
             user=alice, actor=alice,
             regime=r_simple, case=alice_case,
             section=simple_s1, question=_q('Q_full_name'),
-            answer='A. Johnson',
+        )
+        if existing.count() == 1 and existing.filter(
+            answer='A. Johnson', confirmed_at=confirmed_at
         ).exists():
+            pass  # already correct — no action needed
+        else:
+            existing.delete()
             AnswerHistory.objects.create(
                 user=alice, actor=alice,
                 regime=r_simple, case=alice_case,
