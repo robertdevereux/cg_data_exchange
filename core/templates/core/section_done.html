@@ -4,11 +4,26 @@
 
 {% block content %}
 
-  <h1>Section complete</h1>
-  <h2>{{ section.section_name }}</h2>
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-two-thirds">
 
-  <p>Your answers have been saved.</p>
+      <div class="govuk-panel govuk-panel--confirmation">
+        <h1 class="govuk-panel__title">Section complete</h1>
+        <div class="govuk-panel__body">
+          {{ section.section_name }}
+        </div>
+      </div>
 
-  <p><a href="/">← Return to home</a></p>
+      <p class="govuk-body" style="margin-top:2em">
+        Your answers have been saved.
+      </p>
+
+      <a href="{{ task_list_url }}" class="govuk-button govuk-button--secondary"
+         data-module="govuk-button">
+        Back to task list
+      </a>
+
+    </div>
+  </div>
 
 {% endblock %}

@@ -4,57 +4,97 @@
 
 {% block content %}
 
-  <h1>{{ section.section_name }}</h1>
-  <h2>Add a record</h2>
+  <a href="{{ back_url }}" class="govuk-back-link">Back to {{ section.section_name }}</a>
 
-  <p><a href="{{ back_url }}">← Back to {{ section.section_name }}</a></p>
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-two-thirds">
 
-  <form method="post" action="">
-    {% csrf_token %}
+      <h1 class="govuk-heading-l">Add a record</h1>
+      <h2 class="govuk-heading-m">{{ section.section_name }}</h2>
 
-    {% for col in columns %}
-      <div>
-        <label for="field_{{ col.question_id }}">
-          <strong>{{ col.question_text }}</strong>
-        </label>
+      <form method="post" action="">
+        {% csrf_token %}
 
-        {% if col.hint %}
-          <p>{{ col.hint }}</p>
-        {% endif %}
+        {% for col in columns %}
+        <div class="govuk-form-group">
 
-        {% if col.question_type == "number" %}
-          <input type="number" id="field_{{ col.question_id }}"
-                 name="{{ col.question_id }}" value="">
-        {% elif col.question_type == "radio" %}
-          {% for option in col.options %}
-            <div>
-              <input type="radio" id="{{ col.question_id }}_{{ forloop.counter }}"
-                     name="{{ col.question_id }}" value="{{ option }}">
-              <label for="{{ col.question_id }}_{{ forloop.counter }}">
-                {{ option }}
-              </label>
+          {% if col.question_type == "radio" %}
+          <fieldset class="govuk-fieldset">
+            <legend class="govuk-fieldset__legend govuk-fieldset__legend--s">
+              {{ col.question_text }}
+            </legend>
+            {% if col.hint %}
+            <div class="govuk-hint">{{ col.hint }}</div>
+            {% endif %}
+            <div class="govuk-radios govuk-radios--small" data-module="govuk-radios">
+              {% for option in col.options %}
+              <div class="govuk-radios__item">
+                <input class="govuk-radios__input"
+                       id="{{ col.question_id }}_{{ forloop.counter }}"
+                       name="{{ col.question_id }}" type="radio"
+                       value="{{ option }}">
+                <label class="govuk-label govuk-radios__label"
+                       for="{{ col.question_id }}_{{ forloop.counter }}">
+                  {{ option }}
+                </label>
+              </div>
+              {% endfor %}
             </div>
-          {% endfor %}
-        {% elif col.question_type == "checkbox" %}
-          {% for option in col.options %}
-            <div>
-              <input type="checkbox" id="{{ col.question_id }}_{{ forloop.counter }}"
-                     name="{{ col.question_id }}" value="{{ option }}">
-              <label for="{{ col.question_id }}_{{ forloop.counter }}">
-                {{ option }}
-              </label>
-            </div>
-          {% endfor %}
-        {% else %}
-          <input type="text" id="field_{{ col.question_id }}"
-                 name="{{ col.question_id }}" value="">
-        {% endif %}
-      </div>
-      <br>
-    {% endfor %}
+          </fieldset>
 
-    <button type="submit">Add record</button>
-    <a href="{{ back_url }}">Cancel</a>
-  </form>
+          {% elif col.question_type == "checkbox" %}
+          <fieldset class="govuk-fieldset">
+            <legend class="govuk-fieldset__legend govuk-fieldset__legend--s">
+              {{ col.question_text }}
+            </legend>
+            {% if col.hint %}
+            <div class="govuk-hint">{{ col.hint }}</div>
+            {% endif %}
+            <div class="govuk-checkboxes govuk-checkboxes--small" data-module="govuk-checkboxes">
+              {% for option in col.options %}
+              <div class="govuk-checkboxes__item">
+                <input class="govuk-checkboxes__input"
+                       id="{{ col.question_id }}_{{ forloop.counter }}"
+                       name="{{ col.question_id }}" type="checkbox"
+                       value="{{ option }}">
+                <label class="govuk-label govuk-checkboxes__label"
+                       for="{{ col.question_id }}_{{ forloop.counter }}">
+                  {{ option }}
+                </label>
+              </div>
+              {% endfor %}
+            </div>
+          </fieldset>
+
+          {% else %}
+          <label class="govuk-label govuk-label--s"
+                 for="field_{{ col.question_id }}">
+            {{ col.question_text }}
+          </label>
+          {% if col.hint %}
+          <div class="govuk-hint" id="{{ col.question_id }}-hint">{{ col.hint }}</div>
+          {% endif %}
+          {% if col.question_type == "number" %}
+          <input class="govuk-input govuk-input--width-10"
+                 type="number" id="field_{{ col.question_id }}"
+                 name="{{ col.question_id }}" value=""
+                 {% if col.hint %}aria-describedby="{{ col.question_id }}-hint"{% endif %}>
+          {% else %}
+          <input class="govuk-input"
+                 type="text" id="field_{{ col.question_id }}"
+                 name="{{ col.question_id }}" value=""
+                 {% if col.hint %}aria-describedby="{{ col.question_id }}-hint"{% endif %}>
+          {% endif %}
+          {% endif %}
+
+        </div>
+        {% endfor %}
+
+        <button class="govuk-button" data-module="govuk-button">Add record</button>
+        <a href="{{ back_url }}" class="govuk-link" style="margin-left:1em">Cancel</a>
+      </form>
+
+    </div>
+  </div>
 
 {% endblock %}

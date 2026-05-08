@@ -1,34 +1,92 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="govuk-template">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}PSS Demo{% endblock %}</title>
+  <link rel="stylesheet"
+        href="https://unpkg.com/govuk-frontend@5.4.0/dist/govuk/govuk-frontend.min.css">
 </head>
-<body>
+<body class="govuk-template__body">
+  <script>
+    document.body.className = (document.body.className
+      ? document.body.className + ' js-enabled'
+      : 'js-enabled');
+  </script>
 
-  <header>
-    <p>
-      <strong>PSS Demo</strong>
-      {% if user.is_authenticated %}
-        &nbsp;|&nbsp;
-        Signed in as <strong>{{ user.username }}</strong>
-        &nbsp;|&nbsp;
-        <form method="post" action="{% url 'logout' %}" style="display:inline">
-          {% csrf_token %}
-          <button type="submit" style="background:none;border:none;padding:0;cursor:pointer;color:inherit;text-decoration:underline;">Sign out</button>
-        </form>
-      {% else %}
-        &nbsp;|&nbsp;
-        <a href="{% url 'login' %}">Sign in</a>
-      {% endif %}
-    </p>
-    <hr>
+  <a href="#main-content" class="govuk-skip-link" data-module="govuk-skip-link">
+    Skip to main content
+  </a>
+
+  <header class="govuk-header" data-module="govuk-header">
+    <div class="govuk-header__container govuk-width-container">
+      <div class="govuk-header__logo">
+        <a href="/" class="govuk-header__link govuk-header__link--homepage">
+          <span class="govuk-header__logotype">
+            <span class="govuk-header__logotype-text">GOV.UK</span>
+          </span>
+        </a>
+      </div>
+      <div class="govuk-header__content">
+        <a href="/" class="govuk-header__link govuk-header__service-name">
+          Public Services Platform
+        </a>
+        {% if user.is_authenticated %}
+        <nav class="govuk-header__navigation" aria-label="Top Level Navigation">
+          <ul class="govuk-header__navigation-list">
+            <li class="govuk-header__navigation-item">
+              <span class="govuk-header__link">
+                {{ user.get_full_name|default:user.username }}
+              </span>
+            </li>
+            <li class="govuk-header__navigation-item">
+              <form method="post" action="{% url 'logout' %}" style="display:inline">
+                {% csrf_token %}
+                <button type="submit"
+                        class="govuk-header__link"
+                        style="background:none;border:none;padding:0;cursor:pointer;">
+                  Sign out
+                </button>
+              </form>
+            </li>
+          </ul>
+        </nav>
+        {% endif %}
+      </div>
+    </div>
   </header>
 
-  <main>
-    {% block content %}{% endblock %}
-  </main>
+  <div class="govuk-width-container">
+    <div class="govuk-phase-banner">
+      <p class="govuk-phase-banner__content">
+        <strong class="govuk-tag govuk-phase-banner__content__tag">Demo</strong>
+        <span class="govuk-phase-banner__text">
+          This is a proof of concept for a new operating model
+          for citizen–government data exchange.
+        </span>
+      </p>
+    </div>
+  </div>
 
+  <div class="govuk-width-container">
+    <main class="govuk-main-wrapper" id="main-content">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <footer class="govuk-footer">
+    <div class="govuk-width-container">
+      <div class="govuk-footer__meta">
+        <div class="govuk-footer__meta-item">
+          <span class="govuk-footer__licence-description">
+            Public Services Platform — Demo
+          </span>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="https://unpkg.com/govuk-frontend@5.4.0/dist/govuk/govuk-frontend.min.js"></script>
+  <script>window.GOVUKFrontend.initAll()</script>
 </body>
 </html>

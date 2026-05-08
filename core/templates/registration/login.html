@@ -1,32 +1,51 @@
 {% extends "core/base.html" %}
 
-{% block title %}Sign in — PSS Demo{% endblock %}
+{% block title %}Sign in — Public Services Platform{% endblock %}
 
 {% block content %}
 
-  <h1>Sign in</h1>
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-two-thirds">
 
-  {% if form.errors %}
-    <p><strong>Your username and password did not match. Please try again.</strong></p>
-  {% endif %}
+      <h1 class="govuk-heading-l">Sign in</h1>
 
-  <form method="post" action="{% url 'login' %}">
-    {% csrf_token %}
-    <input type="hidden" name="next" value="{{ next }}">
+      {% if form.errors %}
+      <div class="govuk-error-summary" data-module="govuk-error-summary">
+        <div role="alert">
+          <h2 class="govuk-error-summary__title">There is a problem</h2>
+          <div class="govuk-error-summary__body">
+            <p class="govuk-body">Username or password is incorrect.</p>
+          </div>
+        </div>
+      </div>
+      {% endif %}
 
-    <div>
-      <label for="id_username">Username</label><br>
-      <input type="text" id="id_username" name="username"
-             autofocus autocomplete="username" required>
+      <form method="post" action="{% url 'login' %}">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next }}">
+
+        <div class="govuk-form-group">
+          <label class="govuk-label" for="id_username">Username</label>
+          <input class="govuk-input govuk-input--width-20"
+                 type="text" id="id_username" name="username"
+                 autocomplete="username" autofocus>
+        </div>
+
+        <div class="govuk-form-group">
+          <label class="govuk-label" for="id_password">Password</label>
+          <input class="govuk-input govuk-input--width-20"
+                 type="password" id="id_password" name="password"
+                 autocomplete="current-password">
+        </div>
+
+        <button class="govuk-button" data-module="govuk-button">Sign in</button>
+      </form>
+
+      <p class="govuk-body govuk-hint">
+        Demo accounts: alice, bob, carla, solicitor1 — password: testpass123
+      </p>
+
     </div>
-    <br>
-    <div>
-      <label for="id_password">Password</label><br>
-      <input type="password" id="id_password" name="password"
-             autocomplete="current-password" required>
-    </div>
-    <br>
-    <button type="submit">Sign in</button>
-  </form>
+  </div>
 
 {% endblock %}

@@ -4,58 +4,59 @@
 
 {% block content %}
 
-  <h1>Check your answers</h1>
-  <h2>{{ section.section_name }}</h2>
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-two-thirds">
 
-  <table border="1" cellpadding="6" cellspacing="0">
-    <thead>
-      <tr>
-        <th>Question</th>
-        <th>Your answer</th>
-        <th>Action</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in rows %}
-        <tr>
-          <td>{{ row.question_text }}</td>
-          <td>{{ row.answer }}</td>
-          <td><a href="{{ row.change_url }}">Change</a></td>
-        </tr>
-      {% empty %}
-        <tr>
-          <td colspan="3">No answers recorded.</td>
-        </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+      <h1 class="govuk-heading-l">Check your answers</h1>
+      <h2 class="govuk-heading-m">{{ section.section_name }}</h2>
 
-  {% if history %}
-    <h3>Previous values</h3>
-    <table border="1" cellpadding="6" cellspacing="0">
-      <thead>
-        <tr>
-          <th>Question</th>
-          <th>Previous answer</th>
-          <th>Replaced</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for h in history %}
-          <tr>
-            <td>{{ h.question.question_text }}</td>
-            <td>{{ h.answer|default:"(removed)" }}</td>
-            <td>{{ h.confirmed_at|date:"d M Y H:i" }}</td>
-          </tr>
+      <dl class="govuk-summary-list">
+        {% for row in rows %}
+        <div class="govuk-summary-list__row">
+          <dt class="govuk-summary-list__key">
+            {{ row.question_text }}
+          </dt>
+          <dd class="govuk-summary-list__value">
+            {{ row.answer }}
+            {% if row.history %}
+            <details class="govuk-details" style="margin-top:8px">
+              <summary class="govuk-details__summary">
+                <span class="govuk-details__summary-text">Previous answers</span>
+              </summary>
+              <div class="govuk-details__text">
+                {% for h in row.history %}
+                <p class="govuk-body-s">
+                  {{ h.answer|default:"(removed)" }}
+                  <span class="govuk-hint">
+                    — {{ h.actor.username }} on {{ h.confirmed_at|date:"j N Y" }}
+                  </span>
+                </p>
+                {% endfor %}
+              </div>
+            </details>
+            {% endif %}
+          </dd>
+          <dd class="govuk-summary-list__actions">
+            <a class="govuk-link" href="{{ row.change_url }}">
+              Change<span class="govuk-visually-hidden"> {{ row.question_text }}</span>
+            </a>
+          </dd>
+        </div>
+        {% empty %}
+        <div class="govuk-summary-list__row">
+          <dt class="govuk-summary-list__key" colspan="3">No answers recorded.</dt>
+        </div>
         {% endfor %}
-      </tbody>
-    </table>
-  {% endif %}
+      </dl>
 
-  <br>
-  <form method="post" action="{{ confirm_url }}">
-    {% csrf_token %}
-    <button type="submit">Confirm and save</button>
-  </form>
+      <form method="post" action="{{ confirm_url }}">
+        {% csrf_token %}
+        <button class="govuk-button" data-module="govuk-button">
+          Confirm and continue
+        </button>
+      </form>
+
+    </div>
+  </div>
 
 {% endblock %}

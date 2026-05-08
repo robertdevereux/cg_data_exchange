@@ -372,6 +372,18 @@ def section_review(request, section_id):
     basic_answers = pss.get('basic_answers', {})
     question_table = pss.get('question_table', {})
 
+    # Load answer history first so we can attach it per-question
+    case_id = pss.get('case_id')
+    history_by_qid = {}
+    if case_id:
+        for h in (
+            AnswerHistory.objects
+            .filter(user=request.user, case_id=case_id, section=section)
+            .select_related('question', 'actor')
+            .order_by('-confirmed_at')
+        ):
+            history_by_qid.setdefault(h.question_id, []).append(h)
+
     # Build ordered rows for the citizen's actual path only
     rows = []
     for qid in asked_ids:
@@ -387,24 +399,13 @@ def section_review(request, section_id):
             'question_text': q_meta.get('question_text', qid),
             'answer':        display_answer,
             'change_url':    f'/section/{section_id}/question/{qid}/',
+            'history':       history_by_qid.get(qid, []),
         })
 
-    # Load answer history for this section/case (for display alongside current)
-    case_id = pss.get('case_id')
-    history = []
-    if case_id:
-        history = list(
-            AnswerHistory.objects
-            .filter(user=request.user, case_id=case_id, section=section)
-            .select_related('question')
-            .order_by('-confirmed_at')
-        )
-
     context = {
-        'section':      section,
-        'rows':         rows,
-        'history':      history,
-        'confirm_url':  f'/section/{section_id}/confirm/',
+        'section':     section,
+        'rows':        rows,
+        'confirm_url': f'/section/{section_id}/confirm/',
     }
     return render(request, 'core/review.html', context)
 
@@ -786,5 +787,10 @@ def section_confirm_table(request, section_id):
 
 @login_required
 def section_done(request, section_id):
-    section = get_object_or_404(Section, section_id=section_id)
-    return render(request, 'core/section_done.html', {'section': section})
+    section   = get_object_or_404(Section, section_id=section_id)
+    pss       = get_session(request)
+    regime_id = pss.get('regime_id') or section.get_regime().regime_id
+    return render(request, 'core/section_done.html', {
+        'section':       section,
+        'task_list_url': f'/regime/{regime_id}/',
+    })

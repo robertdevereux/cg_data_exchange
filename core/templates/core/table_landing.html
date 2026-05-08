@@ -4,57 +4,81 @@
 
 {% block content %}
 
-  <h1>{{ section.section_name }}</h1>
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-full">
 
-  {% if has_rows %}
-    <table border="1" cellpadding="6" cellspacing="0">
-      <thead>
-        <tr>
-          {% for col in columns %}
-            <th>{{ col.question_text }}</th>
-          {% endfor %}
-          <th>Action</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in display_rows %}
-          <tr>
-            {% for val in row.values %}
-              <td>{{ val }}</td>
+      <h1 class="govuk-heading-l">{{ section.section_name }}</h1>
+
+      {% if has_rows %}
+      <table class="govuk-table">
+        <thead class="govuk-table__head">
+          <tr class="govuk-table__row">
+            {% for col in columns %}
+            <th scope="col" class="govuk-table__header">{{ col.question_text }}</th>
             {% endfor %}
-            <td>
-              <a href="{{ row.delete_url }}"
+            <th scope="col" class="govuk-table__header">Action</th>
+          </tr>
+        </thead>
+        <tbody class="govuk-table__body">
+          {% for row in display_rows %}
+          <tr class="govuk-table__row">
+            {% for val in row.values %}
+            <td class="govuk-table__cell">{{ val }}</td>
+            {% endfor %}
+            <td class="govuk-table__cell">
+              <a class="govuk-link" href="{{ row.delete_url }}"
                  onclick="return confirm('Delete this row?');">Delete</a>
             </td>
           </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+          {% endfor %}
+          {% if totals %}
+          <tr class="govuk-table__row">
+            {% for col in columns %}
+            <td class="govuk-table__cell">
+              {% if col.question_id in total_qids %}
+              <strong>{{ totals|dictsortreversed:"label"|first }}</strong>
+              {% endif %}
+            </td>
+            {% endfor %}
+            <td class="govuk-table__cell"></td>
+          </tr>
+          {% endif %}
+        </tbody>
+      </table>
 
-    {% if totals %}
-      <h3>Totals</h3>
-      <ul>
+      {% if totals %}
+      <h2 class="govuk-heading-s">Totals</h2>
+      <dl class="govuk-summary-list govuk-summary-list--no-border">
         {% for qid, tot in totals.items %}
-          <li>{{ tot.label }}: <strong>{{ tot.value }}</strong></li>
+        <div class="govuk-summary-list__row">
+          <dt class="govuk-summary-list__key">{{ tot.label }}</dt>
+          <dd class="govuk-summary-list__value"><strong>{{ tot.value }}</strong></dd>
+        </div>
         {% endfor %}
-      </ul>
-    {% endif %}
+      </dl>
+      {% endif %}
 
-  {% else %}
-    <p>No records added yet.</p>
-  {% endif %}
+      {% else %}
+        <p class="govuk-body">No records added yet.</p>
+      {% endif %}
 
-  <p>
-    <a href="{{ add_url }}">
-      <button type="button">Add a record</button>
-    </a>
-  </p>
+      <p>
+        <a href="{{ add_url }}" class="govuk-button govuk-button--secondary"
+           data-module="govuk-button">
+          Add a record
+        </a>
+      </p>
 
-  {% if has_rows %}
-    <form method="post" action="{{ confirm_url }}">
-      {% csrf_token %}
-      <button type="submit">Confirm and save</button>
-    </form>
-  {% endif %}
+      {% if has_rows %}
+      <form method="post" action="{{ confirm_url }}">
+        {% csrf_token %}
+        <button class="govuk-button" data-module="govuk-button">
+          Confirm this section
+        </button>
+      </form>
+      {% endif %}
+
+    </div>
+  </div>
 
 {% endblock %}
