@@ -33,25 +33,6 @@
 
     {% if totals %}
       <h3>Totals</h3>
-      <table border="1" cellpadding="6" cellspacing="0">
-        <thead>
-          <tr>
-            {% for qid in total_qids %}
-              <th>{{ totals|dict_get:qid|default_if_none:"" }}
-                {# label is in totals[qid]['label'] — accessed below #}</th>
-            {% endfor %}
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            {% for qid in total_qids %}
-              <td>{{ totals|dict_get_value:qid }}</td>
-            {% endfor %}
-          </tr>
-        </tbody>
-      </table>
-
-      {# Simpler totals display without custom template tags: #}
       <ul>
         {% for qid, tot in totals.items %}
           <li>{{ tot.label }}: <strong>{{ tot.value }}</strong></li>

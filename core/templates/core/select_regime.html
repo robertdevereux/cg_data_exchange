@@ -1,0 +1,33 @@
+{% extends "core/base.html" %}
+
+{% block title %}Select a service{% endblock %}
+
+{% block content %}
+
+  <h1>Select a service</h1>
+
+  {% if no_access %}
+    <p>You do not have access to any services.</p>
+  {% else %}
+
+    {% if error %}
+      <p><strong>{{ error }}</strong></p>
+    {% endif %}
+
+    <form method="post">
+      {% csrf_token %}
+      {% for regime in regimes %}
+        <div>
+          <label>
+            <input type="radio" name="regime_id" value="{{ regime.regime_id }}" required>
+            {{ regime.regime_name }}
+          </label>
+        </div>
+      {% endfor %}
+      <br>
+      <button type="submit">Continue</button>
+    </form>
+
+  {% endif %}
+
+{% endblock %}

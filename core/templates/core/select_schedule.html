@@ -1,0 +1,29 @@
+{% extends "core/base.html" %}
+
+{% block title %}{{ regime.regime_name }} — Topics{% endblock %}
+
+{% block content %}
+
+  <h1>{{ regime.regime_name }}</h1>
+  <h2>Select a topic</h2>
+
+  {% if schedules %}
+    <ul>
+      {% for item in schedules %}
+        <li>
+          <a href="{{ item.url }}">{{ item.schedule.schedule_name }}</a>
+          — {{ item.section_count }} section{{ item.section_count|pluralize }}
+          —
+          <span style="{% if item.status == 'complete' %}color:green{% elif item.status == 'in_progress' %}color:blue{% else %}color:grey{% endif %}">
+            {{ item.status_display }}
+          </span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>No topics available.</p>
+  {% endif %}
+
+  <p><a href="{{ back_url }}">← Back</a></p>
+
+{% endblock %}

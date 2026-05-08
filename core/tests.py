@@ -1,5 +1,6 @@
 """
-End-to-end tests for Layer 2: Section Processing Engine.
+End-to-end tests for Layer 2 (section processing) and Layer 1 (navigation
+and permission expansion).
 
 Covers the full citizen journey for alice on SIMPLE_S1 — Yes branch and
 a backtrack that changes Q_nino_yn from Yes to No, pruning Q_nino_value
@@ -10,6 +11,7 @@ from django.core.management import call_command
 from django.test import Client, TestCase
 
 from .models import Answer, AnswerHistory, SectionStatus, User
+from .permissions import get_permitted_sections
 
 
 class TestSimpleS1YesBranch(TestCase):
@@ -118,3 +120,83 @@ class TestBacktrack(TestCase):
             Answer.objects.filter(user=alice, question_id='Q_nino_value').exists(),
             'Q_nino_value must be pruned when backtrack changes Q_nino_yn to No',
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Layer 1: Permission expansion
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestPermissions(TestCase):
+    """Unit tests for get_permitted_sections covering all three grant scopes."""
+
+    @classmethod
+    def setUpTestData(cls):
+        call_command('load_test_data', verbosity=0)
+
+    def test_alice_acting_for_herself_sees_all_sections(self):
+        """alice has regime-level grants for all three regimes → all 8 sections."""
+        alice = User.objects.get(username='alice')
+        sections = get_permitted_sections(alice, alice)
+        self.assertEqual(
+            sections.count(), 8,
+            'alice should have access to all 8 sections across 3 regimes',
+        )
+
+    def test_solicitor1_acting_for_alice_sees_only_sched_s3(self):
+        """solicitor1 has a section-level grant for SCHED_S3 acting for alice."""
+        solicitor1 = User.objects.get(username='solicitor1')
+        alice      = User.objects.get(username='alice')
+        sections   = get_permitted_sections(solicitor1, alice)
+        self.assertEqual(sections.count(), 1)
+        self.assertEqual(sections.first().section_id, 'SCHED_S3')
+
+    def test_no_permissions_returns_empty(self):
+        """carla acting for bob has no permissions → empty queryset."""
+        carla    = User.objects.get(username='carla')
+        bob      = User.objects.get(username='bob')
+        sections = get_permitted_sections(carla, bob)
+        self.assertEqual(sections.count(), 0)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Layer 1: solicitor1 → alice navigation flow
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestSolicitor1Flow(TestCase):
+    """solicitor1 navigating for alice should reach SCHED_S3 and no further."""
+
+    @classmethod
+    def setUpTestData(cls):
+        call_command('load_test_data', verbosity=0)
+
+    def setUp(self):
+        self.client = Client()
+        self.client.login(username='solicitor1', password='testpass123')
+
+    def test_choose_user_shows_alice(self):
+        """solicitor1 has alice as an actable user — choose_user renders with alice."""
+        alice = User.objects.get(username='alice')
+        r = self.client.get('/choose-user/')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, str(alice.pk))
+
+    def test_solicitor1_reaches_sched_s3_table(self):
+        """
+        Full redirect chain: choose_user → select_regime (auto) → regime_start
+        (auto) → SCHED_S3 table.
+        """
+        alice = User.objects.get(username='alice')
+        r = self.client.post('/choose-user/', {'user_id': alice.pk}, follow=True)
+        self.assertEqual(r.status_code, 200)
+        final_url = r.redirect_chain[-1][0] if r.redirect_chain else ''
+        self.assertIn('SCHED_S3', final_url)
+
+    def test_solicitor1_cannot_access_sched_s1(self):
+        """SCHED_S1 must not appear in solicitor1's permitted sections for alice."""
+        solicitor1 = User.objects.get(username='solicitor1')
+        alice      = User.objects.get(username='alice')
+        section_ids = list(
+            get_permitted_sections(solicitor1, alice).values_list('section_id', flat=True)
+        )
+        self.assertNotIn('SCHED_S1', section_ids)
+        self.assertIn('SCHED_S3', section_ids)

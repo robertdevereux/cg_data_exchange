@@ -1,0 +1,34 @@
+{% extends "core/base.html" %}
+
+{% block title %}Who are you acting for?{% endblock %}
+
+{% block content %}
+
+  <h1>Who are you acting for?</h1>
+
+  {% if no_access %}
+    <p>You do not have access to any services. Contact your administrator.</p>
+  {% else %}
+
+    {% if error %}
+      <p><strong>{{ error }}</strong></p>
+    {% endif %}
+
+    <form method="post">
+      {% csrf_token %}
+      {% for u in users %}
+        <div>
+          <label>
+            <input type="radio" name="user_id" value="{{ u.pk }}" required>
+            {{ u.get_full_name|default:u.username }}
+            {% if u == request.user %} (yourself){% endif %}
+          </label>
+        </div>
+      {% endfor %}
+      <br>
+      <button type="submit">Continue</button>
+    </form>
+
+  {% endif %}
+
+{% endblock %}

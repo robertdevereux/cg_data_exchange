@@ -1,0 +1,29 @@
+{% extends "core/base.html" %}
+
+{% block title %}
+  {% if schedule %}{{ schedule.schedule_name }}{% else %}{{ regime.regime_name }}{% endif %} — Sections
+{% endblock %}
+
+{% block content %}
+
+  <h1>{% if schedule %}{{ schedule.schedule_name }}{% else %}{{ regime.regime_name }}{% endif %}</h1>
+
+  {% if sections %}
+    <ul>
+      {% for item in sections %}
+        <li>
+          <a href="{{ item.action_url }}">{{ item.section.section_name }}</a>
+          —
+          <span style="{% if item.status == 'complete' %}color:green{% elif item.status == 'in_progress' %}color:blue{% else %}color:grey{% endif %}">
+            {{ item.status_display }}
+          </span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>No sections available.</p>
+  {% endif %}
+
+  <p><a href="{{ back_url }}">← Back</a></p>
+
+{% endblock %}
