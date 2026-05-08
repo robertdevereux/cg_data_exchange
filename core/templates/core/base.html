@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}PSS Demo{% endblock %}</title>
   <link rel="stylesheet"
-        href="https://unpkg.com/govuk-frontend@5.4.0/dist/govuk/govuk-frontend.min.css">
+        href="https://unpkg.com/govuk-frontend@6.0.0/dist/govuk/govuk-frontend.min.css">
 </head>
 <body class="govuk-template__body">
   <script>
@@ -21,10 +21,8 @@
   <header class="govuk-header" data-module="govuk-header">
     <div class="govuk-header__container govuk-width-container">
       <div class="govuk-header__logo">
-        <a href="/" class="govuk-header__link govuk-header__link--homepage">
-          <span class="govuk-header__logotype">
-            <span class="govuk-header__logotype-text">GOV.UK</span>
-          </span>
+        <a href="/" class="govuk-header__homepage-link">
+          GOV.UK
         </a>
       </div>
       <div class="govuk-header__content">
@@ -86,7 +84,7 @@
     </div>
   </footer>
 
-  <script src="https://unpkg.com/govuk-frontend@5.4.0/dist/govuk/govuk-frontend.min.js"></script>
+  <script src="https://unpkg.com/govuk-frontend@6.0.0/dist/govuk/govuk-frontend.min.js"></script>
   <script>window.GOVUKFrontend.initAll()</script>
 </body>
 </html>
