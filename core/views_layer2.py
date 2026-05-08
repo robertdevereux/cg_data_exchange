@@ -577,7 +577,7 @@ def section_table(request, section_id):
         rows = []
 
     # ── Compute totals ────────────────────────────────────────────────────────
-    totals = {}
+    raw_totals = {}
     for qid in total_qids:
         total = 0.0
         for row in rows:
@@ -585,11 +585,20 @@ def section_table(request, section_id):
                 total += float(row.get(qid, 0) or 0)
             except (ValueError, TypeError):
                 pass
-        col_q = col_questions.get(qid)
-        totals[qid] = {
-            'label': col_q.question_text if col_q else qid,
-            'value': total,
-        }
+        raw_totals[qid] = total
+
+    # Format: integer if whole number, else 2 dp
+    totals_formatted = {
+        qid: int(v) if v == int(v) else round(v, 2)
+        for qid, v in raw_totals.items()
+    }
+
+    # Pre-ordered list aligned to columns (empty string for non-total columns)
+    totals_row = [
+        totals_formatted[q.question_id] if q.question_id in totals_formatted else ''
+        for q in ordered_columns
+    ]
+    has_totals = any(v != '' for v in totals_row)
 
     # ── Build display rows (values in column order) ───────────────────────────
     display_rows = []
@@ -604,8 +613,8 @@ def section_table(request, section_id):
         'section':       section,
         'columns':       ordered_columns,
         'display_rows':  display_rows,
-        'totals':        totals,
-        'total_qids':    total_qids,
+        'totals_row':    totals_row,
+        'has_totals':    has_totals,
         'add_url':       f'/section/{section_id}/table/add/',
         'confirm_url':   f'/section/{section_id}/confirm-table/',
         'has_rows':      bool(rows),

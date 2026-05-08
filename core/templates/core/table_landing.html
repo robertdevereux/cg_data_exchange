@@ -31,32 +31,22 @@
             </td>
           </tr>
           {% endfor %}
-          {% if totals %}
+        </tbody>
+        {% if has_totals %}
+        <tfoot>
           <tr class="govuk-table__row">
-            {% for col in columns %}
-            <td class="govuk-table__cell">
-              {% if col.question_id in total_qids %}
-              <strong>{{ totals|dictsortreversed:"label"|first }}</strong>
-              {% endif %}
+            {% for val in totals_row %}
+            <td class="govuk-table__cell govuk-!-font-weight-bold"
+                style="border-top: 2px solid #b1b4b6;">
+              {{ val }}
             </td>
             {% endfor %}
-            <td class="govuk-table__cell"></td>
+            <td class="govuk-table__cell"
+                style="border-top: 2px solid #b1b4b6;"></td>
           </tr>
-          {% endif %}
-        </tbody>
+        </tfoot>
+        {% endif %}
       </table>
-
-      {% if totals %}
-      <h2 class="govuk-heading-s">Totals</h2>
-      <dl class="govuk-summary-list govuk-summary-list--no-border">
-        {% for qid, tot in totals.items %}
-        <div class="govuk-summary-list__row">
-          <dt class="govuk-summary-list__key">{{ tot.label }}</dt>
-          <dd class="govuk-summary-list__value"><strong>{{ tot.value }}</strong></dd>
-        </div>
-        {% endfor %}
-      </dl>
-      {% endif %}
 
       {% else %}
         <p class="govuk-body">No records added yet.</p>
