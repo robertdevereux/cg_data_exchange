@@ -68,8 +68,9 @@ class Section(models.Model):
     """
 
     SECTION_TYPE_CHOICES = [
-        (0, 'Standard'),
-        (1, 'Table'),
+        (0, 'Standard'),           # one question per page; routing determines sequence
+        (1, 'Table'),              # flat columns; no per-row routing
+        (2, 'Table with routing'), # repeating rows, each row has its own routing path
     ]
 
     section_id = models.CharField(max_length=100, primary_key=True)
@@ -587,6 +588,11 @@ class AnswerTable(models.Model):
         to_field='section_id',
         on_delete=models.CASCADE,
     )
+    # List of row dicts. For section_type=1, each dict contains all
+    # column questions. For section_type=2, each dict contains only
+    # the questions actually reached on that row's routing path
+    # (sparse — analogous to asked_ids in a standard section).
+    # Structure: [{"question_id": value, ...}, ...]
     answer = models.JSONField(
         default=list,
         help_text='List of row dicts, one per table row entered by the citizen',
