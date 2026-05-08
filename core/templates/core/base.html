@@ -136,7 +136,15 @@
 
   <script src="https://unpkg.com/govuk-frontend@6.0.0/dist/govuk/govuk-frontend.min.js"></script>
   <script>
-    window.GOVUKFrontend.initAll()
+    if (typeof window.GOVUKFrontend !== 'undefined') {
+      window.GOVUKFrontend.initAll()
+    } else {
+      document.addEventListener('DOMContentLoaded', function () {
+        if (typeof window.GOVUKFrontend !== 'undefined') {
+          window.GOVUKFrontend.initAll()
+        }
+      })
+    }
   </script>
 </body>
 </html>
