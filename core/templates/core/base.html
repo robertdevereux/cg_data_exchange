@@ -9,6 +9,18 @@
   <link rel="apple-touch-icon" href="{% static 'govuk-assets/images/govuk-icon-180.png' %}">
   <link rel="stylesheet"
         href="https://unpkg.com/govuk-frontend@6.0.0/dist/govuk/govuk-frontend.min.css">
+  <style>
+    /* Force footer text and SVG fills to GDS black.
+       v6 uses CSS masking (background:currentcolor) for the crown crest and
+       fill="currentColor" on the OGL logo path — both invisible if currentcolor
+       resolves to a light colour inherited from the page. */
+    .govuk-footer {
+      color: #0b0c0c;
+    }
+    .govuk-footer__licence-logo path {
+      fill: #0b0c0c;
+    }
+  </style>
 </head>
 <body class="govuk-template__body">
 
