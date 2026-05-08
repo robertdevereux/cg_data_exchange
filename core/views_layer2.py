@@ -670,10 +670,21 @@ def section_table_add(request, section_id):
 
         return redirect('core:section_table', section_id=section_id)
 
-    # GET
+    # GET — build column dicts with options pre-split so the template
+    # doesn't need any custom filters
+    column_dicts = [
+        {
+            'question_id':   q.question_id,
+            'question_text': q.question_text,
+            'question_type': q.question_type,
+            'hint':          q.hint or '',
+            'options':       [o.strip() for o in (q.options or '').split(';') if o.strip()],
+        }
+        for q in ordered_columns
+    ]
     context = {
         'section':  section,
-        'columns':  ordered_columns,
+        'columns':  column_dicts,
         'back_url': f'/section/{section_id}/table/',
     }
     return render(request, 'core/table_add.html', context)

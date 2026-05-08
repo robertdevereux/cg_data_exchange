@@ -26,22 +26,22 @@
           <input type="number" id="field_{{ col.question_id }}"
                  name="{{ col.question_id }}" value="">
         {% elif col.question_type == "radio" %}
-          {% for option in col.options|split:";" %}
+          {% for option in col.options %}
             <div>
               <input type="radio" id="{{ col.question_id }}_{{ forloop.counter }}"
-                     name="{{ col.question_id }}" value="{{ option|strip }}">
+                     name="{{ col.question_id }}" value="{{ option }}">
               <label for="{{ col.question_id }}_{{ forloop.counter }}">
-                {{ option|strip }}
+                {{ option }}
               </label>
             </div>
           {% endfor %}
         {% elif col.question_type == "checkbox" %}
-          {% for option in col.options|split:";" %}
+          {% for option in col.options %}
             <div>
               <input type="checkbox" id="{{ col.question_id }}_{{ forloop.counter }}"
-                     name="{{ col.question_id }}" value="{{ option|strip }}">
+                     name="{{ col.question_id }}" value="{{ option }}">
               <label for="{{ col.question_id }}_{{ forloop.counter }}">
-                {{ option|strip }}
+                {{ option }}
               </label>
             </div>
           {% endfor %}
