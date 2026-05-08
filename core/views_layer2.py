@@ -587,9 +587,9 @@ def section_table(request, section_id):
                 pass
         raw_totals[qid] = total
 
-    # Format: integer if whole number, else 2 dp
+    # Format totals as always 2 dp (financial data)
     totals_formatted = {
-        qid: int(v) if v == int(v) else round(v, 2)
+        qid: f'{v:.2f}'
         for qid, v in raw_totals.items()
     }
 
@@ -601,11 +601,20 @@ def section_table(request, section_id):
     has_totals = any(v != '' for v in totals_row)
 
     # ── Build display rows (values in column order) ───────────────────────────
+    def _fmt(val, qid):
+        """Format numeric columns (those in total_qids) to 2 dp; pass others through."""
+        if qid not in total_qids:
+            return val if val not in (None, '') else '—'
+        try:
+            return f'{float(val):.2f}'
+        except (ValueError, TypeError):
+            return val if val not in (None, '') else '—'
+
     display_rows = []
     for i, row in enumerate(rows):
         display_rows.append({
             'index':  i,
-            'values': [row.get(q.question_id, '—') for q in ordered_columns],
+            'values': [_fmt(row.get(q.question_id), q.question_id) for q in ordered_columns],
             'delete_url': f'/section/{section_id}/table/delete/{i}/',
         })
 

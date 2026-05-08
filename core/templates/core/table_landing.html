@@ -53,7 +53,7 @@
       {% endif %}
 
       <p>
-        <a href="{{ add_url }}" class="govuk-button govuk-button--secondary"
+        <a href="{{ add_url }}" class="govuk-button"
            data-module="govuk-button">
           Add a record
         </a>
@@ -62,7 +62,7 @@
       {% if has_rows %}
       <form method="post" action="{{ confirm_url }}">
         {% csrf_token %}
-        <button class="govuk-button" data-module="govuk-button">
+        <button class="govuk-button govuk-button--secondary" data-module="govuk-button">
           Confirm this section
         </button>
       </form>
