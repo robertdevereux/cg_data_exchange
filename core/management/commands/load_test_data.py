@@ -90,7 +90,7 @@ class Command(BaseCommand):
             ('alice',      'Alice',     'Johnson'),
             ('bob',        'Bob',       'Smith'),
             ('carla',      'Carla',     'Garcia'),
-            ('solicitor1', 'Sol',       'Licitor'),
+            ('solicitor1', 'William',   'Williams'),
         ]:
             u, created = User.objects.get_or_create(
                 username=username,

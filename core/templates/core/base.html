@@ -25,24 +25,33 @@
           GOV.UK
         </a>
       </div>
-      <div class="govuk-header__content">
-        <a href="/" class="govuk-header__link govuk-header__service-name">
-          Public Services Platform
-        </a>
+    </div>
+  </header>
+
+  <section aria-label="Service information"
+           class="govuk-service-navigation"
+           data-module="govuk-service-navigation">
+    <div class="govuk-width-container">
+      <div class="govuk-service-navigation__container">
+        <span class="govuk-service-navigation__service-name">
+          <a href="/" class="govuk-service-navigation__link">
+            Public Services Platform
+          </a>
+        </span>
         {% if user.is_authenticated %}
-        <nav class="govuk-header__navigation" aria-label="Top Level Navigation">
-          <ul class="govuk-header__navigation-list">
-            <li class="govuk-header__navigation-item">
-              <span class="govuk-header__link">
+        <nav aria-label="Menu" class="govuk-service-navigation__wrapper">
+          <ul class="govuk-service-navigation__list">
+            <li class="govuk-service-navigation__item">
+              <span class="govuk-service-navigation__link" style="color:inherit;cursor:default">
                 {{ user.get_full_name|default:user.username }}
               </span>
             </li>
-            <li class="govuk-header__navigation-item">
+            <li class="govuk-service-navigation__item">
               <form method="post" action="{% url 'logout' %}" style="display:inline">
                 {% csrf_token %}
                 <button type="submit"
-                        class="govuk-header__link"
-                        style="background:none;border:none;padding:0;cursor:pointer;">
+                        class="govuk-service-navigation__link"
+                        style="background:none;border:none;padding:0;cursor:pointer;font:inherit;">
                   Sign out
                 </button>
               </form>
@@ -52,7 +61,7 @@
         {% endif %}
       </div>
     </div>
-  </header>
+  </section>
 
   <div class="govuk-width-container">
     <div class="govuk-phase-banner">
