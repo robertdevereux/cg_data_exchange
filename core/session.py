@@ -53,6 +53,18 @@ def get_acting_for_name(pss: dict):
         return None
 
 
+def clear_working_session(request) -> None:
+    """Wipe all PSS working-context state (used when an agent switches client).
+
+    Removes every key from the PSS namespace so no state from a previous
+    client leaks into the next session.  The namespace itself (the 'pss' dict)
+    is preserved so subsequent update_session calls still work.
+    """
+    session = get_session(request)
+    session.clear()
+    request.session.modified = True
+
+
 def clear_section_session(request) -> None:
     """Remove the section-scoped keys after a section is confirmed.
 

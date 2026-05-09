@@ -9,7 +9,7 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
 
 from core.models import Permission
-from core.session import update_session
+from core.session import clear_working_session, update_session
 
 # Non-agent users go through select_regime so single-regime auto-skip still works
 _SELF_ONLY_REDIRECT = 'dept_demo:select_regime'
@@ -45,6 +45,9 @@ def choose_user(request):
             'actor_id': actor.pk,
         })
         return redirect('dept_demo:dept_home')
+
+    # GET — clear any working state from a previous client before showing the picker
+    clear_working_session(request)
 
     return render(request, 'dept_demo/choose_user.html', {
         'clients': clients,
