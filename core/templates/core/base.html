@@ -46,12 +46,14 @@
           </svg>
         </a>
       </div>
+      {% block header_service_name %}
       <div class="govuk-header__content">
         <a href="/demo/" class="govuk-header__service-name"
            style="color:white; text-decoration:none; font-size:1.25rem; font-weight:700;">
           Personal tax account
         </a>
       </div>
+      {% endblock %}
     </div>
   </header>
 
@@ -93,12 +95,27 @@
       <p class="govuk-phase-banner__content">
         <strong class="govuk-tag govuk-phase-banner__content__tag">Demo</strong>
         <span class="govuk-phase-banner__text">
-          This is a proof of concept demonstrating a new
+          This is a proof for a new
           operating model for citizen–government data exchange.
-          It is not a real HMRC service.
+          It is not a live service.
         </span>
       </p>
     </div>
+    {% if breadcrumbs %}
+    <nav class="govuk-breadcrumbs" aria-label="Breadcrumb">
+      <ol class="govuk-breadcrumbs__list">
+        {% for crumb in breadcrumbs %}
+        <li class="govuk-breadcrumbs__list-item">
+          {% if crumb.url %}
+            <a class="govuk-breadcrumbs__link" href="{{ crumb.url }}">{{ crumb.label }}</a>
+          {% else %}
+            {{ crumb.label }}
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ol>
+    </nav>
+    {% endif %}
     <main class="govuk-main-wrapper" id="main-content">
       {% block content %}{% endblock %}
     </main>

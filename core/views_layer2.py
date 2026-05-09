@@ -36,6 +36,7 @@ from .models import (
     Question,
     Regime,
     Routing,
+    Schedule,
     Section,
     SectionStatus,
     User,
@@ -85,6 +86,23 @@ def _evaluate_routing(routing_table, question_id, answer):
     if unconditional_next is not _UNSET:
         return unconditional_next, True
     return None, False
+
+
+# ── Breadcrumb helper ────────────────────────────────────────────────────────
+
+def _build_crumbs(pss, regime, section, last_label=None):
+    """Build breadcrumb trail: base crumbs from session + regime + (schedule) + section."""
+    crumbs = list(pss.get('breadcrumbs', []))
+    crumbs.append({'label': regime.regime_name, 'url': pss.get('return_url')})
+    schedule_id = pss.get('schedule_id')
+    if schedule_id:
+        try:
+            schedule = Schedule.objects.get(schedule_id=schedule_id)
+            crumbs.append({'label': schedule.schedule_name, 'url': None})
+        except Schedule.DoesNotExist:
+            pass
+    crumbs.append({'label': last_label or section.section_name, 'url': None})
+    return crumbs
 
 
 # ── Session bootstrap helper (used by section_start) ─────────────────────────
@@ -219,6 +237,7 @@ def section_start(request, section_id):
 def section_question(request, section_id, question_id):
     section = get_object_or_404(Section, section_id=section_id)
     pss = get_session(request)
+    regime = section.get_regime()
 
     question_table = pss.get('question_table', {})
     q_meta = question_table.get(question_id)
@@ -227,7 +246,7 @@ def section_question(request, section_id, question_id):
         return redirect('core:section_start', section_id=section_id)
 
     if request.method == 'POST':
-        return _process_answer(request, section, section_id, question_id, q_meta, pss)
+        return _process_answer(request, section, section_id, question_id, q_meta, pss, regime)
 
     # ── GET ───────────────────────────────────────────────────────────────────
     asked_ids    = pss.get('asked_ids', [question_id])
@@ -284,6 +303,7 @@ def section_question(request, section_id, question_id):
         'provenance':     provenance,
         'back_url':       back_url,
         'asked_ids':      asked_ids,
+        'breadcrumbs':    _build_crumbs(pss, regime, section),
     }
 
     template_map = {
@@ -294,7 +314,7 @@ def section_question(request, section_id, question_id):
     return render(request, template, context)
 
 
-def _process_answer(request, section, section_id, question_id, q_meta, pss):
+def _process_answer(request, section, section_id, question_id, q_meta, pss, regime):
     """Handle POST for section_question — store answer, advance routing."""
     # ── Extract answer ────────────────────────────────────────────────────────
     if q_meta['question_type'] == 'checkbox':
@@ -326,6 +346,7 @@ def _process_answer(request, section, section_id, question_id, q_meta, pss):
             'back_url':       back_url,
             'asked_ids':      asked_ids,
             'error':          'Please answer this question before continuing.',
+            'breadcrumbs':    _build_crumbs(pss, regime, section),
         }
         template_map = {'radio': 'core/question_radio.html', 'checkbox': 'core/question_checkbox.html'}
         template = template_map.get(q_meta['question_type'], 'core/question_text.html')
@@ -405,10 +426,12 @@ def section_review(request, section_id):
             'history':       history_by_qid.get(qid, []),
         })
 
+    regime = section.get_regime()
     context = {
         'section':     section,
         'rows':        rows,
         'confirm_url': f'/section/{section_id}/confirm/',
+        'breadcrumbs': _build_crumbs(pss, regime, section, last_label='Check your answers'),
     }
     return render(request, 'core/review.html', context)
 
@@ -630,6 +653,7 @@ def section_table(request, section_id):
         'add_url':       f'/section/{section_id}/table/add/',
         'confirm_url':   f'/section/{section_id}/confirm-table/',
         'has_rows':      bool(rows),
+        'breadcrumbs':   _build_crumbs(pss, regime, section),
     }
     return render(request, 'core/table_landing.html', context)
 

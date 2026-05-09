@@ -220,10 +220,15 @@ def select_schedule(request, regime_id):
             ),
         })
 
+    regime_home_url = reverse('dept_demo:regime_home', kwargs={'regime_id': regime_id})
+    base_crumbs = pss.get('breadcrumbs', [])
     return render(request, 'dept_demo/nav/select_schedule.html', {
-        'regime':    regime,
-        'schedules': schedule_data,
-        'back_url':  reverse('dept_demo:dept_home'),
+        'regime':      regime,
+        'schedules':   schedule_data,
+        'back_url':    reverse('dept_demo:dept_home'),
+        'breadcrumbs': base_crumbs + [
+            {'label': regime.regime_name, 'url': regime_home_url},
+        ],
     })
 
 
@@ -302,9 +307,16 @@ def select_section(request, regime_id, schedule_id=None):
         'schedule_id': schedule_id,
     })
 
+    regime_home_url = reverse('dept_demo:regime_home', kwargs={'regime_id': regime_id})
+    base_crumbs = pss.get('breadcrumbs', [])
+    crumbs = base_crumbs + [{'label': regime.regime_name, 'url': regime_home_url}]
+    if schedule:
+        crumbs.append({'label': schedule.schedule_name, 'url': None})
+
     return render(request, 'dept_demo/nav/select_section.html', {
-        'regime':   regime,
-        'schedule': schedule,
-        'sections': section_data,
-        'back_url': back_url,
+        'regime':      regime,
+        'schedule':    schedule,
+        'sections':    section_data,
+        'back_url':    back_url,
+        'breadcrumbs': crumbs,
     })

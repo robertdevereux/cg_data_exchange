@@ -43,6 +43,10 @@ def dept_home(request):
             'current_regime_data': [],
             'other_regime_data':   [],
             'no_access':           True,
+            'breadcrumbs': [
+                {'label': 'HMRC',                 'url': '/demo/'},
+                {'label': 'Personal Tax Account', 'url': None},
+            ],
         })
 
     current_regime_data = [
@@ -59,4 +63,8 @@ def dept_home(request):
     return render(request, 'dept_demo/home.html', {
         'current_regime_data': current_regime_data,
         'other_regime_data':   other_regime_data,
+        'breadcrumbs': [
+            {'label': 'HMRC',                 'url': '/demo/'},
+            {'label': 'Personal Tax Account', 'url': None},
+        ],
     })

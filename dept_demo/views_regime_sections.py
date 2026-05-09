@@ -49,6 +49,10 @@ def regime_sections_home(request):
         'regime_id':  regime.regime_id,
         'case_id':    case.case_id,
         'return_url': request.path,
+        'breadcrumbs': [
+            {'label': 'HMRC',                 'url': '/demo/'},
+            {'label': 'Personal Tax Account', 'url': '/demo/regimes/'},
+        ],
     })
 
     # Resolve entry URL; remap any /regime/... path to /demo/regime/...
@@ -62,4 +66,9 @@ def regime_sections_home(request):
         'complete':     complete,
         'all_complete': all_complete,
         'entry_url':    entry_url,
+        'breadcrumbs': [
+            {'label': 'HMRC',                 'url': '/demo/'},
+            {'label': 'Personal Tax Account', 'url': '/demo/regimes/'},
+            {'label': regime.regime_name,     'url': None},
+        ],
     })
