@@ -182,14 +182,19 @@ class TestSolicitor1Flow(TestCase):
 
     def test_solicitor1_reaches_sched_s3_table(self):
         """
-        Full redirect chain: choose_user → select_regime (auto) → regime_start
-        (auto) → SCHED_S3 table.
+        Full redirect chain: choose_user → select_regime (auto) → regime home.
+        The regime home page is the terminal page; the entry_url on the page
+        points to SCHED_S3 (Pattern A — solicitor1 has access to exactly one
+        section for alice).
         """
         alice = User.objects.get(username='alice')
         r = self.client.post('/choose-user/', {'user_id': alice.pk}, follow=True)
         self.assertEqual(r.status_code, 200)
         final_url = r.redirect_chain[-1][0] if r.redirect_chain else ''
-        self.assertIn('SCHED_S3', final_url)
+        # Chain now terminates at the regime home page (no longer auto-skips to section)
+        self.assertIn('/regime/DEMO_SCHEDULES/', final_url)
+        # The page must contain a link targeting SCHED_S3 (Pattern A entry URL)
+        self.assertContains(r, 'SCHED_S3')
 
     def test_solicitor1_cannot_access_sched_s1(self):
         """SCHED_S1 must not appear in solicitor1's permitted sections for alice."""

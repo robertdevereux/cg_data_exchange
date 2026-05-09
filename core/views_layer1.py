@@ -156,29 +156,33 @@ def select_regime(request):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 4.  REGIME START  (Layer 1 → Layer 2 handoff point)
+# 4.  REGIME HOME  (landing page + bootstrap; formerly regime_start)
 # ─────────────────────────────────────────────────────────────────────────────
 
 @login_required
 def regime_start(request, regime_id):
     """
-    Bootstrap Case and SectionStatus records, then route to the correct
-    navigation pattern:
-      A — one permitted section: go straight to it
-      B — sections, no schedules: section task list
-      C — sections under schedules: schedule list
+    Landing page for a regime.  Also bootstraps Case and SectionStatus records
+    on first visit (idempotent — uses get_or_create).
+
+    Shows:
+      - Regime name + placeholder guidance
+      - Action group 1: completion summary + Start/Continue/Review button
+        whose target URL is determined by pattern A / B / C
+      - Action group 2: Declare and submit (only when all sections complete)
     """
     actor  = request.user
     pss    = get_session(request)
     user   = _resolve_user(pss, actor)
     regime = get_object_or_404(Regime, regime_id=regime_id)
 
-    # Permitted sections for this regime only
+    # Permitted sections for this regime
     permitted = get_permitted_sections(actor, user).filter(
         Q(regime_id=regime_id) | Q(schedule__regime_id=regime_id)
     )
+    section_count = permitted.count()
 
-    # Get or create a draft Case for this user/regime
+    # ── Bootstrap Case ────────────────────────────────────────────────────────
     case = (
         Case.objects
         .filter(user=user, regime=regime, status='draft')
@@ -202,31 +206,56 @@ def regime_start(request, regime_id):
         'case_id':     case.case_id,
     })
 
-    # Ensure SectionStatus records exist (not_started by default)
+    # ── Bootstrap SectionStatus records (not_started by default) ─────────────
     for section in permitted:
         SectionStatus.objects.get_or_create(
             user=user, regime=regime, section=section,
             defaults={'status': 'not_started'},
         )
 
-    count = permitted.count()
+    # ── Completion state ──────────────────────────────────────────────────────
+    statuses = list(
+        SectionStatus.objects.filter(
+            user=user, regime=regime, section__in=permitted,
+        ).values_list('status', flat=True)
+    )
+    complete_count = statuses.count('complete')
+    all_complete   = section_count > 0 and complete_count == section_count
+    any_started    = any(s in ('in_progress', 'complete') for s in statuses)
 
-    if count == 0:
-        # No accessible sections — fall through to an empty section list
-        return redirect('core:select_section', regime_id=regime_id)
+    if all_complete:
+        button_label = 'Review or amend your answers'
+    elif any_started:
+        button_label = 'Continue'
+    else:
+        button_label = 'Start'
 
-    if count == 1:
-        # Pattern A: go directly to the one permitted section
+    # ── Layer 1 entry-point URL (patterns A, B, C) ────────────────────────────
+    if section_count == 0:
+        entry_url = f'/regime/{regime_id}/sections/'
+    elif section_count == 1:
         section = permitted.first()
-        if section.section_type in (1, 2):
-            return redirect('core:section_table', section_id=section.section_id)
-        return redirect('core:section_start', section_id=section.section_id)
+        if all_complete:
+            entry_url = f'/section/{section.section_id}/review/'
+        elif section.section_type in (1, 2):
+            entry_url = f'/section/{section.section_id}/table/'
+        else:
+            entry_url = f'/section/{section.section_id}/start/'
+    elif permitted.filter(schedule__isnull=False).exists():
+        # Pattern C — schedules present
+        entry_url = f'/regime/{regime_id}/schedules/'
+    else:
+        # Pattern B — multiple sections, no schedules
+        entry_url = f'/regime/{regime_id}/sections/'
 
-    # Pattern B or C
-    if permitted.filter(schedule__isnull=False).exists():
-        return redirect('core:select_schedule', regime_id=regime_id)
-
-    return redirect('core:select_section', regime_id=regime_id)
+    return render(request, 'core/regime_home.html', {
+        'regime':         regime,
+        'section_count':  section_count,
+        'complete_count': complete_count,
+        'all_complete':   all_complete,
+        'button_label':   button_label,
+        'entry_url':      entry_url,
+    })
 
 
 # ─────────────────────────────────────────────────────────────────────────────

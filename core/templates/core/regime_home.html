@@ -1,0 +1,65 @@
+{% extends "core/base.html" %}
+
+{% block title %}{{ regime.regime_name }} — PSS Demo{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-two-thirds">
+
+      <h1 class="govuk-heading-l">{{ regime.regime_name }}</h1>
+
+      <p class="govuk-body">
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Before you
+        begin, please have all relevant information to hand. You can save your
+        progress and return at any time.
+      </p>
+
+      <!-- ── Action group 1: Your information ───────────────────────────── -->
+      <div class="govuk-summary-card">
+        <div class="govuk-summary-card__title-wrapper">
+          <h2 class="govuk-summary-card__title">Your information</h2>
+        </div>
+        <div class="govuk-summary-card__content">
+          <p class="govuk-body">
+            {{ complete_count }} of {{ section_count }}
+            section{{ section_count|pluralize }} complete
+          </p>
+          <a href="{{ entry_url }}" class="govuk-button"
+             data-module="govuk-button">
+            {{ button_label }}
+          </a>
+        </div>
+      </div>
+
+      <!-- ── Action group 2: Submit your return (only when all complete) ── -->
+      {% if all_complete %}
+      <div class="govuk-summary-card">
+        <div class="govuk-summary-card__title-wrapper">
+          <h2 class="govuk-summary-card__title">Submit your return</h2>
+        </div>
+        <div class="govuk-summary-card__content">
+          <p class="govuk-body">
+            Before you submit, you will be asked to make a declaration
+            confirming that the information you have provided is correct and
+            complete to the best of your knowledge.
+          </p>
+          <button class="govuk-button" data-module="govuk-button">
+            Declare and submit
+          </button>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- ── Extension point: future action group 3 ─────────────────────── -->
+      <!--
+        ACTION GROUP 3 — Other actions
+        Placeholder for future functionality such as appointment booking,
+        webchat, or contextual help links. Insert a third govuk-summary-card
+        here when required.
+      -->
+
+    </div>
+  </div>
+
+{% endblock %}
