@@ -190,15 +190,14 @@ class TestSolicitor1Flow(TestCase):
     def test_solicitor1_reaches_sched_s3_table(self):
         """
         Full redirect chain via dept_demo: /demo/ → choose_user (select alice)
-        → select_regime (auto, 1 regime) → regime home for DEMO_SCHEDULES.
-        Following the entry_url to the schedule list shows SCHED_S3.
+        → dept_home (regime list). Following into SCHED_FINANCES shows SCHED_S3.
         """
         alice = User.objects.get(username='alice')
-        # Step 1: navigate to regime home
+        # Step 1: select alice at the person-picker → lands on dept_home
         r = self.client.post('/demo/', {'user_id': alice.pk}, follow=True)
         self.assertEqual(r.status_code, 200)
         final_url = r.redirect_chain[-1][0] if r.redirect_chain else ''
-        self.assertIn('demo-schedules', final_url)
+        self.assertIn('/demo/regimes/', final_url)
         # Step 2: follow into the Financial Information schedule section list
         r2 = self.client.get(
             '/demo/regime/DEMO_SCHEDULES/schedule/SCHED_FINANCES/sections/',

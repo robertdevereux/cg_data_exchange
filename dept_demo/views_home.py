@@ -33,8 +33,10 @@ def dept_home(request):
     Reads the session user so intermediaries see the subject's regimes.
     Regimes are split into 'current' and 'other' groups for the HMRC-style layout.
     """
-    actor = request.user
-    user  = _resolve_user(get_session(request), actor)
+    actor    = request.user
+    pss      = get_session(request)
+    user     = _resolve_user(pss, actor)
+    is_agent = (actor.pk != user.pk)
 
     permitted_regimes = get_permitted_regimes(actor, user)
 
@@ -43,6 +45,8 @@ def dept_home(request):
             'current_regime_data': [],
             'other_regime_data':   [],
             'no_access':           True,
+            'is_agent':            is_agent,
+            'subject':             user,
             'breadcrumbs': [
                 {'label': 'HMRC',                 'url': '/demo/'},
                 {'label': 'Personal Tax Account', 'url': None},
@@ -63,6 +67,8 @@ def dept_home(request):
     return render(request, 'dept_demo/home.html', {
         'current_regime_data': current_regime_data,
         'other_regime_data':   other_regime_data,
+        'is_agent':            is_agent,
+        'subject':             user,
         'breadcrumbs': [
             {'label': 'HMRC',                 'url': '/demo/'},
             {'label': 'Personal Tax Account', 'url': None},

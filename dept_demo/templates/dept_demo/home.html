@@ -9,7 +9,7 @@
 
       <p class="govuk-caption-l" style="color: #505a5f;">Account home</p>
       <h1 class="govuk-heading-xl">
-        {{ user.get_full_name|default:user.username }}
+        {{ subject.get_full_name|default:subject.username }}
       </h1>
 
       {% if no_access %}
@@ -58,6 +58,12 @@
         {% endfor %}
         {% endif %}
 
+      {% endif %}
+
+      {% if is_agent %}
+      <p class="govuk-body govuk-!-margin-top-4">
+        <a href="{% url 'dept_demo:choose_user' %}" class="govuk-link">Switch client</a>
+      </p>
       {% endif %}
 
     </div>

@@ -151,12 +151,12 @@ def select_regime(request):
 def regime_home(request, regime_id):
     """
     Router: sends the citizen to the correct regime-specific home page.
-    Unknown regime_ids fall back to choose_user (dept_demo:home).
+    Unknown regime_ids fall back to choose_user (dept_demo:choose_user).
     """
     url_name = _REGIME_URL_NAMES.get(regime_id)
     if url_name:
         return redirect(reverse(url_name))
-    return redirect(reverse('dept_demo:home'))
+    return redirect(reverse('dept_demo:choose_user'))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
