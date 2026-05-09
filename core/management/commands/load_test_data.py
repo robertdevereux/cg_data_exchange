@@ -393,8 +393,8 @@ class Command(BaseCommand):
             if created:
                 counters['Permission'] += 1
 
-        # bob — DEMO_SECTIONS and DEMO_SCHEDULES
-        for regime in [r_sections, r_schedules]:
+        # bob — DEMO_SIMPLE, DEMO_SECTIONS and DEMO_SCHEDULES
+        for regime in [r_simple, r_sections, r_schedules]:
             _, created = Permission.objects.get_or_create(
                 actor=bob, user=bob, regime=regime, section=None,
                 defaults={'can_delegate': False, 'granted_by': None},

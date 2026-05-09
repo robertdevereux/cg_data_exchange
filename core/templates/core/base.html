@@ -18,7 +18,8 @@
 
   <!-- GOV.UK header — blue bar with crown logotype + service name -->
   <header class="govuk-header" data-module="govuk-header">
-    <div class="govuk-header__container govuk-width-container">
+    <div class="govuk-header__container govuk-width-container"
+         style="display:flex; align-items:center; justify-content:space-between;">
       <div class="govuk-header__logo">
         <a href="/" class="govuk-header__homepage-link">
           <!-- Tudor crown + GOV.UK logotype, sourced from govuk-frontend@6.0.0 macros/logo.njk -->
@@ -47,7 +48,7 @@
       </div>
       <div class="govuk-header__content">
         <a href="/demo/" class="govuk-header__service-name"
-           style="color: white; text-decoration: none;">
+           style="color:white; text-decoration:none; font-size:1.25rem; font-weight:700;">
           Personal tax account
         </a>
       </div>
