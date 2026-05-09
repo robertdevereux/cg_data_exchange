@@ -64,10 +64,10 @@ def resolve_layer1_entry_url(permitted, regime_id, all_complete=False):
         return f'/regime/{regime_id}/sections/'
 
     if section_count == 1:
-        # Pattern A: go directly to the one permitted section
+        # Pattern A: go directly to the one permitted section.
+        # Always route via section_start — it detects existing answers and
+        # redirects to review automatically, so /review/ is never needed here.
         section = permitted.first()
-        if all_complete:
-            return f'/section/{section.section_id}/review/'
         if section.section_type in (1, 2):
             return f'/section/{section.section_id}/table/'
         return f'/section/{section.section_id}/start/'
@@ -197,9 +197,7 @@ def select_section(request, regime_id, schedule_id=None):
     for section in permitted.order_by('display_order', 'section_name'):
         status = section_statuses.get(section.section_id, 'not_started')
 
-        if status == 'complete':
-            action_url = f'/section/{section.section_id}/review/'
-        elif section.section_type in (1, 2):
+        if section.section_type in (1, 2):
             action_url = f'/section/{section.section_id}/table/'
         else:
             action_url = f'/section/{section.section_id}/start/'

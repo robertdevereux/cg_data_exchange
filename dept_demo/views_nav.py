@@ -276,9 +276,7 @@ def select_section(request, regime_id, schedule_id=None):
     for section in permitted.order_by('display_order', 'section_name'):
         status = section_statuses.get(section.section_id, 'not_started')
 
-        if status == 'complete':
-            action_url = f'/section/{section.section_id}/review/'
-        elif section.section_type in (1, 2):
+        if section.section_type in (1, 2):
             action_url = f'/section/{section.section_id}/table/'
         else:
             action_url = f'/section/{section.section_id}/start/'

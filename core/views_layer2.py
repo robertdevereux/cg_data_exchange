@@ -191,18 +191,26 @@ def section_start(request, section_id):
         # No routing configured — treat as done
         return redirect('core:section_done', section_id=section_id)
 
-    # ── Load any pre-existing answers for returning users ────────────────────
+    # ── Load confirmed answers from DB ────────────────────────────────────────
     existing_answers = Answer.objects.filter(
         user=request.user, case=case, section=section,
         question_id__in=question_ids_in_section,
     )
     basic_answers = {a.question_id: a.answer for a in existing_answers}
 
-    # ── Determine asked_ids: if re-entering, reconstruct from DB ─────────────
-    # For a fresh start, asked_ids begins with only the first question.
-    # For a returning user, we restore just the first question and let them
-    # walk through again (they will see pre-filled answers from basic_answers).
-    asked_ids = [first_question_id]
+    # ── Determine asked_ids and entry point ───────────────────────────────────
+    # Re-entry (answers exist): reconstruct asked_ids in routing order from the
+    # DB — only questions the citizen actually answered — then go to review.
+    # Fresh start: seed with first question only and go to first question.
+    if basic_answers:
+        asked_ids = [
+            qid for qid in question_ids_in_section
+            if qid in basic_answers
+        ]
+        go_to_review = True
+    else:
+        asked_ids = [first_question_id]
+        go_to_review = False
 
     # ── Update section status ─────────────────────────────────────────────────
     ss, _ = SectionStatus.objects.get_or_create(
@@ -215,17 +223,19 @@ def section_start(request, section_id):
 
     # ── Write everything to session ───────────────────────────────────────────
     update_session(request, {
-        'user_id':       request.user.pk,
-        'actor_id':      actor_id,
-        'regime_id':     regime.regime_id,
-        'case_id':       case.case_id,
-        'section_id':    section_id,
-        'routing_table': routing_table,
+        'user_id':        request.user.pk,
+        'actor_id':       actor_id,
+        'regime_id':      regime.regime_id,
+        'case_id':        case.case_id,
+        'section_id':     section_id,
+        'routing_table':  routing_table,
         'question_table': question_table,
-        'asked_ids':     asked_ids,
-        'basic_answers': basic_answers,
+        'asked_ids':      asked_ids,
+        'basic_answers':  basic_answers,
     })
 
+    if go_to_review:
+        return redirect('core:section_review', section_id=section_id)
     return redirect('core:section_question', section_id=section_id, question_id=first_question_id)
 
 
@@ -394,6 +404,10 @@ def section_review(request, section_id):
 
     asked_ids     = pss.get('asked_ids', [])
     basic_answers = pss.get('basic_answers', {})
+
+    # Guard: empty session means arrived here without going through section_start
+    if not asked_ids:
+        return redirect('core:section_start', section_id=section_id)
     question_table = pss.get('question_table', {})
 
     # Load answer history first so we can attach it per-question

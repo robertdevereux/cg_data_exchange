@@ -24,6 +24,10 @@ class TestSimpleS1YesBranch(TestCase):
     def setUp(self):
         self.client = Client()
         self.client.login(username='alice', password='testpass123')
+        # Clear alice's pre-loaded SIMPLE_S1 answers so section_start treats
+        # this as a fresh start (redirects to first question, not review).
+        alice = User.objects.get(username='alice')
+        Answer.objects.filter(user=alice, section__section_id='SIMPLE_S1').delete()
 
     def test_yes_branch_complete(self):
         # ── Start ─────────────────────────────────────────────────────────────
