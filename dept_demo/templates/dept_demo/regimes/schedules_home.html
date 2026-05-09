@@ -1,0 +1,40 @@
+{% extends "core/base.html" %}
+
+{% block title %}Demo Schedules Service{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-two-thirds">
+
+      <h1 class="govuk-heading-xl">Demo Schedules Service</h1>
+
+      <div class="govuk-inset-text">
+        Use this service to demonstrate a regime with multiple schedules, each
+        containing several sections.
+      </div>
+
+      <h2 class="govuk-heading-m">What you will need</h2>
+      <ul class="govuk-list govuk-list--bullet">
+        <li>Your National Insurance number (if you have one)</li>
+        <li>Contact details</li>
+        <li>Financial account details</li>
+        <li>15–20 minutes to complete</li>
+      </ul>
+
+      {% if total > 0 %}
+      <p class="govuk-body">{{ complete }} of {{ total }} section{{ total|pluralize }} complete</p>
+      {% endif %}
+
+      <a href="{{ entry_url }}"
+         class="govuk-button"
+         data-module="govuk-button">
+        {% if complete == 0 %}Start
+        {% elif all_complete %}Amend your answers
+        {% else %}Continue{% endif %}
+      </a>
+
+    </div>
+  </div>
+
+{% endblock %}

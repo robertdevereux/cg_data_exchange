@@ -1,0 +1,62 @@
+{% extends "core/base.html" %}
+
+{% block title %}Demo Department Services{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-two-thirds">
+
+      <h1 class="govuk-heading-xl">Demo Department Services</h1>
+
+      <p class="govuk-body">
+        Welcome to the Demo Department. Please select a service to begin or
+        continue.
+      </p>
+
+      {% if no_access %}
+        <div class="govuk-warning-text">
+          <span class="govuk-warning-text__icon" aria-hidden="true">!</span>
+          <strong class="govuk-warning-text__text">
+            <span class="govuk-visually-hidden">Warning</span>
+            You do not have access to any services. Please contact your
+            administrator.
+          </strong>
+        </div>
+
+      {% else %}
+
+        {% for item in regime_data %}
+        <div class="govuk-summary-card">
+          <div class="govuk-summary-card__title-wrapper">
+            <h2 class="govuk-summary-card__title">
+              <a href="{{ item.url }}" class="govuk-link govuk-link--no-visited-state">
+                {{ item.regime.regime_name }}
+              </a>
+            </h2>
+          </div>
+          <div class="govuk-summary-card__content">
+            <p class="govuk-body">
+              Lorem ipsum dolor sit amet, consectetur adipiscing elit. Use this
+              service to provide information to the Demo Department.
+            </p>
+            <p class="govuk-body">
+              <strong>Status:</strong> {{ item.status_text }}
+            </p>
+            <a href="{{ item.url }}"
+               class="govuk-button govuk-button--secondary"
+               data-module="govuk-button">
+              {% if item.status_text == 'Not started' %}Start
+              {% elif item.status_text == 'Complete' %}View or amend
+              {% else %}Continue{% endif %}
+            </a>
+          </div>
+        </div>
+        {% endfor %}
+
+      {% endif %}
+
+    </div>
+  </div>
+
+{% endblock %}

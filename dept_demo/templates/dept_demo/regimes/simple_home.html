@@ -1,0 +1,43 @@
+{% extends "core/base.html" %}
+
+{% block title %}Demo Simple Service{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-two-thirds">
+
+      <h1 class="govuk-heading-xl">Demo Simple Service</h1>
+
+      <div class="govuk-inset-text">
+        Use this service to demonstrate a single-section regime with branching
+        questions and all five question types.
+      </div>
+
+      <h2 class="govuk-heading-m">What you will need</h2>
+      <ul class="govuk-list govuk-list--bullet">
+        <li>Your National Insurance number (if you have one)</li>
+        <li>Your date of birth</li>
+        <li>5–10 minutes to complete</li>
+      </ul>
+
+      {% if total > 0 %}
+      <p class="govuk-body">{{ complete }} of {{ total }} section{{ total|pluralize }} complete</p>
+      {% endif %}
+
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="entry_url" value="{{ entry_url }}">
+        <a href="{{ entry_url }}"
+           class="govuk-button"
+           data-module="govuk-button">
+          {% if complete == 0 %}Start
+          {% elif all_complete %}Amend your answers
+          {% else %}Continue{% endif %}
+        </a>
+      </form>
+
+    </div>
+  </div>
+
+{% endblock %}

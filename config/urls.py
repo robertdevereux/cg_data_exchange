@@ -37,6 +37,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('accounts/', include('django.contrib.auth.urls')),
     path('', include('core.urls', namespace='core')),
+    path('demo/', include('dept_demo.urls', namespace='dept_demo')),
 ] + [
     path(asset, serve, {
         'path': 'govuk-' + asset,   # maps to core/static/govuk-assets/...

@@ -805,10 +805,10 @@ def section_confirm_table(request, section_id):
 
 @login_required
 def section_done(request, section_id):
-    section   = get_object_or_404(Section, section_id=section_id)
-    pss       = get_session(request)
+    section = get_object_or_404(Section, section_id=section_id)
+    pss = get_session(request)
+    return_url = pss.get('return_url')
+    if return_url:
+        return redirect(return_url)
     regime_id = pss.get('regime_id') or section.get_regime().regime_id
-    return render(request, 'core/section_done.html', {
-        'section':       section,
-        'task_list_url': f'/regime/{regime_id}/',
-    })
+    return redirect(f'/regime/{regime_id}/')

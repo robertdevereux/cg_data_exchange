@@ -1,0 +1,39 @@
+{% extends "core/base.html" %}
+
+{% block title %}Demo Sections Service{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-two-thirds">
+
+      <h1 class="govuk-heading-xl">Demo Sections Service</h1>
+
+      <div class="govuk-inset-text">
+        Use this service to demonstrate a multi-section regime with personal
+        details, a financial table, and additional information.
+      </div>
+
+      <h2 class="govuk-heading-m">What you will need</h2>
+      <ul class="govuk-list govuk-list--bullet">
+        <li>Your National Insurance number (if you have one)</li>
+        <li>Details of any bank or savings accounts</li>
+        <li>10–15 minutes to complete</li>
+      </ul>
+
+      {% if total > 0 %}
+      <p class="govuk-body">{{ complete }} of {{ total }} section{{ total|pluralize }} complete</p>
+      {% endif %}
+
+      <a href="{{ entry_url }}"
+         class="govuk-button"
+         data-module="govuk-button">
+        {% if complete == 0 %}Start
+        {% elif all_complete %}Amend your answers
+        {% else %}Continue{% endif %}
+      </a>
+
+    </div>
+  </div>
+
+{% endblock %}
