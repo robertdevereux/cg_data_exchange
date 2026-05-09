@@ -410,11 +410,23 @@ class Command(BaseCommand):
         if created:
             counters['Permission'] += 1
 
-        # solicitor1 acting for alice — SCHED_S3 only, granted by alice
+        # solicitor1 acting for alice: Financial Information schedule only
+        for section_id in ['SCHED_S3', 'SCHED_S4']:
+            _, created = Permission.objects.get_or_create(
+                actor=solicitor1,
+                user=alice,
+                section=_s(section_id),
+                defaults={'can_delegate': False},
+            )
+            if created:
+                counters['Permission'] += 1
+
+        # solicitor1 acting for bob: Your Finances section only
         _, created = Permission.objects.get_or_create(
-            actor=solicitor1, user=alice,
-            regime=None, section=_s('SCHED_S3'),
-            defaults={'can_delegate': False, 'granted_by': alice},
+            actor=solicitor1,
+            user=bob,
+            section=_s('SECTIONS_S2'),
+            defaults={'can_delegate': False},
         )
         if created:
             counters['Permission'] += 1
@@ -554,5 +566,5 @@ class Command(BaseCommand):
         self.stdout.write('Alice:      SIMPLE_S1 complete, answer history present')
         self.stdout.write('Bob:        SECTIONS_S1 complete, S2+S3 not started')
         self.stdout.write('Carla:      no answers (fresh start)')
-        self.stdout.write('solicitor1: access to SCHED_S3 (Accounts) for alice only')
+        self.stdout.write('solicitor1: SCHED_S3+S4 (Financial Information) for alice; SECTIONS_S2 (Your Finances) for bob')
         self.stdout.write(self.style.SUCCESS('─' * 50))

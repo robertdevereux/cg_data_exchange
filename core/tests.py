@@ -146,13 +146,15 @@ class TestPermissions(TestCase):
             'alice should have access to all 8 sections across 3 regimes',
         )
 
-    def test_solicitor1_acting_for_alice_sees_only_sched_s3(self):
-        """solicitor1 has a section-level grant for SCHED_S3 acting for alice."""
-        solicitor1 = User.objects.get(username='solicitor1')
-        alice      = User.objects.get(username='alice')
-        sections   = get_permitted_sections(solicitor1, alice)
-        self.assertEqual(sections.count(), 1)
-        self.assertEqual(sections.first().section_id, 'SCHED_S3')
+    def test_solicitor1_acting_for_alice_sees_sched_s3_and_s4(self):
+        """solicitor1 has section-level grants for SCHED_S3 and SCHED_S4 acting for alice."""
+        solicitor1  = User.objects.get(username='solicitor1')
+        alice       = User.objects.get(username='alice')
+        sections    = get_permitted_sections(solicitor1, alice)
+        section_ids = list(sections.values_list('section_id', flat=True))
+        self.assertEqual(sections.count(), 2)
+        self.assertIn('SCHED_S3', section_ids)
+        self.assertIn('SCHED_S4', section_ids)
 
     def test_no_permissions_returns_empty(self):
         """carla acting for bob has no permissions → empty queryset."""
@@ -177,29 +179,34 @@ class TestSolicitor1Flow(TestCase):
         self.client = Client()
         self.client.login(username='solicitor1', password='testpass123')
 
-    def test_choose_user_autoskips_for_single_candidate(self):
+    def test_choose_user_shows_two_candidates(self):
         """
-        solicitor1 has exactly one actable user (alice) and no self-permissions,
-        so choose_user at /demo/ auto-redirects to select_regime without
-        rendering the choice page.
+        solicitor1 can act for alice and bob (no self-permissions),
+        so choose_user at /demo/ renders the choice page rather than auto-skipping.
         """
         r = self.client.get('/demo/')
-        self.assertEqual(r.status_code, 302)
-        self.assertIn('select-regime', r['Location'])
+        self.assertEqual(r.status_code, 200)
 
     def test_solicitor1_reaches_sched_s3_table(self):
         """
-        Full redirect chain via dept_demo: /demo/ → choose_user (auto-skip,
-        alice selected) → select_regime (auto, 1 regime) → regime home for
-        DEMO_SCHEDULES. Page contains SCHED_S3 entry URL (Pattern A).
+        Full redirect chain via dept_demo: /demo/ → choose_user (select alice)
+        → select_regime (auto, 1 regime) → regime home for DEMO_SCHEDULES.
+        Following the entry_url to the schedule list shows SCHED_S3.
         """
-        r = self.client.get('/demo/', follow=True)
+        alice = User.objects.get(username='alice')
+        # Step 1: navigate to regime home
+        r = self.client.post('/demo/', {'user_id': alice.pk}, follow=True)
         self.assertEqual(r.status_code, 200)
         final_url = r.redirect_chain[-1][0] if r.redirect_chain else ''
-        # Chain terminates at the dept_demo regime home page
         self.assertIn('demo-schedules', final_url)
-        # The page must contain a link targeting SCHED_S3 (Pattern A entry URL)
-        self.assertContains(r, 'SCHED_S3')
+        # Step 2: follow into the Financial Information schedule section list
+        r2 = self.client.get(
+            '/demo/regime/DEMO_SCHEDULES/schedule/SCHED_FINANCES/sections/',
+            follow=True,
+        )
+        self.assertEqual(r2.status_code, 200)
+        self.assertContains(r2, 'Accounts')     # SCHED_S3 section name
+        self.assertContains(r2, 'Declaration')  # SCHED_S4 section name
 
     def test_solicitor1_cannot_access_sched_s1(self):
         """SCHED_S1 must not appear in solicitor1's permitted sections for alice."""
