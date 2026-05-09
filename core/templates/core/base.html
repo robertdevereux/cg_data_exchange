@@ -16,7 +16,7 @@
     Skip to main content
   </a>
 
-  <!-- GOV.UK header — v6: blue bar with Tudor crown + logotype -->
+  <!-- GOV.UK header — blue bar with crown logotype + service name -->
   <header class="govuk-header" data-module="govuk-header">
     <div class="govuk-header__container govuk-width-container">
       <div class="govuk-header__logo">
@@ -45,29 +45,35 @@
           </svg>
         </a>
       </div>
+      <div class="govuk-header__content">
+        <a href="/demo/" class="govuk-header__service-name">
+          Personal tax account
+        </a>
+      </div>
     </div>
   </header>
 
-  <!-- GOV.UK service navigation — v6: service name + user nav -->
+  <!-- Account home breadcrumb — sits between header and service nav -->
+  <div class="govuk-width-container" style="padding-top: 10px; padding-bottom: 0;">
+    <nav class="govuk-breadcrumbs" aria-label="Breadcrumb">
+      <ol class="govuk-breadcrumbs__list">
+        <li class="govuk-breadcrumbs__list-item">
+          <a class="govuk-breadcrumbs__link" href="/demo/">&#8962; Account home</a>
+        </li>
+      </ol>
+    </nav>
+  </div>
+
+  <!-- GOV.UK service navigation — username and sign out only -->
   <section aria-label="Service information"
            class="govuk-service-navigation"
            data-module="govuk-service-navigation">
     <div class="govuk-width-container">
       <div class="govuk-service-navigation__container"
-           style="display:flex; justify-content:space-between; align-items:center;">
-        <span class="govuk-service-navigation__service-name">
-          <a href="/demo/" class="govuk-service-navigation__link">
-            Personal tax account
-          </a>
-        </span>
+           style="display:flex; justify-content:flex-end; align-items:center;">
         {% if user.is_authenticated %}
-        <nav aria-label="Menu" class="govuk-service-navigation__wrapper" style="flex-grow:0; margin-left:auto;">
+        <nav aria-label="Menu" class="govuk-service-navigation__wrapper" style="flex-grow:0;">
           <ul class="govuk-service-navigation__list">
-            <li class="govuk-service-navigation__item">
-              <a class="govuk-service-navigation__link" href="/demo/regimes/">
-                Account home
-              </a>
-            </li>
             <li class="govuk-service-navigation__item">
               <span class="govuk-service-navigation__link" style="color:inherit;cursor:default">
                 {{ user.get_full_name|default:user.username }}
