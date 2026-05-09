@@ -40,7 +40,7 @@ from .models import (
     SectionStatus,
     User,
 )
-from .session import clear_section_session, get_session, update_session
+from .session import clear_section_session, get_acting_for_name, get_session, update_session
 
 
 # ── Routing evaluation helper ─────────────────────────────────────────────────
@@ -304,6 +304,7 @@ def section_question(request, section_id, question_id):
         'back_url':       back_url,
         'asked_ids':      asked_ids,
         'breadcrumbs':    _build_crumbs(pss, section.section_name),
+        'acting_for':     get_acting_for_name(pss),
     }
 
     template_map = {
@@ -347,6 +348,7 @@ def _process_answer(request, section, section_id, question_id, q_meta, pss):
             'asked_ids':      asked_ids,
             'error':          'Please answer this question before continuing.',
             'breadcrumbs':    _build_crumbs(pss, section.section_name),
+            'acting_for':     get_acting_for_name(pss),
         }
         template_map = {'radio': 'core/question_radio.html', 'checkbox': 'core/question_checkbox.html'}
         template = template_map.get(q_meta['question_type'], 'core/question_text.html')
@@ -435,6 +437,7 @@ def section_review(request, section_id):
         'rows':        rows,
         'confirm_url': f'/section/{section_id}/confirm/',
         'breadcrumbs': _build_crumbs(pss, 'Check your answers'),
+        'acting_for':  get_acting_for_name(pss),
     }
     return render(request, 'core/review.html', context)
 
@@ -657,6 +660,7 @@ def section_table(request, section_id):
         'confirm_url':   f'/section/{section_id}/confirm-table/',
         'has_rows':      bool(rows),
         'breadcrumbs':   _build_crumbs(pss, section.section_name),
+        'acting_for':    get_acting_for_name(pss),
     }
     return render(request, 'core/table_landing.html', context)
 
@@ -732,9 +736,10 @@ def section_table_add(request, section_id):
         for q in ordered_columns
     ]
     context = {
-        'section':  section,
-        'columns':  column_dicts,
-        'back_url': f'/section/{section_id}/table/',
+        'section':    section,
+        'columns':    column_dicts,
+        'back_url':   f'/section/{section_id}/table/',
+        'acting_for': get_acting_for_name(pss),
     }
     return render(request, 'core/table_add.html', context)
 

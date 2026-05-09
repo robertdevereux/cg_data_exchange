@@ -40,6 +40,19 @@ def update_session(request, data: dict) -> None:
     request.session.modified = True
 
 
+def get_acting_for_name(pss: dict):
+    """Return full name of the subject user, or None if actor is acting for themselves."""
+    user_id  = pss.get('user_id')
+    actor_id = pss.get('actor_id')
+    if not user_id or not actor_id or user_id == actor_id:
+        return None
+    from .models import User  # local import to avoid circular dependency
+    try:
+        return User.objects.get(pk=user_id).get_full_name()
+    except User.DoesNotExist:
+        return None
+
+
 def clear_section_session(request) -> None:
     """Remove the section-scoped keys after a section is confirmed.
 

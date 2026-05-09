@@ -10,7 +10,7 @@ from core.interfaces import bootstrap_section_statuses, get_or_create_case
 from core.models import Regime, SectionStatus
 from core.nav_reference import _resolve_user, resolve_layer1_entry_url
 from core.permissions import get_permitted_sections
-from core.session import get_session, update_session
+from core.session import get_acting_for_name, get_session, update_session
 
 _REGIME_ID = 'DEMO_SCHEDULES'
 _TEMPLATE  = 'dept_demo/regimes/schedules_home.html'
@@ -58,12 +58,14 @@ def regime_schedules_home(request):
     if entry_url.startswith('/regime/'):
         entry_url = '/demo' + entry_url
 
+    pss = get_session(request)
     return render(request, _TEMPLATE, {
         'regime':       regime,
         'total':        total,
         'complete':     complete,
         'all_complete': all_complete,
         'entry_url':    entry_url,
+        'acting_for':   get_acting_for_name(pss),
         'breadcrumbs': [
             {'label': 'HMRC',                 'url': '/demo/'},
             {'label': 'Personal Tax Account', 'url': '/demo/regimes/'},

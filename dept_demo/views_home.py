@@ -11,7 +11,7 @@ from django.urls import reverse
 
 from core.nav_reference import _resolve_user
 from core.permissions import get_permitted_regimes
-from core.session import get_session
+from core.session import get_acting_for_name, get_session
 
 # Regime classification — determines which section of the home page each appears in
 _CURRENT_REGIME_IDS = ['DEMO_SIMPLE', 'DEMO_SECTIONS']
@@ -40,6 +40,8 @@ def dept_home(request):
 
     permitted_regimes = get_permitted_regimes(actor, user)
 
+    acting_for = get_acting_for_name(pss)
+
     if not permitted_regimes.exists():
         return render(request, 'dept_demo/home.html', {
             'current_regime_data': [],
@@ -47,6 +49,7 @@ def dept_home(request):
             'no_access':           True,
             'is_agent':            is_agent,
             'subject':             user,
+            'acting_for':          acting_for,
             'breadcrumbs': [
                 {'label': 'HMRC',                 'url': '/demo/'},
                 {'label': 'Personal Tax Account', 'url': None},
@@ -69,6 +72,7 @@ def dept_home(request):
         'other_regime_data':   other_regime_data,
         'is_agent':            is_agent,
         'subject':             user,
+        'acting_for':          acting_for,
         'breadcrumbs': [
             {'label': 'HMRC',                 'url': '/demo/'},
             {'label': 'Personal Tax Account', 'url': None},

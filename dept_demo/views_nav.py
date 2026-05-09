@@ -19,7 +19,7 @@ from django.urls import reverse
 from core.models import Permission, Regime, Schedule, SectionStatus, User
 from core.nav_reference import _resolve_user
 from core.permissions import get_permitted_regimes, get_permitted_sections
-from core.session import get_session, update_session
+from core.session import get_acting_for_name, get_session, update_session
 
 
 # ── Regime slug map (regime_id → named URL) ───────────────────────────────────
@@ -229,6 +229,7 @@ def select_schedule(request, regime_id):
         'schedules':   schedule_data,
         'back_url':    reverse('dept_demo:dept_home'),
         'breadcrumbs': crumbs,
+        'acting_for':  get_acting_for_name(pss),
     })
 
 
@@ -327,4 +328,5 @@ def select_section(request, regime_id, schedule_id=None):
         'sections':    section_data,
         'back_url':    back_url,
         'breadcrumbs': crumbs,
+        'acting_for':  get_acting_for_name(pss),
     })
