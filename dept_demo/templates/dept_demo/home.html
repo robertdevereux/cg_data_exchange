@@ -7,7 +7,10 @@
   <div class="govuk-grid-row">
     <div class="govuk-grid-column-two-thirds">
 
-      <h1 class="govuk-heading-xl">Taxes and benefits</h1>
+      <p class="govuk-caption-l" style="color: #505a5f;">Account home</p>
+      <h1 class="govuk-heading-xl">
+        {{ user.get_full_name|default:user.username }}
+      </h1>
 
       {% if no_access %}
         <div class="govuk-warning-text">
@@ -23,16 +26,16 @@
 
         <hr class="govuk-section-break govuk-section-break--m govuk-section-break--visible">
 
+        <h2 class="govuk-heading-m">Taxes and benefits</h2>
+
         {% if current_regime_data %}
-        <h2 class="govuk-heading-s govuk-!-font-weight-bold" style="margin-top: 30px;">
-          Your current taxes and benefits
-        </h2>
         <p class="govuk-body govuk-!-font-weight-bold">
           Your current HMRC online taxes and benefits
         </p>
 
         {% for item in current_regime_data %}
-        <div style="border: 1px solid #b1b4b6; background-color: #f3f2f1; padding: 15px; margin-bottom: 10px;">
+        <div style="border: 1px solid #b1b4b6; background-color: #f3f2f1;
+                    padding: 15px; margin-bottom: 10px;">
           <a class="govuk-link govuk-!-font-weight-bold" href="{{ item.url }}">
             {{ item.regime.regime_name }}
           </a>
@@ -41,12 +44,13 @@
         {% endif %}
 
         {% if other_regime_data %}
-        <h2 class="govuk-heading-s govuk-!-font-weight-bold" style="margin-top: 30px;">
+        <p class="govuk-body govuk-!-font-weight-bold" style="margin-top: 20px;">
           Other taxes and benefits that may be relevant to you
-        </h2>
+        </p>
 
         {% for item in other_regime_data %}
-        <div style="border: 1px solid #b1b4b6; background-color: #f3f2f1; padding: 15px; margin-bottom: 10px;">
+        <div style="border: 1px solid #b1b4b6; background-color: #f3f2f1;
+                    padding: 15px; margin-bottom: 10px;">
           <a class="govuk-link govuk-!-font-weight-bold" href="{{ item.url }}">
             {{ item.regime.regime_name }}
           </a>
