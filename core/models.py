@@ -243,10 +243,14 @@ class Case(models.Model):
     case_id will be populated as a UUID string by the application layer.
     """
 
+    DRAFT     = 'draft'
+    SUBMITTED = 'submitted'
+    LAPSED    = 'lapsed'
+
     STATUS_CHOICES = [
-        ('draft', 'Draft'),
-        ('submitted', 'Submitted'),
-        ('lapsed', 'Lapsed'),
+        (DRAFT,     'Draft'),
+        (SUBMITTED, 'Submitted'),
+        (LAPSED,    'Lapsed'),
     ]
 
     case_id = models.CharField(max_length=100, primary_key=True)
