@@ -173,26 +173,27 @@ class TestSolicitor1Flow(TestCase):
         self.client = Client()
         self.client.login(username='solicitor1', password='testpass123')
 
-    def test_choose_user_shows_alice(self):
-        """solicitor1 has alice as an actable user — choose_user renders with alice."""
-        alice = User.objects.get(username='alice')
-        r = self.client.get('/choose-user/')
-        self.assertEqual(r.status_code, 200)
-        self.assertContains(r, str(alice.pk))
+    def test_choose_user_autoskips_for_single_candidate(self):
+        """
+        solicitor1 has exactly one actable user (alice) and no self-permissions,
+        so choose_user at /demo/ auto-redirects to select_regime without
+        rendering the choice page.
+        """
+        r = self.client.get('/demo/')
+        self.assertEqual(r.status_code, 302)
+        self.assertIn('select-regime', r['Location'])
 
     def test_solicitor1_reaches_sched_s3_table(self):
         """
-        Full redirect chain: choose_user → select_regime (auto) → regime home.
-        The regime home page is the terminal page; the entry_url on the page
-        points to SCHED_S3 (Pattern A — solicitor1 has access to exactly one
-        section for alice).
+        Full redirect chain via dept_demo: /demo/ → choose_user (auto-skip,
+        alice selected) → select_regime (auto, 1 regime) → regime home for
+        DEMO_SCHEDULES. Page contains SCHED_S3 entry URL (Pattern A).
         """
-        alice = User.objects.get(username='alice')
-        r = self.client.post('/choose-user/', {'user_id': alice.pk}, follow=True)
+        r = self.client.get('/demo/', follow=True)
         self.assertEqual(r.status_code, 200)
         final_url = r.redirect_chain[-1][0] if r.redirect_chain else ''
-        # Chain now terminates at the regime home page (no longer auto-skips to section)
-        self.assertIn('/regime/DEMO_SCHEDULES/', final_url)
+        # Chain terminates at the dept_demo regime home page
+        self.assertIn('demo-schedules', final_url)
         # The page must contain a link targeting SCHED_S3 (Pattern A entry URL)
         self.assertContains(r, 'SCHED_S3')
 

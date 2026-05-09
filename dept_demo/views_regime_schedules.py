@@ -8,13 +8,12 @@ from django.shortcuts import render
 
 from core.interfaces import bootstrap_section_statuses, get_or_create_case
 from core.models import Regime, SectionStatus
-from core.nav_reference import resolve_layer1_entry_url
+from core.nav_reference import _resolve_user, resolve_layer1_entry_url
 from core.permissions import get_permitted_sections
-from core.session import update_session
+from core.session import get_session, update_session
 
-_REGIME_ID   = 'DEMO_SCHEDULES'
-_RETURN_URL  = '/demo/regime/demo-schedules/'
-_TEMPLATE    = 'dept_demo/regimes/schedules_home.html'
+_REGIME_ID = 'DEMO_SCHEDULES'
+_TEMPLATE  = 'dept_demo/regimes/schedules_home.html'
 
 
 @login_required
@@ -25,7 +24,7 @@ def regime_schedules_home(request):
     """
     regime = Regime.objects.get(regime_id=_REGIME_ID)
     actor  = request.user
-    user   = request.user  # self-filing for now
+    user   = _resolve_user(get_session(request), actor)
 
     permitted = get_permitted_sections(actor, user).filter(
         Q(regime_id=_REGIME_ID) | Q(schedule__regime_id=_REGIME_ID)
@@ -47,7 +46,7 @@ def regime_schedules_home(request):
         'actor_id':   actor.pk,
         'regime_id':  regime.regime_id,
         'case_id':    case.case_id,
-        'return_url': _RETURN_URL,
+        'return_url': request.path,
     })
 
     # Resolve entry URL; remap any /regime/... path to /demo/regime/...

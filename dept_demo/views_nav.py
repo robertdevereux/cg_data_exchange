@@ -5,8 +5,10 @@ Implements all three navigation patterns using the platform interfaces and
 reference implementations from core.nav_reference, adapted for dept_demo's
 URL structure (/demo/ prefix) and templates.
 
-These are the department's chosen implementations — departments are free to
-adapt the core reference patterns as needed.
+Flow:
+  /demo/ → choose_user → select_regime → regime_home router
+         → specific regime home → (Layer 2 section journey)
+         → section_done → return_url (set by this layer)
 """
 
 from django.contrib.auth.decorators import login_required
@@ -14,13 +16,13 @@ from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
-from core.models import Regime, Schedule, SectionStatus, User
+from core.models import Permission, Regime, Schedule, SectionStatus, User
 from core.nav_reference import _resolve_user
 from core.permissions import get_permitted_regimes, get_permitted_sections
 from core.session import get_session, update_session
 
 
-# ── Regime slug map (regime_id → URL-friendly slug) ──────────────────────────
+# ── Regime slug map (regime_id → named URL) ───────────────────────────────────
 
 _REGIME_URL_NAMES = {
     'DEMO_SIMPLE':    'dept_demo:regime_demo_simple',
@@ -30,21 +32,78 @@ _REGIME_URL_NAMES = {
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CHOOSE USER — self-filing only for now
+# CHOOSE USER — who is the actor filing for?
 # ─────────────────────────────────────────────────────────────────────────────
 
 @login_required
 def choose_user(request):
     """
-    For dept_demo, self-filing only for now.
-    Sets user_id = actor_id = logged-in user and skips straight to
-    select_regime.  Full intermediary UI is deferred to a later iteration.
+    Present a choice of users the actor can act for.
+    Auto-skips to select_regime when there is only one candidate (including
+    the common case where a citizen is only filing for themselves).
     """
-    update_session(request, {
-        'user_id':  request.user.pk,
-        'actor_id': request.user.pk,
+    actor = request.user
+
+    # Find users this actor can act for (other than themselves)
+    other_user_ids = (
+        Permission.objects
+        .filter(actor=actor)
+        .exclude(user=actor)
+        .values_list('user_id', flat=True)
+        .distinct()
+    )
+
+    self_has_perms = Permission.objects.filter(
+        actor=actor, user=actor
+    ).exists()
+
+    candidate_users = []
+    if self_has_perms:
+        candidate_users.append({
+            'user':  actor,
+            'label': 'Myself',
+            'value': actor.pk,
+        })
+    for u in User.objects.filter(pk__in=other_user_ids).order_by('first_name', 'last_name'):
+        candidate_users.append({
+            'user':  u,
+            'label': u.get_full_name() or u.username,
+            'value': u.pk,
+        })
+
+    # No permissions at all
+    if not candidate_users:
+        return render(request, 'dept_demo/nav/no_permissions.html')
+
+    # Only one candidate — skip the screen
+    if len(candidate_users) == 1:
+        selected = candidate_users[0]['user']
+        update_session(request, {
+            'user_id':  selected.pk,
+            'actor_id': actor.pk,
+        })
+        return redirect('dept_demo:select_regime')
+
+    # POST: process selection
+    if request.method == 'POST':
+        selected_pk = request.POST.get('user_id', '')
+        valid_pks   = [str(c['value']) for c in candidate_users]
+        if selected_pk not in valid_pks:
+            return render(request, 'dept_demo/nav/choose_user.html', {
+                'candidates': candidate_users,
+                'error':      'Please select an option.',
+            })
+        selected = User.objects.get(pk=int(selected_pk))
+        update_session(request, {
+            'user_id':  selected.pk,
+            'actor_id': actor.pk,
+        })
+        return redirect('dept_demo:select_regime')
+
+    # GET: show choice
+    return render(request, 'dept_demo/nav/choose_user.html', {
+        'candidates': candidate_users,
     })
-    return redirect('dept_demo:select_regime')
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -54,8 +113,9 @@ def choose_user(request):
 @login_required
 def select_regime(request):
     """
-    Show available regimes and redirect to the appropriate regime home page.
+    Show available regimes for the actor/user pair established by choose_user.
     Auto-skips when only one regime is available.
+    Multiple regimes: redirect to the dept home (regime card list).
     """
     pss   = get_session(request)
     actor = request.user
@@ -68,25 +128,19 @@ def select_regime(request):
 
     if not regimes.exists():
         return render(request, 'dept_demo/nav/select_regime.html', {
-            'regimes': [],
+            'regimes':   [],
             'no_access': True,
         })
 
+    # Auto-skip when exactly one regime
     if regimes.count() == 1:
         return redirect(
             reverse('dept_demo:regime_home',
                     kwargs={'regime_id': regimes.first().regime_id})
         )
 
-    if request.method == 'POST':
-        regime_id = request.POST.get('regime_id', '')
-        permitted_ids = list(regimes.values_list('regime_id', flat=True))
-        if regime_id in permitted_ids:
-            return redirect(
-                reverse('dept_demo:regime_home', kwargs={'regime_id': regime_id})
-            )
-
-    return render(request, 'dept_demo/nav/select_regime.html', {'regimes': regimes})
+    # Multiple regimes — send to the regime card list
+    return redirect(reverse('dept_demo:dept_home'))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -96,8 +150,8 @@ def select_regime(request):
 @login_required
 def regime_home(request, regime_id):
     """
-    Router: sends the citizen to the correct regime-specific home page based
-    on regime_id.  Unknown regime_ids fall back to the department home.
+    Router: sends the citizen to the correct regime-specific home page.
+    Unknown regime_ids fall back to choose_user (dept_demo:home).
     """
     url_name = _REGIME_URL_NAMES.get(regime_id)
     if url_name:
@@ -162,15 +216,14 @@ def select_schedule(request, regime_id):
             'status_display': _status_label[sched_status],
             'url': reverse(
                 'dept_demo:select_section_in_schedule',
-                kwargs={'regime_id': regime_id,
-                        'schedule_id': sched.schedule_id},
+                kwargs={'regime_id': regime_id, 'schedule_id': sched.schedule_id},
             ),
         })
 
     return render(request, 'dept_demo/nav/select_schedule.html', {
         'regime':    regime,
         'schedules': schedule_data,
-        'back_url':  '/demo/',
+        'back_url':  reverse('dept_demo:dept_home'),
     })
 
 
@@ -181,11 +234,10 @@ def select_schedule(request, regime_id):
 @login_required
 def select_section(request, regime_id, schedule_id=None):
     """
-    Task-list view: all permitted sections for this regime (filtered by
+    Task-list view for all permitted sections in this regime (filtered by
     schedule_id when coming from the schedule menu).
 
-    Also sets return_url and schedule_id in the session so section_done
-    knows where to redirect after a section is completed.
+    Sets return_url in the session so section_done redirects back here.
     """
     actor  = request.user
     pss    = get_session(request)
@@ -241,7 +293,7 @@ def select_section(request, regime_id, schedule_id=None):
                              kwargs={'regime_id': regime_id,
                                      'schedule_id': schedule_id})
     else:
-        back_url   = '/demo/'
+        back_url   = reverse('dept_demo:dept_home')
         return_url = reverse('dept_demo:select_section',
                              kwargs={'regime_id': regime_id})
 

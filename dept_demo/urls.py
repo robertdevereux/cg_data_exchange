@@ -11,15 +11,20 @@ from . import (
 app_name = 'dept_demo'
 
 urlpatterns = [
-    # Department landing page
+    # Entry point — establishes actor/user context
     path('',
-         views_home.dept_home,
+         views_nav.choose_user,
          name='home'),
 
     # Regime selection (multi-regime users)
     path('select-regime/',
          views_nav.select_regime,
          name='select_regime'),
+
+    # Regime card list (reached from select_regime when count > 1)
+    path('regimes/',
+         views_home.dept_home,
+         name='dept_home'),
 
     # ── Specific regime home pages — MUST come before the generic router ──
     path('regime/demo-simple/',

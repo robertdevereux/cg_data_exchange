@@ -65,12 +65,19 @@ class TestDeptHome(_Base):
         self.carla.login(username='carla', password='testpass123')
 
     def test_alice_sees_three_regime_cards(self):
-        """Alice has 3 regimes — dept_home renders all three (no auto-skip)."""
-        r = self.alice.get('/demo/')
+        """
+        Alice has 3 regimes. /demo/ → choose_user (auto-skip) → select_regime
+        → redirect to /demo/regimes/ (dept_home). Cards for all three regimes
+        must appear.
+        """
+        r = self.alice.get('/demo/', follow=True)
         self.assertEqual(r.status_code, 200)
+        final = r.redirect_chain[-1][0] if r.redirect_chain else ''
+        self.assertIn('/demo/regimes/', final,
+                      f'Multi-regime user should land at /demo/regimes/, chain: {r.redirect_chain}')
         for regime_id in ('DEMO_SIMPLE', 'DEMO_SECTIONS', 'DEMO_SCHEDULES'):
             self.assertContains(r, regime_id,
-                                msg_prefix=f'{regime_id} card missing from /demo/')
+                                msg_prefix=f'{regime_id} card missing from regime list')
 
     def test_carla_auto_redirected_to_only_regime(self):
         """Carla has only DEMO_SIMPLE — /demo/ auto-redirects to regime home."""
@@ -437,8 +444,8 @@ class TestSectionDoneFallback(_Base):
         # Login without visiting any dept_demo page — no return_url in session
         self.client.login(username='carla', password='testpass123')
 
-    def test_no_return_url_falls_back_to_core_regime(self):
-        # Start section directly (bypassing dept_demo Layer 1)
+    def test_no_return_url_falls_back_to_root(self):
+        # Start section directly (bypassing dept_demo Layer 1 — no return_url in session)
         self.client.get('/section/SIMPLE_S1/start/')
         for qid, data in [
             ('Q_full_name',     {'answer': 'Carla Garcia'}),
@@ -454,13 +461,11 @@ class TestSectionDoneFallback(_Base):
         r = self.client.post('/section/SIMPLE_S1/confirm/')
         done_url = r['Location']   # → /section/SIMPLE_S1/done/
 
-        # section_done with no return_url should redirect to /regime/DEMO_SIMPLE/
+        # section_done with no return_url falls back to /
         r = self.client.get(done_url)
         self.assertEqual(r.status_code, 302)
-        self.assertIn('/regime/DEMO_SIMPLE/', r['Location'],
-                      'Fallback should redirect to core /regime/<id>/ URL')
-        # Must NOT be a /demo/ URL
-        self.assertNotIn('/demo/', r['Location'])
+        self.assertEqual(r['Location'], '/',
+                         'Fallback with no return_url should redirect to /')
 
 
 # ─────────────────────────────────────────────────────────────────────────────

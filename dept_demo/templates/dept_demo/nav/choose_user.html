@@ -1,0 +1,54 @@
+{% extends "core/base.html" %}
+
+{% block title %}Who are you completing this service for?{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-two-thirds">
+
+      <form method="post" novalidate>
+        {% csrf_token %}
+
+        <div class="govuk-form-group {% if error %}govuk-form-group--error{% endif %}">
+          <fieldset class="govuk-fieldset" aria-describedby="{% if error %}user-error{% endif %}">
+            <legend class="govuk-fieldset__legend govuk-fieldset__legend--l">
+              <h1 class="govuk-fieldset__heading">
+                Who are you completing this service for?
+              </h1>
+            </legend>
+
+            {% if error %}
+            <p id="user-error" class="govuk-error-message">
+              <span class="govuk-visually-hidden">Error:</span> {{ error }}
+            </p>
+            {% endif %}
+
+            <div class="govuk-radios" data-module="govuk-radios">
+              {% for candidate in candidates %}
+              <div class="govuk-radios__item">
+                <input class="govuk-radios__input"
+                       id="user-{{ forloop.counter }}"
+                       name="user_id"
+                       type="radio"
+                       value="{{ candidate.value }}">
+                <label class="govuk-label govuk-radios__label"
+                       for="user-{{ forloop.counter }}">
+                  {{ candidate.label }}
+                </label>
+              </div>
+              {% endfor %}
+            </div>
+          </fieldset>
+        </div>
+
+        <button type="submit" class="govuk-button" data-module="govuk-button">
+          Continue
+        </button>
+
+      </form>
+
+    </div>
+  </div>
+
+{% endblock %}

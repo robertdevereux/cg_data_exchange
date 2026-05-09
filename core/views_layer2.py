@@ -16,6 +16,7 @@ Responsibility boundary
   section is being processed.  Session carries in-flight state.
 """
 
+import logging
 import uuid
 
 from django.contrib.auth.decorators import login_required
@@ -23,6 +24,8 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
+
+logger = logging.getLogger(__name__)
 
 from .models import (
     Answer,
@@ -810,5 +813,9 @@ def section_done(request, section_id):
     return_url = pss.get('return_url')
     if return_url:
         return redirect(return_url)
-    regime_id = pss.get('regime_id') or section.get_regime().regime_id
-    return redirect(f'/regime/{regime_id}/')
+    logger.warning(
+        'section_done: no return_url in session for section %s (user %s) — '
+        'falling back to /. Layer 1 must set return_url before entering Layer 2.',
+        section_id, request.user,
+    )
+    return redirect('/')
