@@ -6,14 +6,24 @@ Reached via select_regime → redirect when count > 1.
 """
 
 from django.contrib.auth.decorators import login_required
-from django.db.models import Q
 from django.shortcuts import render
 from django.urls import reverse
 
-from core.models import SectionStatus
 from core.nav_reference import _resolve_user
-from core.permissions import get_permitted_regimes, get_permitted_sections
+from core.permissions import get_permitted_regimes
 from core.session import get_session
+
+# Regime classification — determines which section of the home page each appears in
+_CURRENT_REGIME_IDS = ['DEMO_SIMPLE', 'DEMO_SECTIONS']
+_OTHER_REGIME_IDS   = ['DEMO_SCHEDULES']
+
+
+def _build_regime_item(regime):
+    return {
+        'regime': regime,
+        'url':    reverse('dept_demo:regime_home',
+                          kwargs={'regime_id': regime.regime_id}),
+    }
 
 
 @login_required
@@ -21,6 +31,7 @@ def dept_home(request):
     """
     Regime card list for the actor/user pair established by choose_user.
     Reads the session user so intermediaries see the subject's regimes.
+    Regimes are split into 'current' and 'other' groups for the HMRC-style layout.
     """
     actor = request.user
     user  = _resolve_user(get_session(request), actor)
@@ -29,32 +40,23 @@ def dept_home(request):
 
     if not permitted_regimes.exists():
         return render(request, 'dept_demo/home.html', {
-            'regime_data': [],
-            'no_access':   True,
+            'current_regime_data': [],
+            'other_regime_data':   [],
+            'no_access':           True,
         })
 
-    regime_data = []
-    for regime in permitted_regimes:
-        permitted = get_permitted_sections(actor, user).filter(
-            Q(regime_id=regime.regime_id) | Q(schedule__regime_id=regime.regime_id)
-        )
-        total    = permitted.count()
-        complete = SectionStatus.objects.filter(
-            user=user, regime=regime, section__in=permitted, status='complete',
-        ).count()
+    current_regime_data = [
+        _build_regime_item(r)
+        for r in permitted_regimes.filter(regime_id__in=_CURRENT_REGIME_IDS)
+        .order_by('display_order')
+    ]
+    other_regime_data = [
+        _build_regime_item(r)
+        for r in permitted_regimes.filter(regime_id__in=_OTHER_REGIME_IDS)
+        .order_by('display_order')
+    ]
 
-        if total == 0 or complete == 0:
-            status_text = 'Not started'
-        elif complete == total:
-            status_text = 'Complete'
-        else:
-            status_text = f'In progress ({complete} of {total} complete)'
-
-        regime_data.append({
-            'regime':      regime,
-            'status_text': status_text,
-            'url': reverse('dept_demo:regime_home',
-                           kwargs={'regime_id': regime.regime_id}),
-        })
-
-    return render(request, 'dept_demo/home.html', {'regime_data': regime_data})
+    return render(request, 'dept_demo/home.html', {
+        'current_regime_data': current_regime_data,
+        'other_regime_data':   other_regime_data,
+    })

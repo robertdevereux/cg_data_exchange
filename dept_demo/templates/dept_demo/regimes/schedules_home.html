@@ -1,38 +1,45 @@
 {% extends "core/base.html" %}
 
-{% block title %}Demo Schedules Service{% endblock %}
+{% block title %}Demo Schedules service — Personal tax account{% endblock %}
 
 {% block content %}
 
   <div class="govuk-grid-row">
     <div class="govuk-grid-column-two-thirds">
 
-      <h1 class="govuk-heading-xl">Demo Schedules Service</h1>
+      <h2 class="govuk-heading-l">{{ regime.regime_name }}</h2>
 
-      <div class="govuk-inset-text">
-        Use this service to demonstrate a regime with multiple schedules, each
-        containing several sections.
-      </div>
+      <h3 class="govuk-heading-s">Your returns</h3>
+      <p class="govuk-body">
+        <strong>Deadline details</strong>
+      </p>
+      <p class="govuk-body">
+        This is a demonstration service.
+        No real deadlines apply.
+      </p>
 
-      <h2 class="govuk-heading-m">What you will need</h2>
-      <ul class="govuk-list govuk-list--bullet">
-        <li>Your National Insurance number (if you have one)</li>
-        <li>Contact details</li>
-        <li>Financial account details</li>
-        <li>15–20 minutes to complete</li>
-      </ul>
-
-      {% if total > 0 %}
-      <p class="govuk-body">{{ complete }} of {{ total }} section{{ total|pluralize }} complete</p>
+      {% if complete > 0 %}
+      <p class="govuk-body">
+        {{ complete }} of {{ total }} section{{ total|pluralize }} complete.
+      </p>
       {% endif %}
 
       <a href="{{ entry_url }}"
          class="govuk-button"
          data-module="govuk-button">
-        {% if complete == 0 %}Start
-        {% elif all_complete %}Amend your answers
-        {% else %}Continue{% endif %}
+        {% if all_complete %}Amend your Demo Schedules service answers
+        {% elif complete > 0 %}Continue Demo Schedules service
+        {% else %}Start Demo Schedules service{% endif %}
       </a>
+
+      <ul class="govuk-list" style="margin-top: 20px;">
+        <li>
+          <a class="govuk-link" href="#">View your previously submitted answers</a>
+        </li>
+        <li>
+          <a class="govuk-link" href="#">Get help with this service</a>
+        </li>
+      </ul>
 
     </div>
   </div>

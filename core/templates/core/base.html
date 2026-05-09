@@ -56,13 +56,18 @@
       <div class="govuk-service-navigation__container"
            style="display:flex; justify-content:space-between; align-items:center;">
         <span class="govuk-service-navigation__service-name">
-          <a href="/" class="govuk-service-navigation__link">
-            Public Services Platform
+          <a href="/demo/" class="govuk-service-navigation__link">
+            Personal tax account
           </a>
         </span>
         {% if user.is_authenticated %}
         <nav aria-label="Menu" class="govuk-service-navigation__wrapper" style="flex-grow:0; margin-left:auto;">
           <ul class="govuk-service-navigation__list">
+            <li class="govuk-service-navigation__item">
+              <a class="govuk-service-navigation__link" href="/demo/regimes/">
+                Account home
+              </a>
+            </li>
             <li class="govuk-service-navigation__item">
               <span class="govuk-service-navigation__link" style="color:inherit;cursor:default">
                 {{ user.get_full_name|default:user.username }}
@@ -91,8 +96,9 @@
       <p class="govuk-phase-banner__content">
         <strong class="govuk-tag govuk-phase-banner__content__tag">Demo</strong>
         <span class="govuk-phase-banner__text">
-          This is a proof of concept for a new operating model
-          for citizen–government data exchange.
+          This is a proof of concept demonstrating a new
+          operating model for citizen–government data exchange.
+          It is not a real HMRC service.
         </span>
       </p>
     </div>
