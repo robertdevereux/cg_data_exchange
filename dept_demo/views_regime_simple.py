@@ -50,6 +50,7 @@ def regime_simple_home(request):
         'breadcrumbs': [
             {'label': 'HMRC',                 'url': '/demo/'},
             {'label': 'Personal Tax Account', 'url': '/demo/regimes/'},
+            {'label': regime.regime_name,     'url': request.path},
         ],
     })
 

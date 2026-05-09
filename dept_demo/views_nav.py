@@ -222,13 +222,13 @@ def select_schedule(request, regime_id):
 
     regime_home_url = reverse('dept_demo:regime_home', kwargs={'regime_id': regime_id})
     base_crumbs = pss.get('breadcrumbs', [])
+    crumbs = base_crumbs + [{'label': regime.regime_name, 'url': regime_home_url}]
+    update_session(request, {'breadcrumbs': crumbs})
     return render(request, 'dept_demo/nav/select_schedule.html', {
         'regime':      regime,
         'schedules':   schedule_data,
         'back_url':    reverse('dept_demo:dept_home'),
-        'breadcrumbs': base_crumbs + [
-            {'label': regime.regime_name, 'url': regime_home_url},
-        ],
+        'breadcrumbs': crumbs,
     })
 
 
@@ -300,16 +300,26 @@ def select_section(request, regime_id, schedule_id=None):
         return_url = reverse('dept_demo:select_section',
                              kwargs={'regime_id': regime_id})
 
+    regime_home_url = reverse('dept_demo:regime_home', kwargs={'regime_id': regime_id})
+    base_crumbs = pss.get('breadcrumbs', [])
+
+    if schedule_id:
+        # Pattern C: breadcrumbs were set by select_schedule; add schedule crumb
+        schedule_list_url = reverse(
+            'dept_demo:select_section_in_schedule',
+            kwargs={'regime_id': regime_id, 'schedule_id': schedule_id},
+        )
+        crumbs = base_crumbs + [{'label': schedule.schedule_name, 'url': schedule_list_url}]
+    else:
+        # Pattern B: build regime crumb from base
+        regime_sections_url = reverse('dept_demo:regime_demo_sections')
+        crumbs = base_crumbs + [{'label': regime.regime_name, 'url': regime_sections_url}]
+
     update_session(request, {
         'return_url':  return_url,
         'schedule_id': schedule_id,
+        'breadcrumbs': crumbs,
     })
-
-    regime_home_url = reverse('dept_demo:regime_home', kwargs={'regime_id': regime_id})
-    base_crumbs = pss.get('breadcrumbs', [])
-    crumbs = base_crumbs + [{'label': regime.regime_name, 'url': regime_home_url}]
-    if schedule:
-        crumbs.append({'label': schedule.schedule_name, 'url': None})
 
     return render(request, 'dept_demo/nav/select_section.html', {
         'regime':      regime,
