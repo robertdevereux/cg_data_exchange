@@ -18,3 +18,5 @@ staticfiles/
 
 # Reference repo is read-only — exclude its git history from the outer repo
 _reference/
+file_dump.txt
+test_out.txt

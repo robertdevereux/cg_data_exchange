@@ -3846,10 +3846,10 @@ def resolve_layer1_entry_url(permitted, regime_id, all_complete=False):
         return f'/regime/{regime_id}/sections/'
 
     if section_count == 1:
-        # Pattern A: go directly to the one permitted section
+        # Pattern A: go directly to the one permitted section.
+        # Always route via section_start — it detects existing answers and
+        # redirects to review automatically, so /review/ is never needed here.
         section = permitted.first()
-        if all_complete:
-            return f'/section/{section.section_id}/review/'
         if section.section_type in (1, 2):
             return f'/section/{section.section_id}/table/'
         return f'/section/{section.section_id}/start/'
@@ -3979,9 +3979,7 @@ def select_section(request, regime_id, schedule_id=None):
     for section in permitted.order_by('display_order', 'section_name'):
         status = section_statuses.get(section.section_id, 'not_started')
 
-        if status == 'complete':
-            action_url = f'/section/{section.section_id}/review/'
-        elif section.section_type in (1, 2):
+        if section.section_type in (1, 2):
             action_url = f'/section/{section.section_id}/table/'
         else:
             action_url = f'/section/{section.section_id}/start/'
@@ -4132,6 +4130,31 @@ def update_session(request, data: dict) -> None:
     request.session.modified = True
 
 
+def get_acting_for_name(pss: dict):
+    """Return full name of the subject user, or None if actor is acting for themselves."""
+    user_id  = pss.get('user_id')
+    actor_id = pss.get('actor_id')
+    if not user_id or not actor_id or user_id == actor_id:
+        return None
+    from .models import User  # local import to avoid circular dependency
+    try:
+        return User.objects.get(pk=user_id).get_full_name()
+    except User.DoesNotExist:
+        return None
+
+
+def clear_working_session(request) -> None:
+    """Wipe all PSS working-context state (used when an agent switches client).
+
+    Removes every key from the PSS namespace so no state from a previous
+    client leaks into the next session.  The namespace itself (the 'pss' dict)
+    is preserved so subsequent update_session calls still work.
+    """
+    session = get_session(request)
+    session.clear()
+    request.session.modified = True
+
+
 def clear_section_session(request) -> None:
     """Remove the section-scoped keys after a section is confirmed.
 
@@ -4173,6 +4196,10 @@ class TestSimpleS1YesBranch(TestCase):
     def setUp(self):
         self.client = Client()
         self.client.login(username='alice', password='testpass123')
+        # Clear alice's pre-loaded SIMPLE_S1 answers so section_start treats
+        # this as a fresh start (redirects to first question, not review).
+        alice = User.objects.get(username='alice')
+        Answer.objects.filter(user=alice, section__section_id='SIMPLE_S1').delete()
 
     def test_yes_branch_complete(self):
         # ── Start ─────────────────────────────────────────────────────────────
@@ -4291,13 +4318,15 @@ class TestPermissions(TestCase):
             'alice should have access to all 8 sections across 3 regimes',
         )
 
-    def test_solicitor1_acting_for_alice_sees_only_sched_s3(self):
-        """solicitor1 has a section-level grant for SCHED_S3 acting for alice."""
-        solicitor1 = User.objects.get(username='solicitor1')
-        alice      = User.objects.get(username='alice')
-        sections   = get_permitted_sections(solicitor1, alice)
-        self.assertEqual(sections.count(), 1)
-        self.assertEqual(sections.first().section_id, 'SCHED_S3')
+    def test_solicitor1_acting_for_alice_sees_sched_s3_and_s4(self):
+        """solicitor1 has section-level grants for SCHED_S3 and SCHED_S4 acting for alice."""
+        solicitor1  = User.objects.get(username='solicitor1')
+        alice       = User.objects.get(username='alice')
+        sections    = get_permitted_sections(solicitor1, alice)
+        section_ids = list(sections.values_list('section_id', flat=True))
+        self.assertEqual(sections.count(), 2)
+        self.assertIn('SCHED_S3', section_ids)
+        self.assertIn('SCHED_S4', section_ids)
 
     def test_no_permissions_returns_empty(self):
         """carla acting for bob has no permissions → empty queryset."""
@@ -4322,29 +4351,33 @@ class TestSolicitor1Flow(TestCase):
         self.client = Client()
         self.client.login(username='solicitor1', password='testpass123')
 
-    def test_choose_user_autoskips_for_single_candidate(self):
+    def test_choose_user_shows_two_candidates(self):
         """
-        solicitor1 has exactly one actable user (alice) and no self-permissions,
-        so choose_user at /demo/ auto-redirects to select_regime without
-        rendering the choice page.
+        solicitor1 can act for alice and bob (no self-permissions),
+        so choose_user at /demo/ renders the choice page rather than auto-skipping.
         """
         r = self.client.get('/demo/')
-        self.assertEqual(r.status_code, 302)
-        self.assertIn('select-regime', r['Location'])
+        self.assertEqual(r.status_code, 200)
 
     def test_solicitor1_reaches_sched_s3_table(self):
         """
-        Full redirect chain via dept_demo: /demo/ → choose_user (auto-skip,
-        alice selected) → select_regime (auto, 1 regime) → regime home for
-        DEMO_SCHEDULES. Page contains SCHED_S3 entry URL (Pattern A).
+        Full redirect chain via dept_demo: /demo/ → choose_user (select alice)
+        → dept_home (regime list). Following into SCHED_FINANCES shows SCHED_S3.
         """
-        r = self.client.get('/demo/', follow=True)
+        alice = User.objects.get(username='alice')
+        # Step 1: select alice at the person-picker → lands on dept_home
+        r = self.client.post('/demo/', {'user_id': alice.pk}, follow=True)
         self.assertEqual(r.status_code, 200)
         final_url = r.redirect_chain[-1][0] if r.redirect_chain else ''
-        # Chain terminates at the dept_demo regime home page
-        self.assertIn('demo-schedules', final_url)
-        # The page must contain a link targeting SCHED_S3 (Pattern A entry URL)
-        self.assertContains(r, 'SCHED_S3')
+        self.assertIn('/demo/regimes/', final_url)
+        # Step 2: follow into the Financial Information schedule section list
+        r2 = self.client.get(
+            '/demo/regime/DEMO_SCHEDULES/schedule/SCHED_FINANCES/sections/',
+            follow=True,
+        )
+        self.assertEqual(r2.status_code, 200)
+        self.assertContains(r2, 'Accounts')     # SCHED_S3 section name
+        self.assertContains(r2, 'Declaration')  # SCHED_S4 section name
 
     def test_solicitor1_cannot_access_sched_s1(self):
         """SCHED_S1 must not appear in solicitor1's permitted sections for alice."""
@@ -4475,7 +4508,7 @@ from .models import (
     SectionStatus,
     User,
 )
-from .session import clear_section_session, get_session, update_session
+from .session import clear_section_session, get_acting_for_name, get_session, update_session
 
 
 # ── Routing evaluation helper ─────────────────────────────────────────────────
@@ -4520,6 +4553,15 @@ def _evaluate_routing(routing_table, question_id, answer):
     if unconditional_next is not _UNSET:
         return unconditional_next, True
     return None, False
+
+
+# ── Breadcrumb helper ────────────────────────────────────────────────────────
+
+def _build_crumbs(pss, final_label):
+    """Append final_label to the session breadcrumbs built by Layer 1."""
+    crumbs = list(pss.get('breadcrumbs', []))
+    crumbs.append({'label': final_label, 'url': None})
+    return crumbs
 
 
 # ── Session bootstrap helper (used by section_start) ─────────────────────────
@@ -4608,18 +4650,26 @@ def section_start(request, section_id):
         # No routing configured — treat as done
         return redirect('core:section_done', section_id=section_id)
 
-    # ── Load any pre-existing answers for returning users ────────────────────
+    # ── Load confirmed answers from DB ────────────────────────────────────────
     existing_answers = Answer.objects.filter(
         user=request.user, case=case, section=section,
         question_id__in=question_ids_in_section,
     )
     basic_answers = {a.question_id: a.answer for a in existing_answers}
 
-    # ── Determine asked_ids: if re-entering, reconstruct from DB ─────────────
-    # For a fresh start, asked_ids begins with only the first question.
-    # For a returning user, we restore just the first question and let them
-    # walk through again (they will see pre-filled answers from basic_answers).
-    asked_ids = [first_question_id]
+    # ── Determine asked_ids and entry point ───────────────────────────────────
+    # Re-entry (answers exist): reconstruct asked_ids in routing order from the
+    # DB — only questions the citizen actually answered — then go to review.
+    # Fresh start: seed with first question only and go to first question.
+    if basic_answers:
+        asked_ids = [
+            qid for qid in question_ids_in_section
+            if qid in basic_answers
+        ]
+        go_to_review = True
+    else:
+        asked_ids = [first_question_id]
+        go_to_review = False
 
     # ── Update section status ─────────────────────────────────────────────────
     ss, _ = SectionStatus.objects.get_or_create(
@@ -4632,17 +4682,19 @@ def section_start(request, section_id):
 
     # ── Write everything to session ───────────────────────────────────────────
     update_session(request, {
-        'user_id':       request.user.pk,
-        'actor_id':      actor_id,
-        'regime_id':     regime.regime_id,
-        'case_id':       case.case_id,
-        'section_id':    section_id,
-        'routing_table': routing_table,
+        'user_id':        request.user.pk,
+        'actor_id':       actor_id,
+        'regime_id':      regime.regime_id,
+        'case_id':        case.case_id,
+        'section_id':     section_id,
+        'routing_table':  routing_table,
         'question_table': question_table,
-        'asked_ids':     asked_ids,
-        'basic_answers': basic_answers,
+        'asked_ids':      asked_ids,
+        'basic_answers':  basic_answers,
     })
 
+    if go_to_review:
+        return redirect('core:section_review', section_id=section_id)
     return redirect('core:section_question', section_id=section_id, question_id=first_question_id)
 
 
@@ -4719,6 +4771,8 @@ def section_question(request, section_id, question_id):
         'provenance':     provenance,
         'back_url':       back_url,
         'asked_ids':      asked_ids,
+        'breadcrumbs':    _build_crumbs(pss, section.section_name),
+        'acting_for':     get_acting_for_name(pss),
     }
 
     template_map = {
@@ -4761,6 +4815,8 @@ def _process_answer(request, section, section_id, question_id, q_meta, pss):
             'back_url':       back_url,
             'asked_ids':      asked_ids,
             'error':          'Please answer this question before continuing.',
+            'breadcrumbs':    _build_crumbs(pss, section.section_name),
+            'acting_for':     get_acting_for_name(pss),
         }
         template_map = {'radio': 'core/question_radio.html', 'checkbox': 'core/question_checkbox.html'}
         template = template_map.get(q_meta['question_type'], 'core/question_text.html')
@@ -4808,6 +4864,10 @@ def section_review(request, section_id):
 
     asked_ids     = pss.get('asked_ids', [])
     basic_answers = pss.get('basic_answers', {})
+
+    # Guard: empty session means arrived here without going through section_start
+    if not asked_ids:
+        return redirect('core:section_start', section_id=section_id)
     question_table = pss.get('question_table', {})
 
     # Load answer history first so we can attach it per-question
@@ -4844,6 +4904,8 @@ def section_review(request, section_id):
         'section':     section,
         'rows':        rows,
         'confirm_url': f'/section/{section_id}/confirm/',
+        'breadcrumbs': _build_crumbs(pss, 'Check your answers'),
+        'acting_for':  get_acting_for_name(pss),
     }
     return render(request, 'core/review.html', context)
 
@@ -5065,6 +5127,8 @@ def section_table(request, section_id):
         'add_url':       f'/section/{section_id}/table/add/',
         'confirm_url':   f'/section/{section_id}/confirm-table/',
         'has_rows':      bool(rows),
+        'breadcrumbs':   _build_crumbs(pss, section.section_name),
+        'acting_for':    get_acting_for_name(pss),
     }
     return render(request, 'core/table_landing.html', context)
 
@@ -5140,9 +5204,10 @@ def section_table_add(request, section_id):
         for q in ordered_columns
     ]
     context = {
-        'section':  section,
-        'columns':  column_dicts,
-        'back_url': f'/section/{section_id}/table/',
+        'section':    section,
+        'columns':    column_dicts,
+        'back_url':   f'/section/{section_id}/table/',
+        'acting_for': get_acting_for_name(pss),
     }
     return render(request, 'core/table_add.html', context)
 
@@ -5678,11 +5743,23 @@ class Command(BaseCommand):
         if created:
             counters['Permission'] += 1
 
-        # solicitor1 acting for alice — SCHED_S3 only, granted by alice
+        # solicitor1 acting for alice: Financial Information schedule only
+        for section_id in ['SCHED_S3', 'SCHED_S4']:
+            _, created = Permission.objects.get_or_create(
+                actor=solicitor1,
+                user=alice,
+                section=_s(section_id),
+                defaults={'can_delegate': False},
+            )
+            if created:
+                counters['Permission'] += 1
+
+        # solicitor1 acting for bob: Your Finances section only
         _, created = Permission.objects.get_or_create(
-            actor=solicitor1, user=alice,
-            regime=None, section=_s('SCHED_S3'),
-            defaults={'can_delegate': False, 'granted_by': alice},
+            actor=solicitor1,
+            user=bob,
+            section=_s('SECTIONS_S2'),
+            defaults={'can_delegate': False},
         )
         if created:
             counters['Permission'] += 1
@@ -5822,7 +5899,7 @@ class Command(BaseCommand):
         self.stdout.write('Alice:      SIMPLE_S1 complete, answer history present')
         self.stdout.write('Bob:        SECTIONS_S1 complete, S2+S3 not started')
         self.stdout.write('Carla:      no answers (fresh start)')
-        self.stdout.write('solicitor1: access to SCHED_S3 (Accounts) for alice only')
+        self.stdout.write('solicitor1: SCHED_S3+S4 (Financial Information) for alice; SECTIONS_S2 (Your Finances) for bob')
         self.stdout.write(self.style.SUCCESS('─' * 50))
 
 
@@ -6347,6 +6424,7 @@ class TestRegimeHomeRouter(_Base):
 from django.urls import path
 
 from . import (
+    views_dept,
     views_home,
     views_nav,
     views_regime_schedules,
@@ -6357,10 +6435,10 @@ from . import (
 app_name = 'dept_demo'
 
 urlpatterns = [
-    # Entry point — establishes actor/user context
+    # Entry point — person-picker (agents) or straight to dept_home (self-only users)
     path('',
-         views_nav.choose_user,
-         name='home'),
+         views_dept.choose_user,
+         name='choose_user'),
 
     # Regime selection (multi-regime users)
     path('select-regime/',
@@ -6405,6 +6483,65 @@ urlpatterns = [
 ]
 
 
+##### ===== dept_demo/views_dept.py ===== #####
+
+"""
+dept_demo/views_dept.py — Person-picker landing page.
+
+Shown immediately after login. If the actor has agent permissions for other
+people they see a person-picker; otherwise they skip straight to dept_home.
+"""
+
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import redirect, render
+
+from core.models import Permission
+from core.session import clear_working_session, update_session
+
+# Non-agent users go through select_regime so single-regime auto-skip still works
+_SELF_ONLY_REDIRECT = 'dept_demo:select_regime'
+
+
+@login_required
+def choose_user(request):
+    actor = request.user
+
+    # Find all users this actor can act for (excluding themselves)
+    clients = list(
+        Permission.objects
+        .filter(actor=actor)
+        .exclude(user=actor)
+        .select_related('user')
+        .values('user__pk', 'user__first_name', 'user__last_name')
+        .distinct()
+    )
+
+    if not clients:
+        # Acting only for themselves — skip picker, route via select_regime
+        # so single-regime users still get the auto-skip to their regime home.
+        update_session(request, {'user_id': actor.pk, 'actor_id': actor.pk})
+        return redirect(_SELF_ONLY_REDIRECT)
+
+    if request.method == 'POST':
+        chosen_pk = request.POST.get('user_id')
+        valid_pks = [str(c['user__pk']) for c in clients]
+        if chosen_pk not in valid_pks:
+            return redirect('dept_demo:choose_user')
+        update_session(request, {
+            'user_id':  int(chosen_pk),
+            'actor_id': actor.pk,
+        })
+        return redirect('dept_demo:dept_home')
+
+    # GET — clear any working state from a previous client before showing the picker
+    clear_working_session(request)
+
+    return render(request, 'dept_demo/choose_user.html', {
+        'clients': clients,
+        'actor':   actor,
+    })
+
+
 ##### ===== dept_demo/views_home.py ===== #####
 
 """
@@ -6420,7 +6557,7 @@ from django.urls import reverse
 
 from core.nav_reference import _resolve_user
 from core.permissions import get_permitted_regimes
-from core.session import get_session
+from core.session import get_acting_for_name, get_session
 
 # Regime classification — determines which section of the home page each appears in
 _CURRENT_REGIME_IDS = ['DEMO_SIMPLE', 'DEMO_SECTIONS']
@@ -6442,16 +6579,27 @@ def dept_home(request):
     Reads the session user so intermediaries see the subject's regimes.
     Regimes are split into 'current' and 'other' groups for the HMRC-style layout.
     """
-    actor = request.user
-    user  = _resolve_user(get_session(request), actor)
+    actor    = request.user
+    pss      = get_session(request)
+    user     = _resolve_user(pss, actor)
+    is_agent = (actor.pk != user.pk)
 
     permitted_regimes = get_permitted_regimes(actor, user)
+
+    acting_for = get_acting_for_name(pss)
 
     if not permitted_regimes.exists():
         return render(request, 'dept_demo/home.html', {
             'current_regime_data': [],
             'other_regime_data':   [],
             'no_access':           True,
+            'is_agent':            is_agent,
+            'subject':             user,
+            'acting_for':          acting_for,
+            'breadcrumbs': [
+                {'label': 'HMRC',                 'url': '/demo/'},
+                {'label': 'Personal Tax Account', 'url': None},
+            ],
         })
 
     current_regime_data = [
@@ -6468,6 +6616,13 @@ def dept_home(request):
     return render(request, 'dept_demo/home.html', {
         'current_regime_data': current_regime_data,
         'other_regime_data':   other_regime_data,
+        'is_agent':            is_agent,
+        'subject':             user,
+        'acting_for':          acting_for,
+        'breadcrumbs': [
+            {'label': 'HMRC',                 'url': '/demo/'},
+            {'label': 'Personal Tax Account', 'url': None},
+        ],
     })
 
 
@@ -6494,7 +6649,7 @@ from django.urls import reverse
 from core.models import Permission, Regime, Schedule, SectionStatus, User
 from core.nav_reference import _resolve_user
 from core.permissions import get_permitted_regimes, get_permitted_sections
-from core.session import get_session, update_session
+from core.session import get_acting_for_name, get_session, update_session
 
 
 # ── Regime slug map (regime_id → named URL) ───────────────────────────────────
@@ -6626,12 +6781,12 @@ def select_regime(request):
 def regime_home(request, regime_id):
     """
     Router: sends the citizen to the correct regime-specific home page.
-    Unknown regime_ids fall back to choose_user (dept_demo:home).
+    Unknown regime_ids fall back to choose_user (dept_demo:choose_user).
     """
     url_name = _REGIME_URL_NAMES.get(regime_id)
     if url_name:
         return redirect(reverse(url_name))
-    return redirect(reverse('dept_demo:home'))
+    return redirect(reverse('dept_demo:choose_user'))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -6695,10 +6850,16 @@ def select_schedule(request, regime_id):
             ),
         })
 
+    regime_home_url = reverse('dept_demo:regime_home', kwargs={'regime_id': regime_id})
+    base_crumbs = pss.get('breadcrumbs', [])
+    crumbs = base_crumbs + [{'label': regime.regime_name, 'url': regime_home_url}]
+    update_session(request, {'breadcrumbs': crumbs})
     return render(request, 'dept_demo/nav/select_schedule.html', {
-        'regime':    regime,
-        'schedules': schedule_data,
-        'back_url':  reverse('dept_demo:dept_home'),
+        'regime':      regime,
+        'schedules':   schedule_data,
+        'back_url':    reverse('dept_demo:dept_home'),
+        'breadcrumbs': crumbs,
+        'acting_for':  get_acting_for_name(pss),
     })
 
 
@@ -6746,9 +6907,7 @@ def select_section(request, regime_id, schedule_id=None):
     for section in permitted.order_by('display_order', 'section_name'):
         status = section_statuses.get(section.section_id, 'not_started')
 
-        if status == 'complete':
-            action_url = f'/section/{section.section_id}/review/'
-        elif section.section_type in (1, 2):
+        if section.section_type in (1, 2):
             action_url = f'/section/{section.section_id}/table/'
         else:
             action_url = f'/section/{section.section_id}/start/'
@@ -6772,16 +6931,34 @@ def select_section(request, regime_id, schedule_id=None):
         return_url = reverse('dept_demo:select_section',
                              kwargs={'regime_id': regime_id})
 
+    regime_home_url = reverse('dept_demo:regime_home', kwargs={'regime_id': regime_id})
+    base_crumbs = pss.get('breadcrumbs', [])
+
+    if schedule_id:
+        # Pattern C: breadcrumbs were set by select_schedule; add schedule crumb
+        schedule_list_url = reverse(
+            'dept_demo:select_section_in_schedule',
+            kwargs={'regime_id': regime_id, 'schedule_id': schedule_id},
+        )
+        crumbs = base_crumbs + [{'label': schedule.schedule_name, 'url': schedule_list_url}]
+    else:
+        # Pattern B: build regime crumb from base
+        regime_sections_url = reverse('dept_demo:regime_demo_sections')
+        crumbs = base_crumbs + [{'label': regime.regime_name, 'url': regime_sections_url}]
+
     update_session(request, {
         'return_url':  return_url,
         'schedule_id': schedule_id,
+        'breadcrumbs': crumbs,
     })
 
     return render(request, 'dept_demo/nav/select_section.html', {
-        'regime':   regime,
-        'schedule': schedule,
-        'sections': section_data,
-        'back_url': back_url,
+        'regime':      regime,
+        'schedule':    schedule,
+        'sections':    section_data,
+        'back_url':    back_url,
+        'breadcrumbs': crumbs,
+        'acting_for':  get_acting_for_name(pss),
     })
 
 
@@ -6799,7 +6976,7 @@ from core.interfaces import bootstrap_section_statuses, get_or_create_case
 from core.models import Regime, SectionStatus
 from core.nav_reference import _resolve_user, resolve_layer1_entry_url
 from core.permissions import get_permitted_sections
-from core.session import get_session, update_session
+from core.session import get_acting_for_name, get_session, update_session
 
 _REGIME_ID = 'DEMO_SCHEDULES'
 _TEMPLATE  = 'dept_demo/regimes/schedules_home.html'
@@ -6836,6 +7013,10 @@ def regime_schedules_home(request):
         'regime_id':  regime.regime_id,
         'case_id':    case.case_id,
         'return_url': request.path,
+        'breadcrumbs': [
+            {'label': 'HMRC',                 'url': '/demo/'},
+            {'label': 'Personal Tax Account', 'url': '/demo/regimes/'},
+        ],
     })
 
     # Resolve entry URL; remap any /regime/... path to /demo/regime/...
@@ -6843,12 +7024,19 @@ def regime_schedules_home(request):
     if entry_url.startswith('/regime/'):
         entry_url = '/demo' + entry_url
 
+    pss = get_session(request)
     return render(request, _TEMPLATE, {
         'regime':       regime,
         'total':        total,
         'complete':     complete,
         'all_complete': all_complete,
         'entry_url':    entry_url,
+        'acting_for':   get_acting_for_name(pss),
+        'breadcrumbs': [
+            {'label': 'HMRC',                 'url': '/demo/'},
+            {'label': 'Personal Tax Account', 'url': '/demo/regimes/'},
+            {'label': regime.regime_name,     'url': None},
+        ],
     })
 
 
@@ -6866,7 +7054,7 @@ from core.interfaces import bootstrap_section_statuses, get_or_create_case
 from core.models import Regime, SectionStatus
 from core.nav_reference import _resolve_user, resolve_layer1_entry_url
 from core.permissions import get_permitted_sections
-from core.session import get_session, update_session
+from core.session import get_acting_for_name, get_session, update_session
 
 _REGIME_ID = 'DEMO_SECTIONS'
 _TEMPLATE  = 'dept_demo/regimes/sections_home.html'
@@ -6905,6 +7093,10 @@ def regime_sections_home(request):
         'regime_id':  regime.regime_id,
         'case_id':    case.case_id,
         'return_url': request.path,
+        'breadcrumbs': [
+            {'label': 'HMRC',                 'url': '/demo/'},
+            {'label': 'Personal Tax Account', 'url': '/demo/regimes/'},
+        ],
     })
 
     # Resolve entry URL; remap any /regime/... path to /demo/regime/...
@@ -6912,12 +7104,19 @@ def regime_sections_home(request):
     if entry_url.startswith('/regime/'):
         entry_url = '/demo' + entry_url
 
+    pss = get_session(request)
     return render(request, _TEMPLATE, {
         'regime':       regime,
         'total':        total,
         'complete':     complete,
         'all_complete': all_complete,
         'entry_url':    entry_url,
+        'acting_for':   get_acting_for_name(pss),
+        'breadcrumbs': [
+            {'label': 'HMRC',                 'url': '/demo/'},
+            {'label': 'Personal Tax Account', 'url': '/demo/regimes/'},
+            {'label': regime.regime_name,     'url': None},
+        ],
     })
 
 
@@ -6935,7 +7134,7 @@ from core.interfaces import bootstrap_section_statuses, get_or_create_case
 from core.models import Regime, SectionStatus
 from core.nav_reference import _resolve_user, resolve_layer1_entry_url
 from core.permissions import get_permitted_sections
-from core.session import get_session, update_session
+from core.session import get_acting_for_name, get_session, update_session
 
 _REGIME_ID = 'DEMO_SIMPLE'
 _TEMPLATE  = 'dept_demo/regimes/simple_home.html'
@@ -6972,6 +7171,11 @@ def regime_simple_home(request):
         'regime_id':  regime.regime_id,
         'case_id':    case.case_id,
         'return_url': request.path,
+        'breadcrumbs': [
+            {'label': 'HMRC',                 'url': '/demo/'},
+            {'label': 'Personal Tax Account', 'url': '/demo/regimes/'},
+            {'label': regime.regime_name,     'url': request.path},
+        ],
     })
 
     # Resolve entry URL; remap any /regime/... path to /demo/regime/...
@@ -6979,10 +7183,17 @@ def regime_simple_home(request):
     if entry_url.startswith('/regime/'):
         entry_url = '/demo' + entry_url
 
+    pss = get_session(request)
     return render(request, _TEMPLATE, {
         'regime':       regime,
         'total':        total,
         'complete':     complete,
         'all_complete': all_complete,
         'entry_url':    entry_url,
+        'acting_for':   get_acting_for_name(pss),
+        'breadcrumbs': [
+            {'label': 'HMRC',                 'url': '/demo/'},
+            {'label': 'Personal Tax Account', 'url': '/demo/regimes/'},
+            {'label': regime.regime_name,     'url': None},
+        ],
     })
