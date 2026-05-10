@@ -4,6 +4,7 @@ SKIP_DIRS = {
     ".git", "__pycache__", ".venv", "venv", "env",
     "node_modules", ".mypy_cache", ".pytest_cache",
     "migrations",  # remove this if you want migrations included
+    "_reference", # exclude reference implementation from file dump
 }
 
 def combine_files(output_file="file_dump.txt"):
