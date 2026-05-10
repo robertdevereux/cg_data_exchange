@@ -16,27 +16,16 @@ Covers:
      gracefully (falls back to dept home)
 """
 
-from django.core.management import call_command
 from django.test import Client, TestCase
 
 from core.models import SectionStatus, User
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Shared test fixture
-# ─────────────────────────────────────────────────────────────────────────────
-
-class _Base(TestCase):
-    @classmethod
-    def setUpTestData(cls):
-        call_command('load_test_data', verbosity=0)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # A. Login redirect
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestLoginRedirect(_Base):
+class TestLoginRedirect(TestCase):
     """POST to login should redirect to /demo/ (LOGIN_REDIRECT_URL)."""
 
     def test_login_lands_at_demo(self):
@@ -55,7 +44,7 @@ class TestLoginRedirect(_Base):
 # B. Department home
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestDeptHome(_Base):
+class TestDeptHome(TestCase):
     """Multi-regime user sees cards; single-regime user is auto-redirected."""
 
     def setUp(self):
@@ -98,7 +87,7 @@ class TestDeptHome(_Base):
 # C. DEMO_SIMPLE — Pattern A (single section, direct jump)
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestPatternA_DemoSimple(_Base):
+class TestPatternA_DemoSimple(TestCase):
     """
     Full DEMO_SIMPLE journey for carla (fresh user, no prior answers).
     Pattern A: regime home → Start → section_start → questions → confirm
@@ -201,7 +190,7 @@ class TestPatternA_DemoSimple(_Base):
 # D. DEMO_SECTIONS — Pattern B (section task list)
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestPatternB_DemoSections(_Base):
+class TestPatternB_DemoSections(TestCase):
     """
     DEMO_SECTIONS journey for bob (fresh for this regime).
     Pattern B: regime home → Start → section task list → section →
@@ -304,7 +293,7 @@ class TestPatternB_DemoSections(_Base):
 # E. DEMO_SCHEDULES — Pattern C (schedule → section task list)
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestPatternC_DemoSchedules(_Base):
+class TestPatternC_DemoSchedules(TestCase):
     """
     DEMO_SCHEDULES journey for alice.
     Pattern C: regime home → Start → schedule list → section list →
@@ -401,7 +390,7 @@ class TestPatternC_DemoSchedules(_Base):
 # F. Pre-population (cross-regime suggestions)
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestPrePopulation(_Base):
+class TestPrePopulation(TestCase):
     """
     Alice has completed SIMPLE_S1. When she starts SECTIONS_S1, shared
     questions (Q_full_name, Q_dob, Q_nino_yn) should appear as suggestions.
@@ -433,7 +422,7 @@ class TestPrePopulation(_Base):
 # G. section_done fallback (no return_url in session)
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestSectionDoneFallback(_Base):
+class TestSectionDoneFallback(TestCase):
     """
     When section_done is reached with no return_url in session, it should
     fall back to /regime/<regime_id>/ (the core Layer 1 URL, not /demo/).
@@ -472,7 +461,7 @@ class TestSectionDoneFallback(_Base):
 # H. regime_home router — unknown regime falls back to dept home
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestRegimeHomeRouter(_Base):
+class TestRegimeHomeRouter(TestCase):
     """regime_home router handles unmapped regime_id gracefully."""
 
     def setUp(self):

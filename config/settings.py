@@ -149,6 +149,8 @@ WHITENOISE_USE_FINDERS = True
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+TEST_RUNNER = 'config.test_runner.LoadOnceTestRunner'
+
 LOGIN_URL = '/accounts/login/'
 LOGIN_REDIRECT_URL = '/demo/'
 LOGOUT_REDIRECT_URL = '/accounts/login/'

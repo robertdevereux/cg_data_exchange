@@ -7,7 +7,6 @@ a backtrack that changes Q_nino_yn from Yes to No, pruning Q_nino_value
 from the confirmed answer set.
 """
 
-from django.core.management import call_command
 from django.test import Client, TestCase
 
 from .models import Answer, AnswerHistory, SectionStatus, User
@@ -16,10 +15,6 @@ from .permissions import get_permitted_sections
 
 class TestSimpleS1YesBranch(TestCase):
     """Walk alice through SIMPLE_S1 via the Yes branch and confirm."""
-
-    @classmethod
-    def setUpTestData(cls):
-        call_command('load_test_data', verbosity=0)
 
     def setUp(self):
         self.client = Client()
@@ -84,10 +79,6 @@ class TestSimpleS1YesBranch(TestCase):
 class TestBacktrack(TestCase):
     """Backtrack from Q_nino_yn=Yes to No prunes Q_nino_value from confirmed answers."""
 
-    @classmethod
-    def setUpTestData(cls):
-        call_command('load_test_data', verbosity=0)
-
     def setUp(self):
         self.client = Client()
         self.client.login(username='alice', password='testpass123')
@@ -133,10 +124,6 @@ class TestBacktrack(TestCase):
 class TestPermissions(TestCase):
     """Unit tests for get_permitted_sections covering all three grant scopes."""
 
-    @classmethod
-    def setUpTestData(cls):
-        call_command('load_test_data', verbosity=0)
-
     def test_alice_acting_for_herself_sees_all_sections(self):
         """alice has regime-level grants for all three regimes → all 8 sections."""
         alice = User.objects.get(username='alice')
@@ -170,10 +157,6 @@ class TestPermissions(TestCase):
 
 class TestSolicitor1Flow(TestCase):
     """solicitor1 navigating for alice should reach SCHED_S3 and no further."""
-
-    @classmethod
-    def setUpTestData(cls):
-        call_command('load_test_data', verbosity=0)
 
     def setUp(self):
         self.client = Client()
