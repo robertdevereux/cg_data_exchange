@@ -223,7 +223,10 @@ def select_schedule(request, regime_id):
     regime_home_url = reverse('dept_demo:regime_home', kwargs={'regime_id': regime_id})
     base_crumbs = pss.get('breadcrumbs', [])
     crumbs = base_crumbs + [{'label': regime.regime_name, 'url': regime_home_url}]
-    update_session(request, {'breadcrumbs': crumbs})
+    update_session(request, {
+        'breadcrumbs':    crumbs,
+        'regime_home_url': regime_home_url,
+    })
     return render(request, 'dept_demo/nav/select_schedule.html', {
         'regime':      regime,
         'schedules':   schedule_data,
@@ -316,10 +319,17 @@ def select_section(request, regime_id, schedule_id=None):
         regime_sections_url = reverse('dept_demo:regime_demo_sections')
         crumbs = base_crumbs + [{'label': regime.regime_name, 'url': regime_sections_url}]
 
+    schedule_list_url = (
+        reverse('dept_demo:select_schedule', kwargs={'regime_id': regime_id})
+        if schedule_id else None
+    )
+
     update_session(request, {
-        'return_url':  return_url,
-        'schedule_id': schedule_id,
-        'breadcrumbs': crumbs,
+        'return_url':       return_url,
+        'schedule_id':      schedule_id,
+        'breadcrumbs':      crumbs,
+        'regime_home_url':  regime_home_url,
+        'schedule_list_url': schedule_list_url,
     })
 
     return render(request, 'dept_demo/nav/select_section.html', {

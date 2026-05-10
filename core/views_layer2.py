@@ -842,9 +842,41 @@ def section_confirm_table(request, section_id):
 def section_done(request, section_id):
     section = get_object_or_404(Section, section_id=section_id)
     pss = get_session(request)
-    return_url = pss.get('return_url')
+
+    user_id           = pss.get('user_id')
+    regime_id         = pss.get('regime_id')
+    schedule_id       = pss.get('schedule_id')
+    regime_home_url   = pss.get('regime_home_url')
+    schedule_list_url = pss.get('schedule_list_url')
+    return_url        = pss.get('return_url')
+
+    if user_id and regime_id and regime_home_url:
+        # All sections in the regime complete?
+        all_complete = not SectionStatus.objects.filter(
+            user_id=user_id,
+            regime_id=regime_id,
+        ).exclude(status='complete').exists()
+
+        if all_complete:
+            return redirect(regime_home_url)
+
+        # All sections in the current schedule complete?
+        if schedule_id and schedule_list_url:
+            schedule_complete = not SectionStatus.objects.filter(
+                user_id=user_id,
+                regime_id=regime_id,
+                section__schedule_id=schedule_id,
+            ).exclude(status='complete').exists()
+
+            if schedule_complete:
+                return redirect(schedule_list_url)
+
+        if return_url:
+            return redirect(return_url)
+
     if return_url:
         return redirect(return_url)
+
     logger.warning(
         'section_done: no return_url in session for section %s (user %s) — '
         'falling back to /. Layer 1 must set return_url before entering Layer 2.',

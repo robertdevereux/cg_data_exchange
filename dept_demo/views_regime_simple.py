@@ -42,11 +42,12 @@ def regime_simple_home(request):
 
     # Set the four SESSION_KEYS + return_url so section_done knows where to go
     update_session(request, {
-        'user_id':    user.pk,
-        'actor_id':   actor.pk,
-        'regime_id':  regime.regime_id,
-        'case_id':    case.case_id,
-        'return_url': request.path,
+        'user_id':         user.pk,
+        'actor_id':        actor.pk,
+        'regime_id':       regime.regime_id,
+        'case_id':         case.case_id,
+        'return_url':      request.path,
+        'regime_home_url': request.path,
         'breadcrumbs': [
             {'label': 'HMRC',                 'url': '/demo/'},
             {'label': 'Personal Tax Account', 'url': '/demo/regimes/'},
