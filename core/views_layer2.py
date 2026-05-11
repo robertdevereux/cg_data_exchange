@@ -460,6 +460,7 @@ def section_review(request, section_id):
 
     asked_ids     = pss.get('asked_ids', [])
     basic_answers = pss.get('basic_answers', {})
+    set_table     = pss.get('set_table', {})
 
     # Guard: empty session means arrived here without going through section_start
     if not asked_ids:
@@ -478,23 +479,49 @@ def section_review(request, section_id):
         ):
             history_by_qid.setdefault(h.question_id, []).append(h)
 
-    # Build ordered rows for the citizen's actual path only
+    # Build ordered rows for the citizen's actual path only.
+    # Q-prefixed nodes render as a single row.
+    # S-prefixed nodes render as a grouped block (set title + one row per member).
     rows = []
-    for qid in asked_ids:
-        q_meta = question_table.get(qid, {})
-        answer  = basic_answers.get(qid)
-        # Display lists as comma-separated
-        if isinstance(answer, list):
-            display_answer = ', '.join(answer)
+    for node_id in asked_ids:
+        if node_id.startswith('S'):
+            set_meta = set_table.get(node_id, {})
+            member_rows = []
+            for m in set_meta.get('members', []):
+                qid    = m['question_id']
+                answer = basic_answers.get(qid)
+                if isinstance(answer, list):
+                    display_answer = ', '.join(answer)
+                else:
+                    display_answer = answer or '—'
+                member_rows.append({
+                    'question_id':   qid,
+                    'question_text': m['question_text'],
+                    'answer':        display_answer,
+                    'change_url':    f'/section/{section_id}/set/{node_id}/',
+                    'history':       history_by_qid.get(qid, []),
+                })
+            rows.append({
+                'type':        'set',
+                'set_id':      node_id,
+                'set_title':   set_meta.get('set_title', ''),
+                'member_rows': member_rows,
+            })
         else:
-            display_answer = answer or '—'
-        rows.append({
-            'question_id':   qid,
-            'question_text': q_meta.get('question_text', qid),
-            'answer':        display_answer,
-            'change_url':    f'/section/{section_id}/question/{qid}/',
-            'history':       history_by_qid.get(qid, []),
-        })
+            q_meta = question_table.get(node_id, {})
+            answer  = basic_answers.get(node_id)
+            if isinstance(answer, list):
+                display_answer = ', '.join(answer)
+            else:
+                display_answer = answer or '—'
+            rows.append({
+                'type':          'question',
+                'question_id':   node_id,
+                'question_text': q_meta.get('question_text', node_id),
+                'answer':        display_answer,
+                'change_url':    f'/section/{section_id}/question/{node_id}/',
+                'history':       history_by_qid.get(node_id, []),
+            })
 
     context = {
         'section':     section,
@@ -532,8 +559,22 @@ def section_confirm(request, section_id):
     actor_id      = pss.get('actor_id') or request.user.pk
     regime_id     = pss.get('regime_id')
 
-    # Build the committed answer set (asked path only — prune stale branches)
-    new_answers = {qid: raw_answers[qid] for qid in asked_ids if qid in raw_answers}
+    set_table = pss.get('set_table', {})
+
+    # Build committed answer set — expand S-nodes to their member question IDs
+    new_answers = {}
+    for node_id in asked_ids:
+        if node_id.startswith('S'):
+            member_qids = [
+                m['question_id']
+                for m in set_table.get(node_id, {}).get('members', [])
+            ]
+            for qid in member_qids:
+                if qid in raw_answers:
+                    new_answers[qid] = raw_answers[qid]
+        else:
+            if node_id in raw_answers:
+                new_answers[node_id] = raw_answers[node_id]
 
     # Resolve related objects
     regime = get_object_or_404(Regime, regime_id=regime_id) if regime_id else section.get_regime()

@@ -12,6 +12,46 @@
 
       <dl class="govuk-summary-list">
         {% for row in rows %}
+        {% if row.type == 'set' %}
+        <div class="govuk-summary-list__row">
+          <dt class="govuk-summary-list__key" colspan="3">
+            <strong>{{ row.set_title }}</strong>
+          </dt>
+        </div>
+        {% for mrow in row.member_rows %}
+        <div class="govuk-summary-list__row">
+          <dt class="govuk-summary-list__key">{{ mrow.question_text }}</dt>
+          <dd class="govuk-summary-list__value">
+            {{ mrow.answer }}
+            {% if mrow.history %}
+            <details class="govuk-details" style="margin-top:8px">
+              <summary class="govuk-details__summary">
+                <span class="govuk-details__summary-text">Previous answers</span>
+              </summary>
+              <div class="govuk-details__text">
+                {% for h in mrow.history %}
+                <p class="govuk-body-s">
+                  {{ h.answer|default:"(removed)" }}
+                  <span class="govuk-hint">
+                    — {{ h.actor.username }} on {{ h.confirmed_at|date:"j N Y" }}
+                  </span>
+                </p>
+                {% endfor %}
+              </div>
+            </details>
+            {% endif %}
+          </dd>
+          <dd class="govuk-summary-list__actions">
+            <a class="govuk-link" href="{{ mrow.change_url }}">Change<span class="govuk-visually-hidden"> {{ mrow.question_text }}</span></a>
+          </dd>
+        </div>
+        {% endfor %}
+        <div class="govuk-summary-list__row">
+          <dt class="govuk-summary-list__key">&nbsp;</dt>
+          <dd class="govuk-summary-list__value"></dd>
+          <dd class="govuk-summary-list__actions"></dd>
+        </div>
+        {% else %}
         <div class="govuk-summary-list__row">
           <dt class="govuk-summary-list__key">
             {{ row.question_text }}
@@ -42,6 +82,7 @@
             </a>
           </dd>
         </div>
+        {% endif %}
         {% empty %}
         <div class="govuk-summary-list__row">
           <dt class="govuk-summary-list__key" colspan="3">No answers recorded.</dt>
