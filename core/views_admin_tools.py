@@ -19,6 +19,7 @@ from django.views.decorators.http import require_POST
 
 from .interfaces import bootstrap_section_statuses, get_or_create_case
 from .models import (
+    Answer,
     Case,
     Question,
     QuestionSet,
@@ -290,6 +291,20 @@ def tools_create(request):
 
     all_complete = all(s['status'] == 'complete' for s in steps)
 
+    # ── Read target regime ID from META_ADD_REGIME answer ─────────────────────
+    target_regime_id = ''
+    try:
+        meta_section = Section.objects.get(section_id='META_ADD_REGIME')
+        ans = Answer.objects.get(
+            user=request.user,
+            case=case,
+            section=meta_section,
+            question_id='Q53',
+        )
+        target_regime_id = ans.answer.strip()
+    except (Section.DoesNotExist, Answer.DoesNotExist):
+        pass
+
     # ── Set session so Layer 2 knows how to navigate ──────────────────────────
     update_session(request, {
         'user_id':         request.user.pk,
@@ -305,9 +320,10 @@ def tools_create(request):
     })
 
     context = {
-        'steps':        steps,
-        'all_complete': all_complete,
-        'case_id':      case.case_id,
+        'steps':            steps,
+        'all_complete':     all_complete,
+        'case_id':          case.case_id,
+        'target_regime_id': target_regime_id,
     }
     return render(request, 'core/tools_create.html', context)
 
