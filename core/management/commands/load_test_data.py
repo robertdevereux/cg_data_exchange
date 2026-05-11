@@ -59,7 +59,7 @@ from core.models import (
 # Q18  email
 # Q19  declaration yes/no
 # Q20  declaration why
-# Q21  title (radio: Mr/Mrs/Ms/Dr/Other)        — S1 member
+# Q21  retired (title — removed from S1 set)
 # Q22  first name                                — S1 member
 # Q23  last name                                 — S1 member
 # Q24  address line 1                            — S2 member
@@ -128,6 +128,7 @@ class Command(BaseCommand):
             'Q_additional_yn', 'Q_additional_detail',
             'Q_phone', 'Q_email', 'Q_declare_yn', 'Q_declare_why',
             'Q1',  # retired — full name as single field; replaced by S1
+            'Q21', # retired — title field removed from S1 set
         ]
         Question.objects.filter(question_id__in=old_ids).delete()
         QuestionSet.objects.filter(set_id__in=['S1', 'S2', 'S3']).delete()
@@ -286,8 +287,6 @@ class Command(BaseCommand):
             if created:
                 counters['Question'] += 1
 
-        question('Q21', 'Title',
-                 'radio', options='Mr;Mrs;Ms;Dr;Other')
         question('Q22', 'First name',
                  'text')
         question('Q23', 'Last name',
@@ -496,9 +495,8 @@ class Command(BaseCommand):
 
         # ── Standard sets ──────────────────────────────────────────────────────
         qset('S1', 'Your name', None, [
-            ('Q21', 1, True),   # title
-            ('Q22', 2, True),   # first name
-            ('Q23', 3, True),   # last name
+            ('Q22', 1, True),   # first name
+            ('Q23', 2, True),   # last name
         ])
 
         qset('S2', 'Your address', None, [
@@ -592,7 +590,6 @@ class Command(BaseCommand):
 
         simple_s1 = _s('SIMPLE_S1')
         alice_answers = [
-            ('Q21', 'Ms'),
             ('Q22', 'Alice'),
             ('Q23', 'Johnson'),
             ('Q2',  '1975-06-15'),
@@ -654,7 +651,6 @@ class Command(BaseCommand):
 
         sections_s1 = _s('SECTIONS_S1')
         bob_answers = [
-            ('Q21', 'Mr'),
             ('Q22', 'Bob'),
             ('Q23', 'Smith'),
             ('Q2',  '1982-03-22'),

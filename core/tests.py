@@ -32,7 +32,7 @@ class TestSimpleS1YesBranch(TestCase):
 
         # ── Post S1 set page (title, first name, last name) ───────────────────
         r = self.client.post('/section/SIMPLE_S1/set/S1/', {
-            'Q21': 'Ms', 'Q22': 'Alice', 'Q23': 'Johnson',
+            'Q22': 'Alice', 'Q23': 'Johnson',
         })
         self.assertEqual(r.status_code, 302, 'POST S1 returned unexpected status')
 
@@ -62,11 +62,11 @@ class TestSimpleS1YesBranch(TestCase):
         # ── Assertions ────────────────────────────────────────────────────────
         alice = User.objects.get(username='alice')
 
-        # Yes branch: S1 members (Q21/Q22/Q23) + Q2/Q3/Q4/Q7/Q8/Q10/Q11 = 10
+        # Yes branch: S1 members (Q22/Q23) + Q2/Q3/Q4/Q7/Q8/Q10/Q11 = 9
         self.assertEqual(
             Answer.objects.filter(user=alice, section__section_id='SIMPLE_S1').count(),
-            10,
-            'Expected 10 answers: S1 members Q21/Q22/Q23 + Q2/Q3/Q4/Q7/Q8/Q10/Q11',
+            9,
+            'Expected 9 answers: S1 members Q22/Q23 + Q2/Q3/Q4/Q7/Q8/Q10/Q11',
         )
         self.assertFalse(
             Answer.objects.filter(user=alice, question_id='Q9').exists(),
@@ -219,8 +219,7 @@ class TestQuestionSetFlow(TestCase):
     Section: SIMPLE_S1
     Routing: S1 → Q2 → Q3; Q3=Yes → Q4 → Q7; Q3=No → Q7; Q7 → Q8;
              Q8=Yes → Q10 → Q11 → END; Q8=No → Q9 → END
-    S1 set: 'Your name' — Q21 (Title, radio, required),
-                          Q22 (First name, text, required),
+    S1 set: 'Your name' — Q22 (First name, text, required),
                           Q23 (Last name, text, required)
     """
 
@@ -244,9 +243,8 @@ class TestQuestionSetFlow(TestCase):
         self.assertTemplateUsed(r, 'core/question_set.html')
 
     def test_set_page_get_shows_all_member_fields(self):
-        """Set page shows all three S1 member question labels."""
+        """Set page shows both S1 member question labels."""
         r = self.client.get(f'/section/{self.section_id}/set/S1/')
-        self.assertContains(r, 'Title')
         self.assertContains(r, 'First name')
         self.assertContains(r, 'Last name')
 
@@ -260,7 +258,6 @@ class TestQuestionSetFlow(TestCase):
     def test_set_page_post_missing_required_field_rerenders(self):
         """POST with a required field blank re-renders the set page (200, not 302)."""
         r = self.client.post(f'/section/{self.section_id}/set/S1/', {
-            'Q21': 'Mr',
             'Q22': '',      # first name — required, left blank
             'Q23': 'Smith',
         })
@@ -270,7 +267,6 @@ class TestQuestionSetFlow(TestCase):
     def test_set_page_post_missing_required_field_shows_error_summary(self):
         """Error summary appears when a required field is blank."""
         r = self.client.post(f'/section/{self.section_id}/set/S1/', {
-            'Q21': 'Mr',
             'Q22': '',
             'Q23': 'Smith',
         })
@@ -279,7 +275,6 @@ class TestQuestionSetFlow(TestCase):
     def test_set_page_post_missing_required_field_shows_field_error(self):
         """Per-field error class appears on the blank required field."""
         r = self.client.post(f'/section/{self.section_id}/set/S1/', {
-            'Q21': 'Mr',
             'Q22': '',
             'Q23': 'Smith',
         })
@@ -290,7 +285,6 @@ class TestQuestionSetFlow(TestCase):
     def test_set_page_post_all_required_filled_advances(self):
         """POST with all required fields non-empty redirects to the next node."""
         r = self.client.post(f'/section/{self.section_id}/set/S1/', {
-            'Q21': 'Ms',
             'Q22': 'Alice',
             'Q23': 'Jones',
         })
@@ -304,7 +298,6 @@ class TestQuestionSetFlow(TestCase):
         the back link on Q2 must point to the S1 set URL.
         """
         self.client.post(f'/section/{self.section_id}/set/S1/', {
-            'Q21': 'Mr',
             'Q22': 'Alice',
             'Q23': 'Jones',
         })
@@ -338,11 +331,11 @@ class TestQuestionSetFlow(TestCase):
     # ── 6. Confirm stores member answers as individual Answer records ──────────
 
     def test_confirm_stores_all_set_member_answers(self):
-        """Confirm writes one Answer record per set member question (Q21/Q22/Q23)."""
+        """Confirm writes one Answer record per set member question (Q22/Q23)."""
         alice = User.objects.get(username='alice')
         self._complete_section_to_review()
         self.client.post(f'/section/{self.section_id}/confirm/')
-        for qid in ('Q21', 'Q22', 'Q23'):
+        for qid in ('Q22', 'Q23'):
             self.assertTrue(
                 Answer.objects.filter(user=alice, question_id=qid).exists(),
                 msg=f'Expected Answer record for {qid} after confirm',
@@ -380,9 +373,8 @@ class TestQuestionSetFlow(TestCase):
 
         Routing: S1 → Q2 → Q3=Yes → Q4 → Q7 → Q8=Yes → Q10 → Q11 → END (review)
         """
-        # S1 set page (title / first name / last name)
+        # S1 set page (first name / last name)
         self.client.post(f'/section/{self.section_id}/set/S1/', {
-            'Q21': 'Mr',
             'Q22': 'Alice',
             'Q23': 'Jones',
         })
