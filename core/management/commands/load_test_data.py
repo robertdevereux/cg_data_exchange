@@ -165,10 +165,9 @@ class Command(BaseCommand):
                 'last_name':  'User',
                 'email':      'admin@example.com',
                 'is_staff':   True,
+                'password':   pw,
             }
         )
-        User.objects.get(username='admin').set_password('testpass123')
-        User.objects.get(username='admin').save()
 
         alice      = User.objects.get(username='alice')
         bob        = User.objects.get(username='bob')
