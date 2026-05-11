@@ -175,6 +175,50 @@ class Question(models.Model):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# QUESTION SETS — multi-field pages
+# ─────────────────────────────────────────────────────────────────────────────
+
+class QuestionSet(models.Model):
+    """
+    A named group of questions presented together on one screen.
+    set_id values follow the convention S1, S2, S3, etc.
+    """
+    set_id    = models.CharField(max_length=100, primary_key=True)
+    set_title = models.CharField(max_length=255)
+    set_hint  = models.CharField(max_length=255, blank=True, null=True)
+
+    def __str__(self):
+        return f'{self.set_id} — {self.set_title}'
+
+
+class QuestionSetMember(models.Model):
+    """
+    Ordered membership of a Question in a QuestionSet.
+    required=False means a blank submission is accepted for this field.
+    """
+    question_set  = models.ForeignKey(
+        QuestionSet,
+        on_delete=models.CASCADE,
+        related_name='members',
+    )
+    question      = models.ForeignKey(
+        Question,
+        to_field='question_id',
+        on_delete=models.CASCADE,
+        related_name='set_memberships',
+    )
+    display_order = models.PositiveIntegerField(default=0)
+    required      = models.BooleanField(default=True)
+
+    class Meta:
+        unique_together = ['question_set', 'question']
+        ordering        = ['display_order']
+
+    def __str__(self):
+        return f'{self.question_set_id} / {self.question_id} (order {self.display_order})'
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # FA OBJECT 5: ROUTING
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -182,10 +226,15 @@ class Routing(models.Model):
     """
     FA Object 5. Conditional routing logic held as data, not code.
 
-    Each row expresses: given this Section, at this Question, if the answer
-    is this value, the next question is this. A null next_question means END
+    Each row expresses: given this Section, at this node, if the answer
+    is this value, the next node is this. A null next_node means END
     (the citizen proceeds to the check-your-answers page).
     Null answer_value means the route is unconditional.
+
+    current_node and next_node are string identifiers that resolve to
+    either a Question.question_id (prefix Q) or a QuestionSet.set_id
+    (prefix S). Referential integrity is enforced by the consistency
+    checker at login time, not by a database FK.
     """
 
     section = models.ForeignKey(
@@ -194,32 +243,27 @@ class Routing(models.Model):
         on_delete=models.CASCADE,
         related_name='routing_rules',
     )
-    current_question = models.ForeignKey(
-        Question,
-        to_field='question_id',
-        on_delete=models.CASCADE,
-        related_name='routes_from',
+    current_node = models.CharField(
+        max_length=100,
+        help_text='Q-prefixed question ID or S-prefixed set ID for this screen',
     )
     answer_value = models.TextField(
         blank=True,
         null=True,
         help_text='Answer that triggers this route; null means unconditional',
     )
-    next_question = models.ForeignKey(
-        Question,
-        to_field='question_id',
-        on_delete=models.CASCADE,
-        related_name='routes_to',
-        null=True,
+    next_node = models.CharField(
+        max_length=100,
         blank=True,
-        help_text='Null means END — citizen proceeds to check-your-answers',
+        null=True,
+        help_text='Next screen node ID; null means END (proceed to check your answers)',
     )
     order_in_section = models.PositiveIntegerField(default=0)
 
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=['section', 'current_question', 'answer_value'],
+                fields=['section', 'current_node', 'answer_value'],
                 name='unique_routing_rule',
             )
         ]
@@ -227,8 +271,8 @@ class Routing(models.Model):
 
     def __str__(self):
         return (
-            f'{self.section_id} | {self.current_question_id}'
-            f' → {self.next_question_id or "END"}'
+            f'{self.section_id} | {self.current_node}'
+            f' → {self.next_node or "END"}'
             f' (if {self.answer_value!r})'
         )
 

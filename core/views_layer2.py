@@ -51,8 +51,8 @@ _UNSET = object()   # sentinel: "no route found yet"
 def _evaluate_routing(routing_table, question_id, answer):
     """Find the next question_id for a given question and answer.
 
-    Returns (next_question_id, found):
-      next_question_id — the routing target, or None meaning END
+    Returns (next_node, found):
+      next_node — the routing target, or None meaning END
       found            — False if no matching route exists (data error)
 
     Matching rules:
@@ -66,7 +66,7 @@ def _evaluate_routing(routing_table, question_id, answer):
     unconditional_next = _UNSET
 
     for row in routing_table:
-        if row['current_question_id'] != question_id:
+        if row['current_node'] != question_id:
             continue
         if row['answer_value'] is not None:
             allowed = {v.strip().lower() for v in str(row['answer_value']).split(';')}
@@ -75,10 +75,10 @@ def _evaluate_routing(routing_table, question_id, answer):
             else:
                 is_match = str(answer).strip().lower() in allowed
             if is_match:
-                conditional_next = row['next_question_id']
+                conditional_next = row['next_node']
                 break   # first conditional match wins
         else:
-            unconditional_next = row['next_question_id']   # last unconditional wins
+            unconditional_next = row['next_node']   # last unconditional wins
 
     if conditional_next is not _UNSET:
         return conditional_next, True
@@ -149,20 +149,19 @@ def section_start(request, section_id):
         Routing.objects
         .filter(section=section)
         .order_by('order_in_section')
-        .select_related('current_question', 'next_question')
     )
     routing_table = [
         {
-            'current_question_id': row.current_question_id,
+            'current_node': row.current_node,
             'answer_value': row.answer_value,
-            'next_question_id': row.next_question_id,   # None = END
+            'next_node':    row.next_node,   # None = END
         }
         for row in routing_rows
     ]
 
     # ── Build question metadata table ─────────────────────────────────────────
     question_ids_in_section = list(
-        dict.fromkeys(r['current_question_id'] for r in routing_table)
+        dict.fromkeys(r['current_node'] for r in routing_table)
     )
     questions = Question.objects.filter(question_id__in=question_ids_in_section)
     question_table = {
@@ -177,7 +176,7 @@ def section_start(request, section_id):
     }
 
     # ── First question is the one with lowest order_in_section ────────────────
-    first_question_id = routing_rows.first().current_question_id if routing_rows.exists() else None
+    first_question_id = routing_rows.first().current_node if routing_rows.exists() else None
     if not first_question_id:
         # No routing configured — treat as done
         return redirect('core:section_done', section_id=section_id)

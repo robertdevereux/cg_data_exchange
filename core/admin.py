@@ -58,7 +58,7 @@ class ScheduleAdmin(admin.ModelAdmin):
 class RoutingInline(admin.TabularInline):
     model = Routing
     extra = 1
-    fields = ('order_in_section', 'current_question', 'answer_value', 'next_question')
+    fields = ('order_in_section', 'current_node', 'answer_value', 'next_node')
     ordering = ('order_in_section',)
 
 
@@ -102,8 +102,8 @@ class QuestionAdmin(admin.ModelAdmin):
 @admin.register(Routing)
 class RoutingAdmin(admin.ModelAdmin):
     list_display = (
-        'section', 'order_in_section', 'current_question',
-        'answer_value', 'next_question',
+        'section', 'order_in_section', 'current_node',
+        'answer_value', 'next_node',
     )
     list_filter = ('section',)
     ordering = ('section', 'order_in_section')

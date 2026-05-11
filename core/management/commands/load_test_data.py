@@ -55,16 +55,16 @@ def route(section, current_qid, answer_value, next_qid, order, counters):
     answer_value=None  → unconditional route
     next_qid=None      → END (citizen proceeds to check-your-answers)
 
-    The unique constraint is on (section, current_question, answer_value).
+    The unique constraint is on (section, current_node, answer_value).
     Django translates answer_value=None into WHERE answer_value IS NULL,
     so unconditional routes are idempotent correctly.
     """
     obj, created = Routing.objects.update_or_create(
         section=section,
-        current_question=_q(current_qid),
+        current_node=current_qid,
         answer_value=answer_value,
         defaults={
-            'next_question': _q(next_qid) if next_qid else None,
+            'next_node': next_qid if next_qid else None,
             'order_in_section': order,
         },
     )
