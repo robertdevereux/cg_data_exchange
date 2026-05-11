@@ -205,3 +205,200 @@ class TestSolicitor1Flow(TestCase):
         )
         self.assertNotIn('SCHED_S1', section_ids)
         self.assertIn('SCHED_S3', section_ids)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# QuestionSet (multi-field page) feature
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestQuestionSetFlow(TestCase):
+    """
+    Tests for the QuestionSet (multi-field page) feature.
+    Covers rendering, validation, navigation, review, and confirm.
+
+    Section: SIMPLE_S1
+    Routing: S1 → Q2 → Q3; Q3=Yes → Q4 → Q7; Q3=No → Q7; Q7 → Q8;
+             Q8=Yes → Q10 → Q11 → END; Q8=No → Q9 → END
+    S1 set: 'Your name' — Q21 (Title, radio, required),
+                          Q22 (First name, text, required),
+                          Q23 (Last name, text, required)
+    """
+
+    def setUp(self):
+        self.client = Client()
+        self.client.login(username='alice', password='testpass123')
+        # Clear alice's pre-loaded SIMPLE_S1 answers so section_start treats
+        # this as a fresh start (redirects to the S1 set page, not review).
+        alice = User.objects.get(username='alice')
+        Answer.objects.filter(user=alice, section__section_id='SIMPLE_S1').delete()
+        self.section_id = 'SIMPLE_S1'
+        # Bootstrap the session by visiting section_start (follows to set/S1/).
+        self.client.get(f'/section/{self.section_id}/start/', follow=True)
+
+    # ── 1. GET renders the set template ──────────────────────────────────────
+
+    def test_set_page_get_renders_correct_template(self):
+        """GET /section/{id}/set/S1/ renders question_set.html."""
+        r = self.client.get(f'/section/{self.section_id}/set/S1/')
+        self.assertEqual(r.status_code, 200)
+        self.assertTemplateUsed(r, 'core/question_set.html')
+
+    def test_set_page_get_shows_all_member_fields(self):
+        """Set page shows all three S1 member question labels."""
+        r = self.client.get(f'/section/{self.section_id}/set/S1/')
+        self.assertContains(r, 'Title')
+        self.assertContains(r, 'First name')
+        self.assertContains(r, 'Last name')
+
+    def test_set_page_get_shows_set_title(self):
+        """Set page heading is the set_title value ('Your name')."""
+        r = self.client.get(f'/section/{self.section_id}/set/S1/')
+        self.assertContains(r, 'Your name')
+
+    # ── 2. POST — required field blank ────────────────────────────────────────
+
+    def test_set_page_post_missing_required_field_rerenders(self):
+        """POST with a required field blank re-renders the set page (200, not 302)."""
+        r = self.client.post(f'/section/{self.section_id}/set/S1/', {
+            'Q21': 'Mr',
+            'Q22': '',      # first name — required, left blank
+            'Q23': 'Smith',
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertTemplateUsed(r, 'core/question_set.html')
+
+    def test_set_page_post_missing_required_field_shows_error_summary(self):
+        """Error summary appears when a required field is blank."""
+        r = self.client.post(f'/section/{self.section_id}/set/S1/', {
+            'Q21': 'Mr',
+            'Q22': '',
+            'Q23': 'Smith',
+        })
+        self.assertContains(r, 'govuk-error-summary')
+
+    def test_set_page_post_missing_required_field_shows_field_error(self):
+        """Per-field error class appears on the blank required field."""
+        r = self.client.post(f'/section/{self.section_id}/set/S1/', {
+            'Q21': 'Mr',
+            'Q22': '',
+            'Q23': 'Smith',
+        })
+        self.assertContains(r, 'govuk-form-group--error')
+
+    # ── 3. POST — all required fields filled advances (302) ──────────────────
+
+    def test_set_page_post_all_required_filled_advances(self):
+        """POST with all required fields non-empty redirects to the next node."""
+        r = self.client.post(f'/section/{self.section_id}/set/S1/', {
+            'Q21': 'Ms',
+            'Q22': 'Alice',
+            'Q23': 'Jones',
+        })
+        self.assertEqual(r.status_code, 302)
+
+    # ── 4. Back navigation ────────────────────────────────────────────────────
+
+    def test_back_link_after_set_points_to_set_url(self):
+        """
+        After submitting S1 and landing on Q2 (the next Q-node),
+        the back link on Q2 must point to the S1 set URL.
+        """
+        self.client.post(f'/section/{self.section_id}/set/S1/', {
+            'Q21': 'Mr',
+            'Q22': 'Alice',
+            'Q23': 'Jones',
+        })
+        # Q2 is the first Q-node after S1 in SIMPLE_S1 routing
+        r = self.client.get(f'/section/{self.section_id}/question/Q2/')
+        self.assertContains(r, f'/section/{self.section_id}/set/S1/')
+
+    # ── 5. Review page — set renders as grouped block ─────────────────────────
+
+    def test_review_shows_set_title_as_group_heading(self):
+        """Review page shows set_title ('Your name') above the member rows."""
+        self._complete_section_to_review()
+        r = self.client.get(f'/section/{self.section_id}/review/')
+        self.assertContains(r, 'Your name')
+
+    def test_review_shows_set_member_answers(self):
+        """Review page shows each member question's submitted answer."""
+        self._complete_section_to_review()
+        r = self.client.get(f'/section/{self.section_id}/review/')
+        self.assertContains(r, 'Alice')   # Q22 first name
+        self.assertContains(r, 'Jones')   # Q23 last name
+
+    def test_review_change_link_points_to_set_url(self):
+        """Change link for a set member row points to the set page, not a question page."""
+        self._complete_section_to_review()
+        r = self.client.get(f'/section/{self.section_id}/review/')
+        self.assertContains(r, f'/section/{self.section_id}/set/S1/')
+        # Member questions must not each have their own Change link
+        self.assertNotContains(r, f'/section/{self.section_id}/question/Q22/')
+
+    # ── 6. Confirm stores member answers as individual Answer records ──────────
+
+    def test_confirm_stores_all_set_member_answers(self):
+        """Confirm writes one Answer record per set member question (Q21/Q22/Q23)."""
+        alice = User.objects.get(username='alice')
+        self._complete_section_to_review()
+        self.client.post(f'/section/{self.section_id}/confirm/')
+        for qid in ('Q21', 'Q22', 'Q23'):
+            self.assertTrue(
+                Answer.objects.filter(user=alice, question_id=qid).exists(),
+                msg=f'Expected Answer record for {qid} after confirm',
+            )
+
+    def test_confirm_stores_correct_answer_values(self):
+        """Confirmed Answer records hold the values submitted on the set page."""
+        alice = User.objects.get(username='alice')
+        self._complete_section_to_review()
+        self.client.post(f'/section/{self.section_id}/confirm/')
+        self.assertEqual(
+            Answer.objects.get(user=alice, question_id='Q22').answer,
+            'Alice',
+        )
+        self.assertEqual(
+            Answer.objects.get(user=alice, question_id='Q23').answer,
+            'Jones',
+        )
+
+    # ── 7. Consistency checker ────────────────────────────────────────────────
+
+    def test_consistency_checker_rejects_unknown_node(self):
+        """
+        If a routing row references a node ID in neither Question nor QuestionSet,
+        the consistency checker must report it.
+        Skipped until core/consistency.py is implemented.
+        """
+        self.skipTest('consistency checker not yet implemented')
+
+    # ── Helper ────────────────────────────────────────────────────────────────
+
+    def _complete_section_to_review(self):
+        """
+        Submit answers for the full SIMPLE_S1 Yes branch, ending on the review page.
+
+        Routing: S1 → Q2 → Q3=Yes → Q4 → Q7 → Q8=Yes → Q10 → Q11 → END (review)
+        """
+        # S1 set page (title / first name / last name)
+        self.client.post(f'/section/{self.section_id}/set/S1/', {
+            'Q21': 'Mr',
+            'Q22': 'Alice',
+            'Q23': 'Jones',
+        })
+        # Remaining Q-nodes in routing order (Yes branch throughout)
+        self.client.post(f'/section/{self.section_id}/question/Q2/',
+                         {'answer': '1975-06-15'})
+        self.client.post(f'/section/{self.section_id}/question/Q3/',
+                         {'answer': 'Yes'})    # → Q4
+        self.client.post(f'/section/{self.section_id}/question/Q4/',
+                         {'answer': 'AB123456C'})
+        self.client.post(f'/section/{self.section_id}/question/Q7/',
+                         {'answer': 'Some text about me'})
+        self.client.post(f'/section/{self.section_id}/question/Q8/',
+                         {'answer': 'Yes'})    # → Q10
+        # Q10 is a checkbox — must supply a list so getlist() returns non-empty
+        self.client.post(f'/section/{self.section_id}/question/Q10/',
+                         {'answer': ['Blue']})
+        self.client.post(f'/section/{self.section_id}/question/Q11/',
+                         {'answer': '3'})      # → END → review
