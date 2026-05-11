@@ -203,9 +203,9 @@ def section_start(request, section_id):
                 set_table[sid] = {
                     'set_title': member.question_set.set_title,
                     'set_hint':  member.question_set.set_hint or '',
-                    'questions': [],
+                    'members': [],
                 }
-            set_table[sid]['questions'].append({
+            set_table[sid]['members'].append({
                 'question_id':   qid,
                 'question_text': member.question.question_text,
                 'question_type': member.question.question_type,
@@ -241,7 +241,7 @@ def section_start(request, section_id):
                 # Set node: answered if any member question has an answer
                 member_qids = [
                     m['question_id']
-                    for m in set_table.get(node_id, {}).get('questions', [])
+                    for m in set_table.get(node_id, {}).get('members', [])
                 ]
                 if any(qid in basic_answers for qid in member_qids):
                     asked_ids.append(node_id)
@@ -955,12 +955,164 @@ def section_done(request, section_id):
 
 @login_required
 def section_set_page(request, section_id, set_id):
-    """Render / process a multi-question screen for a QuestionSet node.
-
-    Not yet implemented — placeholder returns 501 until Chunk 4.
     """
-    from django.http import HttpResponse
-    return HttpResponse(
-        f'section_set_page for set {set_id!r} in section {section_id!r} — not yet implemented',
-        status=501,
-    )
+    GET  — render a multi-field set page.
+    POST — validate all member fields, store answers, advance routing.
+    """
+    section = get_object_or_404(Section, section_id=section_id)
+    pss     = get_session(request)
+
+    set_table     = pss.get('set_table', {})
+    basic_answers = pss.get('basic_answers', {})
+    asked_ids     = pss.get('asked_ids', [])
+
+    set_meta = set_table.get(set_id)
+    if not set_meta:
+        # Session lost or set not in this section — restart
+        return redirect('core:section_start', section_id=section_id)
+
+    if request.method == 'POST':
+        return _process_set_answer(request, section, section_id, set_id, set_meta, pss)
+
+    # ── GET ───────────────────────────────────────────────────────────────────
+    # Backtrack: if arriving at a set already on the path, truncate asked_ids
+    if set_id in asked_ids:
+        idx = asked_ids.index(set_id)
+        asked_ids = asked_ids[:idx + 1]
+        update_session(request, {'asked_ids': asked_ids})
+
+    # ── Back link ─────────────────────────────────────────────────────────────
+    if len(asked_ids) > 1 and set_id == asked_ids[-1]:
+        prev_node = asked_ids[-2]
+        if prev_node in set_table:
+            back_url = f'/section/{section_id}/set/{prev_node}/'
+        else:
+            back_url = f'/section/{section_id}/question/{prev_node}/'
+    else:
+        back_url = f'/section/{section_id}/start/'
+
+    # ── Build field list with current answers ─────────────────────────────────
+    fields = []
+    for m in set_meta['members']:
+        qid = m['question_id']
+        options = [o.strip() for o in m['options'].split(';') if o.strip()]
+        fields.append({
+            'question_id':    qid,
+            'question_text':  m['question_text'],
+            'question_type':  m['question_type'],
+            'hint':           m['hint'],
+            'options':        options,
+            'required':       m['required'],
+            'current_answer': basic_answers.get(qid),
+            'error':          None,
+        })
+
+    context = {
+        'section':     section,
+        'set_id':      set_id,
+        'set_title':   set_meta['set_title'],
+        'set_hint':    set_meta['set_hint'],
+        'fields':      fields,
+        'errors':      [],
+        'back_url':    back_url,
+        'breadcrumbs': _build_crumbs(pss, section.section_name),
+        'acting_for':  get_acting_for_name(pss),
+    }
+    return render(request, 'core/question_set.html', context)
+
+
+def _process_set_answer(request, section, section_id, set_id, set_meta, pss):
+    """Handle POST for section_set_page — validate all fields, store, advance."""
+    basic_answers = pss.get('basic_answers', {})
+    asked_ids     = pss.get('asked_ids', [])
+    routing_table = pss.get('routing_table', [])
+    set_table     = pss.get('set_table', {})
+
+    # ── Extract and validate all member fields ────────────────────────────────
+    field_values = {}
+    field_errors = {}
+    for m in set_meta['members']:
+        qid = m['question_id']
+        if m['question_type'] == 'checkbox':
+            value = request.POST.getlist(qid)
+        else:
+            value = request.POST.get(qid, '').strip()
+        if m['required'] and not value and value != 0:
+            field_errors[qid] = 'Enter ' + m['question_text'].lower().rstrip('?').rstrip('.')
+        field_values[qid] = value
+
+    # ── Re-render with errors if any field failed ─────────────────────────────
+    if field_errors:
+        if len(asked_ids) > 1 and set_id == asked_ids[-1]:
+            prev_node = asked_ids[-2]
+            back_url = (
+                f'/section/{section_id}/set/{prev_node}/'
+                if prev_node in set_table
+                else f'/section/{section_id}/question/{prev_node}/'
+            )
+        else:
+            back_url = f'/section/{section_id}/start/'
+
+        fields = []
+        for m in set_meta['members']:
+            qid = m['question_id']
+            options = [o.strip() for o in m['options'].split(';') if o.strip()]
+            fields.append({
+                'question_id':    qid,
+                'question_text':  m['question_text'],
+                'question_type':  m['question_type'],
+                'hint':           m['hint'],
+                'options':        options,
+                'required':       m['required'],
+                'current_answer': field_values.get(qid),
+                'error':          field_errors.get(qid),
+            })
+
+        error_summary = [
+            {'qid': qid, 'message': msg}
+            for qid, msg in field_errors.items()
+        ]
+
+        context = {
+            'section':     section,
+            'set_id':      set_id,
+            'set_title':   set_meta['set_title'],
+            'set_hint':    set_meta['set_hint'],
+            'fields':      fields,
+            'errors':      error_summary,
+            'back_url':    back_url,
+            'breadcrumbs': _build_crumbs(pss, section.section_name),
+            'acting_for':  get_acting_for_name(pss),
+        }
+        return render(request, 'core/question_set.html', context)
+
+    # ── All valid — store answers into session ────────────────────────────────
+    for qid, value in field_values.items():
+        basic_answers[qid] = value
+
+    # Ensure set node is in asked_ids
+    if set_id not in asked_ids:
+        asked_ids.append(set_id)
+
+    # ── Evaluate routing ──────────────────────────────────────────────────────
+    # Routing for a set node uses the first member question's answer as the
+    # routing answer — covers unconditional progression (null answer_value)
+    # and simple conditional cases.
+    first_member_qid = set_meta['members'][0]['question_id'] if set_meta['members'] else None
+    routing_answer   = field_values.get(first_member_qid, '')
+    next_node, found = _evaluate_routing(routing_table, set_id, routing_answer)
+
+    if not found:
+        update_session(request, {'basic_answers': basic_answers, 'asked_ids': asked_ids})
+        return redirect('core:section_review', section_id=section_id)
+
+    if next_node is not None and next_node not in asked_ids:
+        asked_ids.append(next_node)
+
+    update_session(request, {'basic_answers': basic_answers, 'asked_ids': asked_ids})
+
+    if next_node is None:
+        return redirect('core:section_review', section_id=section_id)
+    if next_node in set_table:
+        return redirect('core:section_set_page', section_id=section_id, set_id=next_node)
+    return redirect('core:section_question', section_id=section_id, question_id=next_node)

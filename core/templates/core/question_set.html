@@ -1,0 +1,190 @@
+{% extends "core/base.html" %}
+
+{% block title %}{{ set_title }} — PSS Demo{% endblock %}
+
+{% block content %}
+
+  <a href="{{ back_url }}" class="govuk-back-link">Back</a>
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-two-thirds">
+
+      {% if errors %}
+      <div class="govuk-error-summary" data-module="govuk-error-summary">
+        <div role="alert">
+          <h2 class="govuk-error-summary__title">There is a problem</h2>
+          <div class="govuk-error-summary__body">
+            <ul class="govuk-list govuk-error-summary__list">
+              {% for error in errors %}
+              <li>
+                <a href="#field-{{ error.qid }}">{{ error.message }}</a>
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      <form method="post" action="">
+        {% csrf_token %}
+
+        <h1 class="govuk-heading-l">{{ set_title }}</h1>
+
+        {% if set_hint %}
+        <div class="govuk-hint">{{ set_hint }}</div>
+        {% endif %}
+
+        {% for field in fields %}
+        <div class="govuk-form-group{% if field.error %} govuk-form-group--error{% endif %}">
+
+          {% if field.question_type == "radio" %}
+          <fieldset class="govuk-fieldset">
+            <legend class="govuk-fieldset__legend">
+              <label class="govuk-label" for="field-{{ field.question_id }}-1">
+                {{ field.question_text }}
+              </label>
+            </legend>
+
+            {% if field.hint %}
+            <div class="govuk-hint" id="field-{{ field.question_id }}-hint">{{ field.hint }}</div>
+            {% endif %}
+
+            {% if field.error %}
+            <p class="govuk-error-message" id="field-{{ field.question_id }}-error">
+              <span class="govuk-visually-hidden">Error:</span> {{ field.error }}
+            </p>
+            {% endif %}
+
+            <div class="govuk-radios" data-module="govuk-radios">
+              {% for option in field.options %}
+              <div class="govuk-radios__item">
+                <input class="govuk-radios__input"
+                       id="field-{{ field.question_id }}-{{ forloop.counter }}"
+                       name="{{ field.question_id }}" type="radio"
+                       value="{{ option }}"
+                       {% if option == field.current_answer %}checked{% endif %}>
+                <label class="govuk-label govuk-radios__label"
+                       for="field-{{ field.question_id }}-{{ forloop.counter }}">
+                  {{ option }}
+                </label>
+              </div>
+              {% endfor %}
+            </div>
+          </fieldset>
+
+          {% elif field.question_type == "checkbox" %}
+          <fieldset class="govuk-fieldset">
+            <legend class="govuk-fieldset__legend">
+              <label class="govuk-label" for="field-{{ field.question_id }}-1">
+                {{ field.question_text }}
+              </label>
+            </legend>
+
+            {% if field.hint %}
+            <div class="govuk-hint" id="field-{{ field.question_id }}-hint">{{ field.hint }}</div>
+            {% endif %}
+
+            {% if field.error %}
+            <p class="govuk-error-message" id="field-{{ field.question_id }}-error">
+              <span class="govuk-visually-hidden">Error:</span> {{ field.error }}
+            </p>
+            {% endif %}
+
+            <div class="govuk-checkboxes" data-module="govuk-checkboxes">
+              {% for option in field.options %}
+              <div class="govuk-checkboxes__item">
+                <input class="govuk-checkboxes__input"
+                       id="field-{{ field.question_id }}-{{ forloop.counter }}"
+                       name="{{ field.question_id }}" type="checkbox"
+                       value="{{ option }}"
+                       {% if field.current_answer and option in field.current_answer %}checked{% endif %}>
+                <label class="govuk-label govuk-checkboxes__label"
+                       for="field-{{ field.question_id }}-{{ forloop.counter }}">
+                  {{ option }}
+                </label>
+              </div>
+              {% endfor %}
+            </div>
+          </fieldset>
+
+          {% elif field.question_type == "textarea" %}
+          <label class="govuk-label" for="field-{{ field.question_id }}">
+            {{ field.question_text }}
+          </label>
+
+          {% if field.hint %}
+          <div class="govuk-hint" id="field-{{ field.question_id }}-hint">{{ field.hint }}</div>
+          {% endif %}
+
+          {% if field.error %}
+          <p class="govuk-error-message" id="field-{{ field.question_id }}-error">
+            <span class="govuk-visually-hidden">Error:</span> {{ field.error }}
+          </p>
+          {% endif %}
+
+          <textarea class="govuk-textarea{% if field.error %} govuk-textarea--error{% endif %}"
+                    id="field-{{ field.question_id }}"
+                    name="{{ field.question_id }}"
+                    rows="5"
+                    {% if field.hint %}aria-describedby="field-{{ field.question_id }}-hint"{% endif %}
+                    {% if field.error %}aria-describedby="field-{{ field.question_id }}-error{% if field.hint %} field-{{ field.question_id }}-hint{% endif %}"{% endif %}>{% if field.current_answer %}{{ field.current_answer }}{% endif %}</textarea>
+
+          {% elif field.question_type == "number" %}
+          <label class="govuk-label" for="field-{{ field.question_id }}">
+            {{ field.question_text }}
+          </label>
+
+          {% if field.hint %}
+          <div class="govuk-hint" id="field-{{ field.question_id }}-hint">{{ field.hint }}</div>
+          {% endif %}
+
+          {% if field.error %}
+          <p class="govuk-error-message" id="field-{{ field.question_id }}-error">
+            <span class="govuk-visually-hidden">Error:</span> {{ field.error }}
+          </p>
+          {% endif %}
+
+          <input class="govuk-input govuk-input--width-10{% if field.error %} govuk-input--error{% endif %}"
+                 type="number"
+                 id="field-{{ field.question_id }}"
+                 name="{{ field.question_id }}"
+                 value="{{ field.current_answer|default:'' }}"
+                 {% if field.hint %}aria-describedby="field-{{ field.question_id }}-hint"{% endif %}
+                 {% if field.error %}aria-describedby="field-{{ field.question_id }}-error{% if field.hint %} field-{{ field.question_id }}-hint{% endif %}"{% endif %}>
+
+          {% else %}
+          <label class="govuk-label" for="field-{{ field.question_id }}">
+            {{ field.question_text }}
+          </label>
+
+          {% if field.hint %}
+          <div class="govuk-hint" id="field-{{ field.question_id }}-hint">{{ field.hint }}</div>
+          {% endif %}
+
+          {% if field.error %}
+          <p class="govuk-error-message" id="field-{{ field.question_id }}-error">
+            <span class="govuk-visually-hidden">Error:</span> {{ field.error }}
+          </p>
+          {% endif %}
+
+          <input class="govuk-input{% if field.error %} govuk-input--error{% endif %}"
+                 type="text"
+                 id="field-{{ field.question_id }}"
+                 name="{{ field.question_id }}"
+                 value="{{ field.current_answer|default:'' }}"
+                 {% if field.hint %}aria-describedby="field-{{ field.question_id }}-hint"{% endif %}
+                 {% if field.error %}aria-describedby="field-{{ field.question_id }}-error{% if field.hint %} field-{{ field.question_id }}-hint{% endif %}"{% endif %}>
+
+          {% endif %}
+
+        </div>
+        {% endfor %}
+
+        <button class="govuk-button" data-module="govuk-button">Continue</button>
+      </form>
+
+    </div>
+  </div>
+
+{% endblock %}
