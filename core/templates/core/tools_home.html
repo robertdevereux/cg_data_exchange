@@ -1,0 +1,31 @@
+{% extends "core/base.html" %}
+
+{% block title %}Platform administration — PSS Demo{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-two-thirds">
+
+      <h1 class="govuk-heading-l">Platform administration</h1>
+
+      <div class="govuk-button-group">
+
+        <a href="/tools/viewer/" class="govuk-button" data-module="govuk-button">
+          View and edit regime configuration
+        </a>
+
+        <button class="govuk-button govuk-button--secondary"
+                aria-disabled="true"
+                style="opacity:0.5;cursor:not-allowed;">
+          Create new regime
+          <span class="govuk-hint govuk-!-display-inline govuk-!-margin-0"
+                style="font-size:inherit;">&nbsp;(coming soon)</span>
+        </button>
+
+      </div>
+
+    </div>
+  </div>
+
+{% endblock %}

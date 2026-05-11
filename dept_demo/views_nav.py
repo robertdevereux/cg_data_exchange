@@ -117,6 +117,9 @@ def select_regime(request):
     Auto-skips when only one regime is available.
     Multiple regimes: redirect to the dept home (regime card list).
     """
+    if request.user.is_staff:
+        return redirect('/tools/')
+
     pss   = get_session(request)
     actor = request.user
     user  = _resolve_user(pss, actor)

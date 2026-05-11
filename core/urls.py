@@ -1,5 +1,4 @@
 from django.urls import path
-from django.views.generic import RedirectView
 
 from . import views_admin_tools, views_layer2
 
@@ -9,7 +8,7 @@ urlpatterns = [
 
     # ── Admin tools ───────────────────────────────────────────────────────────
     path('tools/',
-         RedirectView.as_view(url='/tools/viewer/'),
+         views_admin_tools.tools_home,
          name='tools_index'),
 
     path('tools/viewer/',

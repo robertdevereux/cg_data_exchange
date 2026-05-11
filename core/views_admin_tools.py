@@ -23,6 +23,16 @@ from .models import (
 staff_required = user_passes_test(lambda u: u.is_staff)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 0. TOOLS HOME
+# ─────────────────────────────────────────────────────────────────────────────
+
+@staff_required
+def tools_home(request):
+    """Staff landing page — entry point for all platform admin tools."""
+    return render(request, 'core/tools_home.html', {})
+
+
 # ── Back-URL helper ───────────────────────────────────────────────────────────
 
 def _back_url(back_regime, back_schedule, back_section):
