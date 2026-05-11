@@ -642,8 +642,8 @@ def section_confirm(request, section_id):
                 question=questions_map[qid],
                 answer=new_answers[qid],
             )
-            for qid in asked_ids
-            if qid in new_answers and qid in questions_map
+            for qid in new_answers
+            if qid in questions_map
         ]
         Answer.objects.bulk_create(new_records)
 

@@ -132,20 +132,25 @@ class TestPatternA_DemoSimple(TestCase):
         # Visit regime home first so session gets return_url set
         self.client.get('/demo/regime/demo-simple/')
 
-        # Start the section
+        # Start the section — first node is now the S1 set page
         r = self.client.get('/section/SIMPLE_S1/start/')
         self.assertEqual(r.status_code, 302)
-        self.assertIn('Q_full_name', r['Location'])
+        self.assertIn('/set/S1/', r['Location'])
 
-        # Answer all Yes-branch questions
+        # POST S1 set page (title, first name, last name)
+        r = self.client.post('/section/SIMPLE_S1/set/S1/', {
+            'Q21': 'Ms', 'Q22': 'Carla', 'Q23': 'Garcia',
+        })
+        self.assertEqual(r.status_code, 302, 'POST S1 returned unexpected status')
+
+        # Answer remaining questions using new question IDs (No branch — skips Q4)
         for qid, data in [
-            ('Q_full_name',     {'answer': 'Carla Garcia'}),
-            ('Q_dob',           {'answer': '1985-03-22'}),
-            ('Q_nino_yn',       {'answer': 'No'}),
-            ('Q_simple_about',  {'answer': 'I am a software developer.'}),
-            ('Q_simple_agree',  {'answer': 'Yes'}),
-            ('Q_simple_colour', {'answer': ['Blue', 'Green']}),
-            ('Q_simple_count',  {'answer': '2'}),
+            ('Q2',  {'answer': '1985-03-22'}),
+            ('Q3',  {'answer': 'No'}),
+            ('Q7',  {'answer': 'I am a software developer.'}),
+            ('Q8',  {'answer': 'Yes'}),
+            ('Q10', {'answer': ['Blue', 'Green']}),
+            ('Q11', {'answer': '2'}),
         ]:
             r = self.client.post(f'/section/SIMPLE_S1/question/{qid}/', data)
             self.assertEqual(r.status_code, 302, f'POST {qid} returned {r.status_code}')
@@ -402,19 +407,25 @@ class TestPrePopulation(TestCase):
 
     def test_shared_question_suggestion_appears_in_sections_s1(self):
         """
-        Arriving at Q_full_name in SECTIONS_S1, alice should see her SIMPLE_S1
-        answer 'Alice Johnson' offered as a suggestion.
+        Arriving at Q2 (date of birth) in SECTIONS_S1, alice should see her
+        SIMPLE_S1 answer '1975-06-15' offered as a pre-population suggestion.
+        Q_full_name/Q1 is retired; Q2 is still a shared standalone question.
         """
         # Navigate to regime and task list to set session context
         self.client.get('/demo/regime/demo-sections/')
         self.client.get('/demo/regime/DEMO_SECTIONS/sections/')
         self.client.get('/section/SECTIONS_S1/start/')
 
-        r = self.client.get('/section/SECTIONS_S1/question/Q_full_name/')
+        # Advance past the S1 set page (first node) to reach Q2
+        self.client.post('/section/SECTIONS_S1/set/S1/', {
+            'Q21': 'Ms', 'Q22': 'Alice', 'Q23': 'Johnson',
+        })
+
+        r = self.client.get('/section/SECTIONS_S1/question/Q2/')
         self.assertEqual(r.status_code, 200)
         self.assertContains(
-            r, 'Alice Johnson',
-            msg_prefix='Pre-population suggestion "Alice Johnson" missing from Q_full_name',
+            r, '1975-06-15',
+            msg_prefix='Pre-population suggestion "1975-06-15" missing from Q2 (date of birth)',
         )
 
 

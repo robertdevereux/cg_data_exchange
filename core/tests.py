@@ -25,21 +25,26 @@ class TestSimpleS1YesBranch(TestCase):
         Answer.objects.filter(user=alice, section__section_id='SIMPLE_S1').delete()
 
     def test_yes_branch_complete(self):
-        # ── Start ─────────────────────────────────────────────────────────────
+        # ── Start — first node is now the S1 set page ─────────────────────────
         r = self.client.get('/section/SIMPLE_S1/start/')
         self.assertEqual(r.status_code, 302)
-        self.assertIn('/question/Q_full_name/', r['Location'])
+        self.assertIn('/set/S1/', r['Location'])
+
+        # ── Post S1 set page (title, first name, last name) ───────────────────
+        r = self.client.post('/section/SIMPLE_S1/set/S1/', {
+            'Q21': 'Ms', 'Q22': 'Alice', 'Q23': 'Johnson',
+        })
+        self.assertEqual(r.status_code, 302, 'POST S1 returned unexpected status')
 
         # ── Post all Yes-branch questions in routing order ────────────────────
         posts = [
-            ('Q_full_name',     {'answer': 'Alice Johnson'}),
-            ('Q_dob',           {'answer': '1975-06-15'}),
-            ('Q_nino_yn',       {'answer': 'Yes'}),
-            ('Q_nino_value',    {'answer': 'QQ123456C'}),
-            ('Q_simple_about',  {'answer': 'I am a retired teacher living in Bristol.'}),
-            ('Q_simple_agree',  {'answer': 'Yes'}),
-            ('Q_simple_colour', {'answer': ['Red', 'Blue']}),
-            ('Q_simple_count',  {'answer': '2'}),
+            ('Q2',  {'answer': '1975-06-15'}),
+            ('Q3',  {'answer': 'Yes'}),
+            ('Q4',  {'answer': 'QQ123456C'}),
+            ('Q7',  {'answer': 'I am a retired teacher living in Bristol.'}),
+            ('Q8',  {'answer': 'Yes'}),
+            ('Q10', {'answer': ['Red', 'Blue']}),
+            ('Q11', {'answer': '2'}),
         ]
         for qid, data in posts:
             r = self.client.post(f'/section/SIMPLE_S1/question/{qid}/', data)
@@ -57,14 +62,15 @@ class TestSimpleS1YesBranch(TestCase):
         # ── Assertions ────────────────────────────────────────────────────────
         alice = User.objects.get(username='alice')
 
+        # Yes branch: S1 members (Q21/Q22/Q23) + Q2/Q3/Q4/Q7/Q8/Q10/Q11 = 10
         self.assertEqual(
             Answer.objects.filter(user=alice, section__section_id='SIMPLE_S1').count(),
-            8,
-            'Expected exactly 8 answers (full Yes-branch path)',
+            10,
+            'Expected 10 answers: S1 members Q21/Q22/Q23 + Q2/Q3/Q4/Q7/Q8/Q10/Q11',
         )
         self.assertFalse(
-            Answer.objects.filter(user=alice, question_id='Q_simple_why').exists(),
-            'Q_simple_why should not be present when Q_simple_agree=Yes',
+            Answer.objects.filter(user=alice, question_id='Q9').exists(),
+            'Q9 (simple_why) should not be present when Q8=Yes',
         )
         self.assertEqual(
             SectionStatus.objects.get(user=alice, section__section_id='SIMPLE_S1').status,

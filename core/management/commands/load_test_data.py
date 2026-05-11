@@ -27,6 +27,8 @@ from core.models import (
     Case,
     Permission,
     Question,
+    QuestionSet,
+    QuestionSetMember,
     Regime,
     Routing,
     Schedule,
@@ -35,6 +37,41 @@ from core.models import (
     User,
 )
 
+
+# ── Question ID registry ──────────────────────────────────────────────────────
+# Q1   full_name (retired — replaced by S1 set in sections using name capture)
+# Q2   date of birth
+# Q3   do you have a NI number (yes/no)
+# Q4   NI number value
+# Q5   address line 1
+# Q6   postcode
+# Q7   simple_about
+# Q8   simple_agree
+# Q9   simple_why
+# Q10  simple_colour
+# Q11  simple_count
+# Q12  financial type
+# Q13  financial provider
+# Q14  financial balance
+# Q15  additional yes/no
+# Q16  additional detail
+# Q17  phone
+# Q18  email
+# Q19  declaration yes/no
+# Q20  declaration why
+# Q21  title (radio: Mr/Mrs/Ms/Dr/Other)        — S1 member
+# Q22  first name                                — S1 member
+# Q23  last name                                 — S1 member
+# Q24  address line 1                            — S2 member
+# Q25  address line 2 (optional)                 — S2 member
+# Q26  town or city                              — S2 member
+# Q27  county (optional)                         — S2 member
+# Q28  postcode                                  — S2 member
+# Q29  name on account                           — S3 member
+# Q30  sort code                                 — S3 member
+# Q31  account number                            — S3 member
+# Q32  building society roll number (optional)   — S3 member
+# ─────────────────────────────────────────────────────────────────────────────
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -82,6 +119,22 @@ class Command(BaseCommand):
             'SectionStatus',
         ]}
 
+        # ── Remove retired and renamed question IDs ───────────────────────────
+        old_ids = [
+            'Q_full_name', 'Q_dob', 'Q_nino_yn', 'Q_nino_value',
+            'Q_address_line1', 'Q_address_postcode', 'Q_simple_about',
+            'Q_simple_agree', 'Q_simple_why', 'Q_simple_colour', 'Q_simple_count',
+            'Q_fin_type', 'Q_fin_provider', 'Q_fin_balance',
+            'Q_additional_yn', 'Q_additional_detail',
+            'Q_phone', 'Q_email', 'Q_declare_yn', 'Q_declare_why',
+            'Q1',  # retired — full name as single field; replaced by S1
+        ]
+        Question.objects.filter(question_id__in=old_ids).delete()
+        QuestionSet.objects.filter(set_id__in=['S1', 'S2', 'S3']).delete()
+        # Remove stale routing rows — current_node is a CharField (no FK cascade).
+        # old_ids covers both the original Q_-prefixed node names and the retired Q1.
+        Routing.objects.filter(current_node__in=old_ids).delete()
+
         # ── 1. USERS ──────────────────────────────────────────────────────────
         self.stdout.write('Creating users…')
 
@@ -113,26 +166,26 @@ class Command(BaseCommand):
         self.stdout.write('Creating shared questions…')
 
         shared_questions = [
-            dict(question_id='Q_full_name',
+            dict(question_id='Q1',
                  question_text='What is your full name?',
                  question_type='text'),
-            dict(question_id='Q_dob',
+            dict(question_id='Q2',
                  question_text='What is your date of birth?',
                  question_type='text',
                  answer_type='date',
                  hint='For example, 27 3 1980'),
-            dict(question_id='Q_nino_yn',
+            dict(question_id='Q3',
                  question_text='Do you have a National Insurance number?',
                  question_type='radio',
                  options='Yes;No'),
-            dict(question_id='Q_nino_value',
+            dict(question_id='Q4',
                  question_text='What is your National Insurance number?',
                  question_type='text',
                  hint='For example, QQ 12 34 56 C'),
-            dict(question_id='Q_address_line1',
+            dict(question_id='Q5',
                  question_text='Address line 1',
                  question_type='text'),
-            dict(question_id='Q_address_postcode',
+            dict(question_id='Q6',
                  question_text='Postcode',
                  question_type='text'),
         ]
@@ -149,62 +202,62 @@ class Command(BaseCommand):
 
         specific_questions = [
             # DEMO_SIMPLE — SIMPLE_S1
-            dict(question_id='Q_simple_about',
+            dict(question_id='Q7',
                  question_text='Tell us a little about yourself',
                  question_type='textarea',
                  hint='2-3 sentences is fine'),
-            dict(question_id='Q_simple_agree',
+            dict(question_id='Q8',
                  question_text='Do you agree to the terms and conditions?',
                  question_type='radio',
                  options='Yes;No'),
-            dict(question_id='Q_simple_why',
+            dict(question_id='Q9',
                  question_text='Why do you not agree?',
                  question_type='text',
                  hint='We will take your feedback into account'),
-            dict(question_id='Q_simple_colour',
+            dict(question_id='Q10',
                  question_text='Which colours do you like?',
                  question_type='checkbox',
                  options='Red;Green;Blue;Yellow;Purple'),
-            dict(question_id='Q_simple_count',
+            dict(question_id='Q11',
                  question_text='How many colours did you select above?',
                  question_type='number',
                  answer_type='number'),
             # DEMO_SECTIONS — SECTIONS_S2 (table) and SECTIONS_S3
-            dict(question_id='Q_fin_type',
+            dict(question_id='Q12',
                  question_text='Type of account',
                  question_type='radio',
                  options='Current account;Savings account;ISA;Other'),
-            dict(question_id='Q_fin_provider',
+            dict(question_id='Q13',
                  question_text='Bank or provider name',
                  question_type='text'),
-            dict(question_id='Q_fin_balance',
+            dict(question_id='Q14',
                  question_text='Balance (£)',
                  question_type='number',
                  answer_type='number'),
-            dict(question_id='Q_additional_yn',
+            dict(question_id='Q15',
                  question_text='Is there anything else you would like to tell us?',
                  question_type='radio',
                  options='Yes;No'),
-            dict(question_id='Q_additional_detail',
+            dict(question_id='Q16',
                  question_text='Please provide details',
                  question_type='textarea'),
             # DEMO_SCHEDULES — SCHED_S2
-            dict(question_id='Q_phone',
+            dict(question_id='Q17',
                  question_text='Phone number',
                  question_type='text',
                  hint='We will only call if we need to discuss your application'),
-            dict(question_id='Q_email',
+            dict(question_id='Q18',
                  question_text='Email address',
                  question_type='text'),
             # DEMO_SCHEDULES — SCHED_S4
-            dict(question_id='Q_declare_yn',
+            dict(question_id='Q19',
                  question_text=(
                      'Do you declare that the information you have provided '
                      'is accurate and complete to the best of your knowledge?'
                  ),
                  question_type='radio',
                  options='Yes;No'),
-            dict(question_id='Q_declare_why',
+            dict(question_id='Q20',
                  question_text='Please explain why you cannot make this declaration',
                  question_type='text'),
         ]
@@ -215,6 +268,48 @@ class Command(BaseCommand):
             )
             if created:
                 counters['Question'] += 1
+
+        # ── Standard set member questions ─────────────────────────────────────
+
+        def question(qid, question_text, question_type,
+                     options=None, hint=None, answer_type=None):
+            _, created = Question.objects.update_or_create(
+                question_id=qid,
+                defaults={
+                    'question_text': question_text,
+                    'question_type': question_type,
+                    'options':       options or '',
+                    'hint':          hint or '',
+                    'answer_type':   answer_type,
+                },
+            )
+            if created:
+                counters['Question'] += 1
+
+        question('Q21', 'Title',
+                 'radio', options='Mr;Mrs;Ms;Dr;Other')
+        question('Q22', 'First name',
+                 'text')
+        question('Q23', 'Last name',
+                 'text')
+        question('Q24', 'Address line 1',
+                 'text')
+        question('Q25', 'Address line 2',
+                 'text')
+        question('Q26', 'Town or city',
+                 'text')
+        question('Q27', 'County',
+                 'text')
+        question('Q28', 'Postcode',
+                 'text')
+        question('Q29', 'Name on account',
+                 'text')
+        question('Q30', 'Sort code',
+                 'text', hint='Must be 6 digits long')
+        question('Q31', 'Account number',
+                 'text', hint='Must be 8 digits long')
+        question('Q32', 'Building society roll number',
+                 'text', hint='You can find it on your card or bank statement')
 
         # ── 4. REGIMES ────────────────────────────────────────────────────────
         self.stdout.write('Creating regimes…')
@@ -267,8 +362,8 @@ class Command(BaseCommand):
             dict(section_id='SECTIONS_S2', section_name='Your Finances',
                  section_type=1, display_order=2,
                  regime=r_sections,  schedule=None,
-                 column_question_ids='Q_fin_type;Q_fin_provider;Q_fin_balance',
-                 totals_question_ids='Q_fin_balance'),
+                 column_question_ids='Q12;Q13;Q14',
+                 totals_question_ids='Q14'),
             dict(section_id='SECTIONS_S3', section_name='Additional Information',
                  section_type=0, display_order=3,
                  regime=r_sections,  schedule=None),
@@ -282,8 +377,8 @@ class Command(BaseCommand):
             dict(section_id='SCHED_S3', section_name='Accounts',
                  section_type=1, display_order=1,
                  regime=None, schedule=sched_finances,
-                 column_question_ids='Q_fin_type;Q_fin_provider;Q_fin_balance',
-                 totals_question_ids='Q_fin_balance'),
+                 column_question_ids='Q12;Q13;Q14',
+                 totals_question_ids='Q14'),
             dict(section_id='SCHED_S4', section_name='Declaration',
                  section_type=0, display_order=2,
                  regime=None, schedule=sched_finances),
@@ -300,86 +395,129 @@ class Command(BaseCommand):
         self.stdout.write('Creating routing rules…')
 
         # ── SIMPLE_S1: all 5 question types, branching on nino_yn and agree ──
-        #   Q_full_name → Q_dob → Q_nino_yn
-        #     Yes → Q_nino_value → Q_simple_about → Q_simple_agree
-        #     No  →               Q_simple_about → Q_simple_agree
-        #   Q_simple_agree = Yes → Q_simple_colour → Q_simple_count → END
-        #   Q_simple_agree = No  → Q_simple_why → END
+        #   Q1 → Q2 → Q3
+        #     Yes → Q4 → Q7 → Q8
+        #     No  →               Q7 → Q8
+        #   Q8 = Yes → Q10 → Q11 → END
+        #   Q8 = No  → Q9 → END
 
         s = _s('SIMPLE_S1')
-        route(s, 'Q_full_name',    None,    'Q_dob',           1, counters)
-        route(s, 'Q_dob',          None,    'Q_nino_yn',       2, counters)
-        route(s, 'Q_nino_yn',      'Yes',   'Q_nino_value',    3, counters)
-        route(s, 'Q_nino_yn',      'No',    'Q_simple_about',  4, counters)
-        route(s, 'Q_nino_value',   None,    'Q_simple_about',  5, counters)
-        route(s, 'Q_simple_about', None,    'Q_simple_agree',  6, counters)
-        route(s, 'Q_simple_agree', 'Yes',   'Q_simple_colour', 7, counters)
-        route(s, 'Q_simple_agree', 'No',    'Q_simple_why',    8, counters)
-        route(s, 'Q_simple_colour',None,    'Q_simple_count',  9, counters)
-        route(s, 'Q_simple_count', None,    None,             10, counters)  # END
-        route(s, 'Q_simple_why',   None,    None,             11, counters)  # END
+        route(s, 'S1',    None,    'Q2',           1, counters)
+        route(s, 'Q2',          None,    'Q3',       2, counters)
+        route(s, 'Q3',      'Yes',   'Q4',    3, counters)
+        route(s, 'Q3',      'No',    'Q7',  4, counters)
+        route(s, 'Q4',   None,    'Q7',  5, counters)
+        route(s, 'Q7', None,    'Q8',  6, counters)
+        route(s, 'Q8', 'Yes',   'Q10', 7, counters)
+        route(s, 'Q8', 'No',    'Q9',    8, counters)
+        route(s, 'Q10',None,    'Q11',  9, counters)
+        route(s, 'Q11', None,    None,             10, counters)  # END
+        route(s, 'Q9',   None,    None,             11, counters)  # END
 
         # ── SECTIONS_S1: personal details with nino branch ────────────────────
-        #   Q_full_name → Q_dob → Q_nino_yn
-        #     Yes → Q_nino_value → Q_address_line1 → Q_address_postcode → END
-        #     No  →               Q_address_line1 → Q_address_postcode → END
+        #   Q1 → Q2 → Q3
+        #     Yes → Q4 → Q5 → Q6 → END
+        #     No  →               Q5 → Q6 → END
 
         s = _s('SECTIONS_S1')
-        route(s, 'Q_full_name',        None,  'Q_dob',               1, counters)
-        route(s, 'Q_dob',              None,  'Q_nino_yn',           2, counters)
-        route(s, 'Q_nino_yn',          'Yes', 'Q_nino_value',        3, counters)
-        route(s, 'Q_nino_yn',          'No',  'Q_address_line1',     4, counters)
-        route(s, 'Q_nino_value',       None,  'Q_address_line1',     5, counters)
-        route(s, 'Q_address_line1',    None,  'Q_address_postcode',  6, counters)
-        route(s, 'Q_address_postcode', None,  None,                  7, counters)  # END
+        route(s, 'S1',        None,  'Q2',               1, counters)
+        route(s, 'Q2',              None,  'Q3',           2, counters)
+        route(s, 'Q3',          'Yes', 'Q4',        3, counters)
+        route(s, 'Q3',          'No',  'Q5',     4, counters)
+        route(s, 'Q4',       None,  'Q5',     5, counters)
+        route(s, 'Q5',    None,  'Q6',  6, counters)
+        route(s, 'Q6', None,  None,                  7, counters)  # END
 
         # ── SECTIONS_S2: table section — field sequence per row ───────────────
         s = _s('SECTIONS_S2')
-        route(s, 'Q_fin_type',     None, 'Q_fin_provider', 1, counters)
-        route(s, 'Q_fin_provider', None, 'Q_fin_balance',  2, counters)
-        route(s, 'Q_fin_balance',  None, None,             3, counters)  # END
+        route(s, 'Q12',     None, 'Q13', 1, counters)
+        route(s, 'Q13', None, 'Q14',  2, counters)
+        route(s, 'Q14',  None, None,             3, counters)  # END
 
         # ── SECTIONS_S3: additional information with yes/no branch ────────────
-        #   Q_additional_yn = Yes → Q_additional_detail → END
-        #   Q_additional_yn = No  → END
+        #   Q15 = Yes → Q16 → END
+        #   Q15 = No  → END
         s = _s('SECTIONS_S3')
-        route(s, 'Q_additional_yn',     'Yes', 'Q_additional_detail', 1, counters)
-        route(s, 'Q_additional_yn',     'No',  None,                  2, counters)  # END
-        route(s, 'Q_additional_detail', None,  None,                  3, counters)  # END
+        route(s, 'Q15',     'Yes', 'Q16', 1, counters)
+        route(s, 'Q15',     'No',  None,                  2, counters)  # END
+        route(s, 'Q16', None,  None,                  3, counters)  # END
 
         # ── SCHED_S1: identity — nino branch, ends at END (no address) ────────
-        #   Q_full_name → Q_dob → Q_nino_yn
-        #     Yes → Q_nino_value → END
+        #   Q1 → Q2 → Q3
+        #     Yes → Q4 → END
         #     No  → END
         s = _s('SCHED_S1')
-        route(s, 'Q_full_name',  None,  'Q_dob',        1, counters)
-        route(s, 'Q_dob',        None,  'Q_nino_yn',    2, counters)
-        route(s, 'Q_nino_yn',    'Yes', 'Q_nino_value', 3, counters)
-        route(s, 'Q_nino_yn',    'No',  None,           4, counters)  # END
-        route(s, 'Q_nino_value', None,  None,           5, counters)  # END
+        route(s, 'S1',  None,  'Q2',        1, counters)
+        route(s, 'Q2',        None,  'Q3',    2, counters)
+        route(s, 'Q3',    'Yes', 'Q4', 3, counters)
+        route(s, 'Q3',    'No',  None,           4, counters)  # END
+        route(s, 'Q4', None,  None,           5, counters)  # END
 
         # ── SCHED_S2: contact details — linear ───────────────────────────────
         s = _s('SCHED_S2')
-        route(s, 'Q_address_line1',    None, 'Q_address_postcode', 1, counters)
-        route(s, 'Q_address_postcode', None, 'Q_phone',            2, counters)
-        route(s, 'Q_phone',            None, 'Q_email',            3, counters)
-        route(s, 'Q_email',            None, None,                 4, counters)  # END
+        route(s, 'Q5',    None, 'Q6', 1, counters)
+        route(s, 'Q6', None, 'Q17',            2, counters)
+        route(s, 'Q17',            None, 'Q18',            3, counters)
+        route(s, 'Q18',            None, None,                 4, counters)  # END
 
         # ── SCHED_S3: accounts table — field sequence per row ─────────────────
         s = _s('SCHED_S3')
-        route(s, 'Q_fin_type',     None, 'Q_fin_provider', 1, counters)
-        route(s, 'Q_fin_provider', None, 'Q_fin_balance',  2, counters)
-        route(s, 'Q_fin_balance',  None, None,             3, counters)  # END
+        route(s, 'Q12',     None, 'Q13', 1, counters)
+        route(s, 'Q13', None, 'Q14',  2, counters)
+        route(s, 'Q14',  None, None,             3, counters)  # END
 
         # ── SCHED_S4: declaration — yes/no branch ─────────────────────────────
-        #   Q_declare_yn = Yes → END
-        #   Q_declare_yn = No  → Q_declare_why → END
+        #   Q19 = Yes → END
+        #   Q19 = No  → Q20 → END
         s = _s('SCHED_S4')
-        route(s, 'Q_declare_yn',  'Yes', None,           1, counters)  # END
-        route(s, 'Q_declare_yn',  'No',  'Q_declare_why', 2, counters)
-        route(s, 'Q_declare_why', None,  None,            3, counters)  # END
+        route(s, 'Q19',  'Yes', None,           1, counters)  # END
+        route(s, 'Q19',  'No',  'Q20', 2, counters)
+        route(s, 'Q20', None,  None,            3, counters)  # END
 
-        # ── 8. PERMISSIONS ────────────────────────────────────────────────────
+        # ── 8. QUESTION SETS ──────────────────────────────────────────────────
+
+        def qset(set_id, set_title, set_hint, members):
+            """
+            members: list of (question_id, display_order, required) tuples
+            """
+            qs, _ = QuestionSet.objects.update_or_create(
+                set_id=set_id,
+                defaults={'set_title': set_title, 'set_hint': set_hint or ''},
+            )
+            # Rebuild members from scratch to avoid stale display_order issues
+            QuestionSetMember.objects.filter(question_set=qs).delete()
+            for question_id, display_order, required in members:
+                QuestionSetMember.objects.create(
+                    question_set=qs,
+                    question_id=question_id,
+                    display_order=display_order,
+                    required=required,
+                )
+
+        # ── Standard sets ──────────────────────────────────────────────────────
+        qset('S1', 'Your name', None, [
+            ('Q21', 1, True),   # title
+            ('Q22', 2, True),   # first name
+            ('Q23', 3, True),   # last name
+        ])
+
+        qset('S2', 'Your address', None, [
+            ('Q24', 1, True),   # address line 1
+            ('Q25', 2, False),  # address line 2 (optional)
+            ('Q26', 3, True),   # town or city
+            ('Q27', 4, False),  # county (optional)
+            ('Q28', 5, True),   # postcode
+        ])
+
+        qset('S3', 'Your bank account details',
+             'Enter the details from your bank statement', [
+            ('Q29', 1, True),   # name on account
+            ('Q30', 2, True),   # sort code
+            ('Q31', 3, True),   # account number
+            ('Q32', 4, False),  # roll number (optional)
+        ])
+
+        # ── 9. PERMISSIONS ────────────────────────────────────────────────────
         # Strategy: one Permission per regime with section=None means "all sections
         # of that regime". For solicitor1, one permission for the specific section.
         self.stdout.write('Creating permissions…')
@@ -431,7 +569,7 @@ class Command(BaseCommand):
         if created:
             counters['Permission'] += 1
 
-        # ── 9. CASES ──────────────────────────────────────────────────────────
+        # ── 10. CASES ─────────────────────────────────────────────────────────
         self.stdout.write('Creating cases…')
 
         alice_case, created = Case.objects.get_or_create(
@@ -448,20 +586,22 @@ class Command(BaseCommand):
         if created:
             counters['Case'] += 1
 
-        # ── 10. ALICE'S COMPLETED ANSWERS FOR SIMPLE_S1 ───────────────────────
-        # Alice took the Yes branch on Q_nino_yn and Yes on Q_simple_agree.
+        # ── 11. ALICE'S COMPLETED ANSWERS FOR SIMPLE_S1 ──────────────────────
+        # Alice took the Yes branch on Q3 and Yes on Q8.
         self.stdout.write('Creating answers for alice (SIMPLE_S1)…')
 
         simple_s1 = _s('SIMPLE_S1')
         alice_answers = [
-            ('Q_full_name',     'Alice Johnson'),
-            ('Q_dob',           '1975-06-15'),
-            ('Q_nino_yn',       'Yes'),
-            ('Q_nino_value',    'QQ123456C'),
-            ('Q_simple_about',  'I am a retired teacher living in Bristol.'),
-            ('Q_simple_agree',  'Yes'),
-            ('Q_simple_colour', ['Red', 'Blue']),
-            ('Q_simple_count',  '2'),
+            ('Q21', 'Ms'),
+            ('Q22', 'Alice'),
+            ('Q23', 'Johnson'),
+            ('Q2',  '1975-06-15'),
+            ('Q3',  'Yes'),
+            ('Q4',  'QQ123456C'),
+            ('Q7',  'I am a retired teacher living in Bristol.'),
+            ('Q8',  'Yes'),
+            ('Q10', ['Red', 'Blue']),
+            ('Q11', '2'),
         ]
         for qid, value in alice_answers:
             _, created = Answer.objects.update_or_create(
@@ -473,7 +613,7 @@ class Command(BaseCommand):
             if created:
                 counters['Answer'] += 1
 
-        # ── 11. ALICE'S ANSWER HISTORY (previous value for Q_full_name) ───────
+        # ── 12. ALICE'S ANSWER HISTORY (previous first name for Q22) ────────────
         self.stdout.write('Creating answer history for alice…')
 
         # Delete any existing history records for this question (which may include
@@ -483,10 +623,10 @@ class Command(BaseCommand):
         existing = AnswerHistory.objects.filter(
             user=alice, actor=alice,
             regime=r_simple, case=alice_case,
-            section=simple_s1, question=_q('Q_full_name'),
+            section=simple_s1, question=_q('Q22'),
         )
         if existing.count() == 1 and existing.filter(
-            answer='A. Johnson', confirmed_at=confirmed_at
+            answer='A.', confirmed_at=confirmed_at
         ).exists():
             pass  # already correct — no action needed
         else:
@@ -494,13 +634,13 @@ class Command(BaseCommand):
             AnswerHistory.objects.create(
                 user=alice, actor=alice,
                 regime=r_simple, case=alice_case,
-                section=simple_s1, question=_q('Q_full_name'),
-                answer='A. Johnson',
+                section=simple_s1, question=_q('Q22'),
+                answer='A.',
                 confirmed_at=confirmed_at,
             )
             counters['AnswerHistory'] += 1
 
-        # ── 12. ALICE'S SECTION STATUS ────────────────────────────────────────
+        # ── 13. ALICE'S SECTION STATUS ────────────────────────────────────────
         _, created = SectionStatus.objects.update_or_create(
             user=alice, regime=r_simple, section=simple_s1,
             defaults={'status': 'complete'},
@@ -508,17 +648,19 @@ class Command(BaseCommand):
         if created:
             counters['SectionStatus'] += 1
 
-        # ── 13. BOB'S COMPLETED ANSWERS FOR SECTIONS_S1 ──────────────────────
-        # Bob took the No branch on Q_nino_yn (no NI number).
+        # ── 14. BOB'S COMPLETED ANSWERS FOR SECTIONS_S1 ──────────────────────
+        # Bob took the No branch on Q3 (no NI number).
         self.stdout.write('Creating answers for bob (SECTIONS_S1)…')
 
         sections_s1 = _s('SECTIONS_S1')
         bob_answers = [
-            ('Q_full_name',        'Bob Smith'),
-            ('Q_dob',              '1982-03-22'),
-            ('Q_nino_yn',          'No'),
-            ('Q_address_line1',    '14 Acacia Avenue'),
-            ('Q_address_postcode', 'BS1 4TR'),
+            ('Q21', 'Mr'),
+            ('Q22', 'Bob'),
+            ('Q23', 'Smith'),
+            ('Q2',  '1982-03-22'),
+            ('Q3',  'No'),
+            ('Q5',  '14 Acacia Avenue'),
+            ('Q6',  'BS1 4TR'),
         ]
         for qid, value in bob_answers:
             _, created = Answer.objects.update_or_create(
@@ -530,7 +672,7 @@ class Command(BaseCommand):
             if created:
                 counters['Answer'] += 1
 
-        # ── 14. BOB'S SECTION STATUSES ────────────────────────────────────────
+        # ── 15. BOB'S SECTION STATUSES ────────────────────────────────────────
         self.stdout.write('Creating section statuses for bob…')
 
         section_statuses = [
@@ -546,7 +688,7 @@ class Command(BaseCommand):
             if created:
                 counters['SectionStatus'] += 1
 
-        # ── 15. SUMMARY ───────────────────────────────────────────────────────
+        # ── 16. SUMMARY ───────────────────────────────────────────────────────
         self.stdout.write('')
         self.stdout.write(self.style.SUCCESS('─' * 50))
         self.stdout.write(self.style.SUCCESS('Test data loaded successfully'))
