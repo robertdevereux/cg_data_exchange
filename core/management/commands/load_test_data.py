@@ -172,7 +172,7 @@ class Command(BaseCommand):
                  question_type='text'),
             dict(question_id='Q2',
                  question_text='What is your date of birth?',
-                 question_type='text',
+                 question_type='date',
                  answer_type='date',
                  hint='For example, 27 3 1980'),
             dict(question_id='Q3',
@@ -592,7 +592,7 @@ class Command(BaseCommand):
         alice_answers = [
             ('Q22', 'Alice'),
             ('Q23', 'Johnson'),
-            ('Q2',  '1975-06-15'),
+            ('Q2',  {'day': '15', 'month': '6', 'year': '1975'}),
             ('Q3',  'Yes'),
             ('Q4',  'QQ123456C'),
             ('Q7',  'I am a retired teacher living in Bristol.'),
@@ -653,7 +653,7 @@ class Command(BaseCommand):
         bob_answers = [
             ('Q22', 'Bob'),
             ('Q23', 'Smith'),
-            ('Q2',  '1982-03-22'),
+            ('Q2',  {'day': '22', 'month': '3', 'year': '1982'}),
             ('Q3',  'No'),
             ('Q5',  '14 Acacia Avenue'),
             ('Q6',  'BS1 4TR'),

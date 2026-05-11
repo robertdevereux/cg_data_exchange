@@ -149,6 +149,7 @@ class Question(models.Model):
         ('radio', 'Radio'),
         ('checkbox', 'Checkbox'),
         ('address', 'Address'),
+        ('date', 'Date'),
     ]
     ANSWER_TYPE_CHOICES = [
         ('text', 'Text'),

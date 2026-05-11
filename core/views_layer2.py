@@ -348,6 +348,18 @@ def section_question(request, section_id, question_id):
     # ── Options list for radio / checkbox ─────────────────────────────────────
     options = [o.strip() for o in q_meta['options'].split(';') if o.strip()]
 
+    # ── Split date answer into parts for pre-population ───────────────────────
+    date_parts = None
+    if q_meta['question_type'] == 'date':
+        source = current_answer if isinstance(current_answer, dict) else (
+            suggestion if isinstance(suggestion, dict) else None
+        )
+        date_parts = {
+            'day':   source.get('day', '') if source else '',
+            'month': source.get('month', '') if source else '',
+            'year':  source.get('year', '') if source else '',
+        }
+
     context = {
         'section':        section,
         'question_id':    question_id,
@@ -357,6 +369,7 @@ def section_question(request, section_id, question_id):
         'question_type':  q_meta['question_type'],
         'options':        options,
         'current_answer': current_answer,
+        'date_parts':     date_parts,
         'suggestion':     suggestion,
         'provenance':     provenance,
         'back_url':       back_url,
@@ -368,6 +381,7 @@ def section_question(request, section_id, question_id):
     template_map = {
         'radio':    'core/question_radio.html',
         'checkbox': 'core/question_checkbox.html',
+        'date':     'core/question_date.html',
     }
     template = template_map.get(q_meta['question_type'], 'core/question_text.html')
     return render(request, template, context)
@@ -378,11 +392,60 @@ def _process_answer(request, section, section_id, question_id, q_meta, pss):
     # ── Extract answer ────────────────────────────────────────────────────────
     if q_meta['question_type'] == 'checkbox':
         answer = request.POST.getlist('answer')
+    elif q_meta['question_type'] == 'date':
+        day   = request.POST.get('date_day', '').strip()
+        month = request.POST.get('date_month', '').strip()
+        year  = request.POST.get('date_year', '').strip()
+        answer = {'day': day, 'month': month, 'year': year}
     else:
         answer = request.POST.get('answer', '').strip()
 
-    # Basic non-empty validation
-    if not answer and answer != 0:
+    # ── Date validation ───────────────────────────────────────────────────────
+    if q_meta['question_type'] == 'date':
+        errors = []
+        day   = answer.get('day', '')
+        month = answer.get('month', '')
+        year  = answer.get('year', '')
+        if not day or not day.isdigit() or not (1 <= int(day) <= 31):
+            errors.append('Enter a valid day (1–31)')
+        if not month or not month.isdigit() or not (1 <= int(month) <= 12):
+            errors.append('Enter a valid month (1–12)')
+        if not year or not year.isdigit() or len(year) != 4:
+            errors.append('Enter a valid year (4 digits)')
+        if errors:
+            asked_ids = pss.get('asked_ids', [question_id])
+            if len(asked_ids) > 1 and question_id == asked_ids[-1]:
+                prev_node = asked_ids[-2]
+                _set_table = pss.get('set_table', {})
+                if prev_node in _set_table:
+                    back_url = f'/section/{section_id}/set/{prev_node}/'
+                else:
+                    back_url = f'/section/{section_id}/question/{prev_node}/'
+            else:
+                back_url = f'/section/{section_id}/start/'
+            date_parts = {'day': day, 'month': month, 'year': year}
+            context = {
+                'section':        section,
+                'question_id':    question_id,
+                'question_text':  q_meta['question_text'],
+                'guidance':       q_meta['guidance'],
+                'hint':           q_meta['hint'],
+                'question_type':  q_meta['question_type'],
+                'options':        [],
+                'current_answer': answer,
+                'date_parts':     date_parts,
+                'suggestion':     None,
+                'provenance':     None,
+                'back_url':       back_url,
+                'asked_ids':      asked_ids,
+                'error':          ' / '.join(errors),
+                'breadcrumbs':    _build_crumbs(pss, section.section_name),
+                'acting_for':     get_acting_for_name(pss),
+            }
+            return render(request, 'core/question_date.html', context)
+
+    # ── Basic non-empty validation for non-date types ─────────────────────────
+    elif not answer and answer != 0:
         # Re-render with error rather than accepting empty answer
         options = [o.strip() for o in q_meta['options'].split(';') if o.strip()]
         asked_ids = pss.get('asked_ids', [question_id])
@@ -510,7 +573,17 @@ def section_review(request, section_id):
         else:
             q_meta = question_table.get(node_id, {})
             answer  = basic_answers.get(node_id)
-            if isinstance(answer, list):
+            if isinstance(answer, dict) and all(k in answer for k in ('day', 'month', 'year')):
+                _months = ['January', 'February', 'March', 'April', 'May', 'June',
+                           'July', 'August', 'September', 'October', 'November', 'December']
+                try:
+                    m = int(answer['month'])
+                    display_answer = f"{answer['day']} {_months[m - 1]} {answer['year']}"
+                except (ValueError, IndexError):
+                    display_answer = (
+                        f"{answer.get('day', '')} {answer.get('month', '')} {answer.get('year', '')}"
+                    )
+            elif isinstance(answer, list):
                 display_answer = ', '.join(answer)
             else:
                 display_answer = answer or '—'

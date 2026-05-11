@@ -38,7 +38,7 @@ class TestSimpleS1YesBranch(TestCase):
 
         # ── Post all Yes-branch questions in routing order ────────────────────
         posts = [
-            ('Q2',  {'answer': '1975-06-15'}),
+            ('Q2',  {'date_day': '15', 'date_month': '6', 'date_year': '1975'}),
             ('Q3',  {'answer': 'Yes'}),
             ('Q4',  {'answer': 'QQ123456C'}),
             ('Q7',  {'answer': 'I am a retired teacher living in Bristol.'}),
@@ -380,7 +380,7 @@ class TestQuestionSetFlow(TestCase):
         })
         # Remaining Q-nodes in routing order (Yes branch throughout)
         self.client.post(f'/section/{self.section_id}/question/Q2/',
-                         {'answer': '1975-06-15'})
+                         {'date_day': '1', 'date_month': '4', 'date_year': '1980'})
         self.client.post(f'/section/{self.section_id}/question/Q3/',
                          {'answer': 'Yes'})    # → Q4
         self.client.post(f'/section/{self.section_id}/question/Q4/',

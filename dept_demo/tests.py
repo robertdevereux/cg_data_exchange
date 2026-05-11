@@ -145,7 +145,7 @@ class TestPatternA_DemoSimple(TestCase):
 
         # Answer remaining questions using new question IDs (No branch — skips Q4)
         for qid, data in [
-            ('Q2',  {'answer': '1985-03-22'}),
+            ('Q2',  {'date_day': '22', 'date_month': '3', 'date_year': '1985'}),
             ('Q3',  {'answer': 'No'}),
             ('Q7',  {'answer': 'I am a software developer.'}),
             ('Q8',  {'answer': 'Yes'}),
@@ -408,8 +408,10 @@ class TestPrePopulation(TestCase):
     def test_shared_question_suggestion_appears_in_sections_s1(self):
         """
         Arriving at Q2 (date of birth) in SECTIONS_S1, alice should see her
-        SIMPLE_S1 answer '1975-06-15' offered as a pre-population suggestion.
+        SIMPLE_S1 answer pre-populated in the date inputs (year = 1975).
         Q_full_name/Q1 is retired; Q2 is still a shared standalone question.
+        Q2 is now a date type — the prior answer {'day':'15','month':'6','year':'1975'}
+        is split into date_parts and rendered as individual input values.
         """
         # Navigate to regime and task list to set session context
         self.client.get('/demo/regime/demo-sections/')
@@ -418,14 +420,14 @@ class TestPrePopulation(TestCase):
 
         # Advance past the S1 set page (first node) to reach Q2
         self.client.post('/section/SECTIONS_S1/set/S1/', {
-            'Q21': 'Ms', 'Q22': 'Alice', 'Q23': 'Johnson',
+            'Q22': 'Alice', 'Q23': 'Johnson',
         })
 
         r = self.client.get('/section/SECTIONS_S1/question/Q2/')
         self.assertEqual(r.status_code, 200)
         self.assertContains(
-            r, '1975-06-15',
-            msg_prefix='Pre-population suggestion "1975-06-15" missing from Q2 (date of birth)',
+            r, '1975',
+            msg_prefix='Pre-populated year "1975" missing from Q2 date inputs',
         )
 
 
