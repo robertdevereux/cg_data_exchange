@@ -726,6 +726,11 @@ def section_confirm(request, section_id):
             defaults={'status': 'complete'},
         )
 
+    # ── META processor hook ───────────────────────────────────────────────────
+    if section.section_id.startswith('META_'):
+        from .meta_processors import dispatch_meta_processor
+        dispatch_meta_processor(section, case, actor)
+
     clear_section_session(request)
     return redirect('core:section_done', section_id=section_id)
 
@@ -1008,6 +1013,11 @@ def section_confirm_table(request, section_id):
             user=request.user, regime=regime, section=section,
             defaults={'status': 'complete'},
         )
+
+    # ── META processor hook ───────────────────────────────────────────────────
+    if section.section_id.startswith('META_'):
+        from .meta_processors import dispatch_meta_processor
+        dispatch_meta_processor(section, case, actor)
 
     return redirect('core:section_done', section_id=section_id)
 

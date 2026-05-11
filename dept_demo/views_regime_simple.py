@@ -22,7 +22,7 @@ def regime_simple_home(request):
     Home page for DEMO_SIMPLE (single-section, Pattern A).
     Bootstraps Case and SectionStatus, then shows the start/continue button.
     """
-    regime = Regime.objects.get(regime_id=_REGIME_ID)
+    regime = Regime.objects.exclude(dept_id='PLATFORM').get(regime_id=_REGIME_ID)
     actor  = request.user
     user   = _resolve_user(get_session(request), actor)
 

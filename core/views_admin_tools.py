@@ -55,7 +55,7 @@ def _back_url(back_regime, back_schedule, back_section):
 @staff_required
 def tools_viewer(request):
     """Three-zone viewer: selector bar → routing table → node detail panels."""
-    regimes = Regime.objects.all()
+    regimes = Regime.objects.exclude(dept_id='PLATFORM')
 
     selected_regime_id  = request.GET.get('regime', '')
     selected_section_id = request.GET.get('section', '')

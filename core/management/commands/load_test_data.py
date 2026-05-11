@@ -71,6 +71,30 @@ from core.models import (
 # Q30  sort code                                 — S3 member
 # Q31  account number                            — S3 member
 # Q32  building society roll number (optional)   — S3 member
+# ── META regime columns ───────────────────────────────────────────────────────
+# Q33  META question ID                          — META_ADD_QUESTIONS column
+# Q34  META question text                        — META_ADD_QUESTIONS column
+# Q35  META question type                        — META_ADD_QUESTIONS column
+# Q36  META hint text                            — META_ADD_QUESTIONS column
+# Q37  META guidance                             — META_ADD_QUESTIONS column
+# Q38  META options                              — META_ADD_QUESTIONS column
+# Q39  META set ID                               — META_ADD_SETS column
+# Q40  META set title                            — META_ADD_SETS column
+# Q41  META set hint                             — META_ADD_SETS column
+# Q42  META set ID (for member)                  — META_ADD_SETMEMBERS column
+# Q43  META question ID (for member)             — META_ADD_SETMEMBERS column
+# Q44  META display order                        — META_ADD_SETMEMBERS column
+# Q45  META required?                            — META_ADD_SETMEMBERS column
+# Q46  META section ID                           — META_ADD_SECTIONS column
+# Q47  META section name                         — META_ADD_SECTIONS column
+# Q48  META section type                         — META_ADD_SECTIONS column
+# Q49  META schedule ID                          — META_ADD_SECTIONS column
+# Q50  META schedule ID                          — META_ADD_SCHEDULES column
+# Q51  META schedule name                        — META_ADD_SCHEDULES column
+# Q52  META schedule display order               — META_ADD_SCHEDULES column
+# Q53  META regime ID                            — META_ADD_REGIME question
+# Q54  META regime name                          — META_ADD_REGIME question
+# Q55  META department ID                        — META_ADD_REGIME question
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -321,6 +345,65 @@ class Command(BaseCommand):
         question('Q32', 'Building society roll number',
                  'text', hint='You can find it on your card or bank statement')
 
+        # ── META regime column questions ──────────────────────────────────────
+        # META_ADD_QUESTIONS columns
+        question('Q33', 'Question ID', 'text',
+                 hint='Unique identifier, e.g. Q99. Must not already exist.')
+        question('Q34', 'Question text', 'text',
+                 hint='The question as shown to the citizen.')
+        question('Q35', 'Question type', 'radio',
+                 options='text;textarea;number;radio;checkbox;date')
+        question('Q36', 'Hint text', 'text',
+                 hint='Optional short hint shown below the question text.')
+        question('Q37', 'Guidance', 'textarea',
+                 hint='Optional longer guidance shown above the question.')
+        question('Q38', 'Options', 'text',
+                 hint='Semicolon-delimited options for radio or checkbox questions.')
+
+        # META_ADD_SETS columns
+        question('Q39', 'Set ID', 'text',
+                 hint='Unique identifier, e.g. S9. Must not already exist.')
+        question('Q40', 'Set title', 'text',
+                 hint='Heading shown to the citizen on the set page.')
+        question('Q41', 'Set hint', 'text',
+                 hint='Optional hint shown below the set title.')
+
+        # META_ADD_SETMEMBERS columns
+        question('Q42', 'Set ID', 'text',
+                 hint='The set this question belongs to.')
+        question('Q43', 'Question ID', 'text',
+                 hint='The question to add to the set.')
+        question('Q44', 'Display order', 'number',
+                 hint='Order within the set (1, 2, 3...).')
+        question('Q45', 'Required?', 'radio',
+                 options='Yes;No')
+
+        # META_ADD_SECTIONS columns
+        question('Q46', 'Section ID', 'text',
+                 hint='Unique identifier, e.g. DWP_S1.')
+        question('Q47', 'Section name', 'text',
+                 hint='Name shown to the citizen.')
+        question('Q48', 'Section type', 'radio',
+                 options='Standard;Table')
+        question('Q49', 'Schedule ID', 'text',
+                 hint='Leave blank if this section belongs directly to the regime.')
+
+        # META_ADD_SCHEDULES columns
+        question('Q50', 'Schedule ID', 'text',
+                 hint='Unique identifier, e.g. DWP_SCHED1.')
+        question('Q51', 'Schedule name', 'text',
+                 hint='Name shown to the citizen.')
+        question('Q52', 'Display order', 'number',
+                 hint='Order within the regime (1, 2, 3...).')
+
+        # META_ADD_REGIME columns (standard section)
+        question('Q53', 'Regime ID', 'text',
+                 hint='Unique identifier, e.g. DWP_BSP. Must not already exist.')
+        question('Q54', 'Regime name', 'text',
+                 hint='Full name of the service.')
+        question('Q55', 'Department ID', 'text',
+                 hint='Department identifier, e.g. DWP.')
+
         # ── 4. REGIMES ────────────────────────────────────────────────────────
         self.stdout.write('Creating regimes…')
 
@@ -339,6 +422,16 @@ class Command(BaseCommand):
         r_simple    = Regime.objects.get(regime_id='DEMO_SIMPLE')
         r_sections  = Regime.objects.get(regime_id='DEMO_SECTIONS')
         r_schedules = Regime.objects.get(regime_id='DEMO_SCHEDULES')
+
+        # ── META regime ───────────────────────────────────────────────────────
+        Regime.objects.update_or_create(
+            regime_id='META',
+            defaults={
+                'regime_name':   'Platform Configuration',
+                'dept_id':       'PLATFORM',
+                'display_order': 999,
+            }
+        )
 
         # ── 5. SCHEDULES (DEMO_SCHEDULES only) ───────────────────────────────
         self.stdout.write('Creating schedules…')
@@ -400,6 +493,75 @@ class Command(BaseCommand):
             )
             if created:
                 counters['Section'] += 1
+
+        # ── META sections ─────────────────────────────────────────────────────
+        meta_regime = Regime.objects.get(regime_id='META')
+
+        Section.objects.update_or_create(
+            section_id='META_ADD_REGIME',
+            defaults={
+                'section_name': 'Define new regime',
+                'section_type': 0,
+                'regime':       meta_regime,
+                'schedule':     None,
+                'display_order': 1,
+            }
+        )
+        Section.objects.update_or_create(
+            section_id='META_ADD_SCHEDULES',
+            defaults={
+                'section_name':        'Add schedules',
+                'section_type':        1,
+                'regime':              meta_regime,
+                'schedule':            None,
+                'display_order':       2,
+                'column_question_ids': 'Q50;Q51;Q52',
+            }
+        )
+        Section.objects.update_or_create(
+            section_id='META_ADD_SECTIONS',
+            defaults={
+                'section_name':        'Add sections',
+                'section_type':        1,
+                'regime':              meta_regime,
+                'schedule':            None,
+                'display_order':       3,
+                'column_question_ids': 'Q46;Q47;Q48;Q49',
+            }
+        )
+        Section.objects.update_or_create(
+            section_id='META_ADD_QUESTIONS',
+            defaults={
+                'section_name':        'Add questions',
+                'section_type':        1,
+                'regime':              meta_regime,
+                'schedule':            None,
+                'display_order':       4,
+                'column_question_ids': 'Q33;Q34;Q35;Q36;Q37;Q38',
+            }
+        )
+        Section.objects.update_or_create(
+            section_id='META_ADD_SETS',
+            defaults={
+                'section_name':        'Add sets',
+                'section_type':        1,
+                'regime':              meta_regime,
+                'schedule':            None,
+                'display_order':       5,
+                'column_question_ids': 'Q39;Q40;Q41',
+            }
+        )
+        Section.objects.update_or_create(
+            section_id='META_ADD_SETMEMBERS',
+            defaults={
+                'section_name':        'Add set members',
+                'section_type':        1,
+                'regime':              meta_regime,
+                'schedule':            None,
+                'display_order':       6,
+                'column_question_ids': 'Q42;Q43;Q44;Q45',
+            }
+        )
 
         # ── 7. ROUTING ────────────────────────────────────────────────────────
         self.stdout.write('Creating routing rules…')
@@ -483,6 +645,16 @@ class Command(BaseCommand):
         route(s, 'Q19',  'Yes', None,           1, counters)  # END
         route(s, 'Q19',  'No',  'Q20', 2, counters)
         route(s, 'Q20', None,  None,            3, counters)  # END
+
+        # ── META_ADD_REGIME routing (table sections need no routing) ──────────
+        meta_regime_section = Section.objects.get(section_id='META_ADD_REGIME')
+
+        # Delete stale routing for this section before recreating
+        Routing.objects.filter(section=meta_regime_section).delete()
+
+        route(meta_regime_section, 'Q53', None, 'Q54', 1, counters)
+        route(meta_regime_section, 'Q54', None, 'Q55', 2, counters)
+        route(meta_regime_section, 'Q55', None, None,  3, counters)
 
         # ── 8. QUESTION SETS ──────────────────────────────────────────────────
 

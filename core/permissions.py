@@ -75,4 +75,4 @@ def get_permitted_regimes(actor, user):
     ).values_list('schedule__regime_id', flat=True)
 
     all_ids = set(list(direct_ids) + list(indirect_ids))
-    return Regime.objects.filter(regime_id__in=all_ids)
+    return Regime.objects.exclude(dept_id='PLATFORM').filter(regime_id__in=all_ids)
