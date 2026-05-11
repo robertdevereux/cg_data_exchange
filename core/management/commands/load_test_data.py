@@ -158,6 +158,18 @@ class Command(BaseCommand):
             if created:
                 counters['User'] += 1
 
+        User.objects.update_or_create(
+            username='admin',
+            defaults={
+                'first_name': 'Admin',
+                'last_name':  'User',
+                'email':      'admin@example.com',
+                'is_staff':   True,
+            }
+        )
+        User.objects.get(username='admin').set_password('testpass123')
+        User.objects.get(username='admin').save()
+
         alice      = User.objects.get(username='alice')
         bob        = User.objects.get(username='bob')
         carla      = User.objects.get(username='carla')  # noqa: F841
