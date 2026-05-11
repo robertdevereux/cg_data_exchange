@@ -14,6 +14,10 @@ urlpatterns = [
          views_layer2.section_question,
          name='section_question'),
 
+    path('section/<str:section_id>/set/<str:set_id>/',
+         views_layer2.section_set_page,
+         name='section_set_page'),
+
     path('section/<str:section_id>/review/',
          views_layer2.section_review,
          name='section_review'),

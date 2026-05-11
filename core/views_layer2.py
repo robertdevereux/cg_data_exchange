@@ -34,6 +34,8 @@ from .models import (
     AnswerTableHistory,
     Case,
     Question,
+    QuestionSet,
+    QuestionSetMember,
     Regime,
     Routing,
     Section,
@@ -159,11 +161,20 @@ def section_start(request, section_id):
         for row in routing_rows
     ]
 
-    # ── Build question metadata table ─────────────────────────────────────────
-    question_ids_in_section = list(
-        dict.fromkeys(r['current_node'] for r in routing_table)
+    # Unique ordered list of all node IDs referenced in this section's routing
+    all_node_ids = list(dict.fromkeys(r['current_node'] for r in routing_table))
+
+    # ── Separate Q-nodes (standalone questions) from S-nodes (QuestionSets) ──
+    existing_set_ids = set(
+        QuestionSet.objects
+        .filter(set_id__in=all_node_ids)
+        .values_list('set_id', flat=True)
     )
-    questions = Question.objects.filter(question_id__in=question_ids_in_section)
+    set_node_ids      = [nid for nid in all_node_ids if nid in existing_set_ids]
+    question_node_ids = [nid for nid in all_node_ids if nid not in existing_set_ids]
+
+    # ── Build question metadata table (standalone questions only) ─────────────
+    questions = Question.objects.filter(question_id__in=question_node_ids)
     question_table = {
         q.question_id: {
             'question_text': q.question_text,
@@ -175,31 +186,71 @@ def section_start(request, section_id):
         for q in questions
     }
 
-    # ── First question is the one with lowest order_in_section ────────────────
-    first_question_id = routing_rows.first().current_node if routing_rows.exists() else None
-    if not first_question_id:
+    # ── Build set metadata table and question→set mapping ─────────────────────
+    set_table = {}
+    question_to_set = {}
+    if set_node_ids:
+        set_members = (
+            QuestionSetMember.objects
+            .filter(question_set_id__in=set_node_ids)
+            .select_related('question', 'question_set')
+            .order_by('display_order')
+        )
+        for member in set_members:
+            sid = member.question_set_id
+            qid = member.question_id
+            if sid not in set_table:
+                set_table[sid] = {
+                    'set_title': member.question_set.set_title,
+                    'set_hint':  member.question_set.set_hint or '',
+                    'questions': [],
+                }
+            set_table[sid]['questions'].append({
+                'question_id':   qid,
+                'question_text': member.question.question_text,
+                'question_type': member.question.question_type,
+                'guidance':      member.question.guidance or '',
+                'hint':          member.question.hint or '',
+                'options':       member.question.options or '',
+                'required':      member.required,
+            })
+            question_to_set[qid] = sid
+
+    # ── First node is the one with lowest order_in_section ────────────────────
+    first_node = routing_rows.first().current_node if routing_rows.exists() else None
+    if not first_node:
         # No routing configured — treat as done
         return redirect('core:section_done', section_id=section_id)
 
     # ── Load confirmed answers from DB ────────────────────────────────────────
+    all_question_ids = question_node_ids + list(question_to_set.keys())
     existing_answers = Answer.objects.filter(
         user=request.user, case=case, section=section,
-        question_id__in=question_ids_in_section,
+        question_id__in=all_question_ids,
     )
     basic_answers = {a.question_id: a.answer for a in existing_answers}
 
     # ── Determine asked_ids and entry point ───────────────────────────────────
-    # Re-entry (answers exist): reconstruct asked_ids in routing order from the
-    # DB — only questions the citizen actually answered — then go to review.
-    # Fresh start: seed with first question only and go to first question.
+    # Re-entry (answers exist): reconstruct asked_ids in routing order — only
+    # nodes the citizen actually answered — then go to review.
+    # Fresh start: seed with first node only and go to first node.
     if basic_answers:
-        asked_ids = [
-            qid for qid in question_ids_in_section
-            if qid in basic_answers
-        ]
+        asked_ids = []
+        for node_id in all_node_ids:
+            if node_id in existing_set_ids:
+                # Set node: answered if any member question has an answer
+                member_qids = [
+                    m['question_id']
+                    for m in set_table.get(node_id, {}).get('questions', [])
+                ]
+                if any(qid in basic_answers for qid in member_qids):
+                    asked_ids.append(node_id)
+            else:
+                if node_id in basic_answers:
+                    asked_ids.append(node_id)
         go_to_review = True
     else:
-        asked_ids = [first_question_id]
+        asked_ids = [first_node]
         go_to_review = False
 
     # ── Update section status ─────────────────────────────────────────────────
@@ -213,20 +264,24 @@ def section_start(request, section_id):
 
     # ── Write everything to session ───────────────────────────────────────────
     update_session(request, {
-        'user_id':        request.user.pk,
-        'actor_id':       actor_id,
-        'regime_id':      regime.regime_id,
-        'case_id':        case.case_id,
-        'section_id':     section_id,
-        'routing_table':  routing_table,
-        'question_table': question_table,
-        'asked_ids':      asked_ids,
-        'basic_answers':  basic_answers,
+        'user_id':          request.user.pk,
+        'actor_id':         actor_id,
+        'regime_id':        regime.regime_id,
+        'case_id':          case.case_id,
+        'section_id':       section_id,
+        'routing_table':    routing_table,
+        'question_table':   question_table,
+        'set_table':        set_table,
+        'question_to_set':  question_to_set,
+        'asked_ids':        asked_ids,
+        'basic_answers':    basic_answers,
     })
 
     if go_to_review:
         return redirect('core:section_review', section_id=section_id)
-    return redirect('core:section_question', section_id=section_id, question_id=first_question_id)
+    if first_node in set_table:
+        return redirect('core:section_set_page', section_id=section_id, set_id=first_node)
+    return redirect('core:section_question', section_id=section_id, question_id=first_node)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -281,8 +336,12 @@ def section_question(request, section_id, question_id):
 
     # ── Back link ─────────────────────────────────────────────────────────────
     if len(asked_ids) > 1 and question_id == asked_ids[-1]:
-        prev_qid = asked_ids[-2]
-        back_url = f'/section/{section_id}/question/{prev_qid}/'
+        prev_node = asked_ids[-2]
+        set_table = pss.get('set_table', {})
+        if prev_node in set_table:
+            back_url = f'/section/{section_id}/set/{prev_node}/'
+        else:
+            back_url = f'/section/{section_id}/question/{prev_node}/'
     else:
         back_url = f'/section/{section_id}/start/'
 
@@ -328,8 +387,12 @@ def _process_answer(request, section, section_id, question_id, q_meta, pss):
         options = [o.strip() for o in q_meta['options'].split(';') if o.strip()]
         asked_ids = pss.get('asked_ids', [question_id])
         if len(asked_ids) > 1 and question_id == asked_ids[-1]:
-            prev_qid = asked_ids[-2]
-            back_url = f'/section/{section_id}/question/{prev_qid}/'
+            prev_node = asked_ids[-2]
+            _set_table = pss.get('set_table', {})
+            if prev_node in _set_table:
+                back_url = f'/section/{section_id}/set/{prev_node}/'
+            else:
+                back_url = f'/section/{section_id}/question/{prev_node}/'
         else:
             back_url = f'/section/{section_id}/start/'
         context = {
@@ -381,6 +444,8 @@ def _process_answer(request, section, section_id, question_id, q_meta, pss):
         # END
         return redirect('core:section_review', section_id=section_id)
 
+    if next_qid in pss.get('set_table', {}):
+        return redirect('core:section_set_page', section_id=section_id, set_id=next_qid)
     return redirect('core:section_question', section_id=section_id, question_id=next_qid)
 
 
@@ -882,3 +947,20 @@ def section_done(request, section_id):
         section_id, request.user,
     )
     return redirect('/')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 11.  QUESTION SET PAGE  (stub — multi-field screen for a QuestionSet node)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@login_required
+def section_set_page(request, section_id, set_id):
+    """Render / process a multi-question screen for a QuestionSet node.
+
+    Not yet implemented — placeholder returns 501 until Chunk 4.
+    """
+    from django.http import HttpResponse
+    return HttpResponse(
+        f'section_set_page for set {set_id!r} in section {section_id!r} — not yet implemented',
+        status=501,
+    )
