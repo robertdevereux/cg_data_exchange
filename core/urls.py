@@ -1,10 +1,30 @@
 from django.urls import path
+from django.views.generic import RedirectView
 
-from . import views_layer2
+from . import views_admin_tools, views_layer2
 
 app_name = 'core'
 
 urlpatterns = [
+
+    # ── Admin tools ───────────────────────────────────────────────────────────
+    path('tools/',
+         RedirectView.as_view(url='/tools/viewer/'),
+         name='tools_index'),
+
+    path('tools/viewer/',
+         views_admin_tools.tools_viewer,
+         name='tools_viewer'),
+
+    path('tools/question/<str:question_id>/edit/',
+         views_admin_tools.tools_question_edit,
+         name='tools_question_edit'),
+
+    path('tools/set/<str:set_id>/edit/',
+         views_admin_tools.tools_set_edit,
+         name='tools_set_edit'),
+
+
     # ── Standard section flow ─────────────────────────────────────────────────
     path('section/<str:section_id>/start/',
          views_layer2.section_start,

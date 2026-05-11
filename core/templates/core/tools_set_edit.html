@@ -1,0 +1,82 @@
+{% extends "core/base.html" %}
+
+{% block title %}Edit set {{ qs.set_id }} — PSS Demo{% endblock %}
+
+{% block content %}
+
+  <a href="{{ back_url }}" class="govuk-back-link">Back to viewer</a>
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-two-thirds">
+
+      <span class="govuk-caption-l">Question set <code>{{ qs.set_id }}</code></span>
+      <h1 class="govuk-heading-l">Edit question set</h1>
+
+      <form method="post" action="">
+        {% csrf_token %}
+
+        {# Back-navigation params preserved through POST #}
+        <input type="hidden" name="back_regime"   value="{{ back_regime }}">
+        <input type="hidden" name="back_schedule" value="{{ back_schedule }}">
+        <input type="hidden" name="back_section"  value="{{ back_section }}">
+
+        <div class="govuk-form-group">
+          <label class="govuk-label govuk-label--s" for="set_title">
+            Set title
+          </label>
+          <input class="govuk-input" id="set_title" name="set_title" type="text"
+                 value="{{ qs.set_title }}">
+        </div>
+
+        <div class="govuk-form-group">
+          <label class="govuk-label govuk-label--s" for="set_hint">
+            Hint
+            <span class="govuk-hint">Optional. Appears below the set heading.</span>
+          </label>
+          <input class="govuk-input" id="set_hint" name="set_hint" type="text"
+                 value="{{ qs.set_hint|default:'' }}">
+        </div>
+
+        <button class="govuk-button" data-module="govuk-button">Save changes</button>
+        <a href="{{ back_url }}" class="govuk-button govuk-button--secondary"
+           style="margin-left:1rem;">Cancel</a>
+
+      </form>
+
+    </div>
+  </div>
+
+  <div class="govuk-grid-row govuk-!-margin-top-6">
+    <div class="govuk-grid-column-full">
+
+      <h2 class="govuk-heading-m">Members <span class="govuk-caption-m">(read-only)</span></h2>
+
+      <table class="govuk-table">
+        <thead class="govuk-table__head">
+          <tr class="govuk-table__row">
+            <th scope="col" class="govuk-table__header">Order</th>
+            <th scope="col" class="govuk-table__header">Question ID</th>
+            <th scope="col" class="govuk-table__header">Question text</th>
+            <th scope="col" class="govuk-table__header">Type</th>
+            <th scope="col" class="govuk-table__header">Required</th>
+          </tr>
+        </thead>
+        <tbody class="govuk-table__body">
+          {% for member in qs.members.all %}
+          <tr class="govuk-table__row">
+            <td class="govuk-table__cell">{{ member.display_order }}</td>
+            <td class="govuk-table__cell"><code>{{ member.question_id }}</code></td>
+            <td class="govuk-table__cell">{{ member.question.question_text }}</td>
+            <td class="govuk-table__cell"><code>{{ member.question.question_type }}</code></td>
+            <td class="govuk-table__cell">
+              {% if member.required %}Yes{% else %}No{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+    </div>
+  </div>
+
+{% endblock %}

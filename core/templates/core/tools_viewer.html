@@ -1,0 +1,235 @@
+{% extends "core/base.html" %}
+
+{% block title %}Regime Configuration Viewer — PSS Demo{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-full">
+
+      <h1 class="govuk-heading-l">Regime Configuration Viewer</h1>
+
+      {# ── Zone 1: Selector bar ──────────────────────────────────────────── #}
+      <form method="get" action="">
+
+        <div class="govuk-form-group">
+          <label class="govuk-label govuk-label--s" for="regime">Regime</label>
+          <select class="govuk-select" id="regime" name="regime"
+                  onchange="this.form.submit()">
+            <option value="">— select a regime —</option>
+            {% for r in regimes %}
+            <option value="{{ r.regime_id }}"
+                    {% if r.regime_id == selected_regime_id %}selected{% endif %}>
+              {{ r.regime_name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        {% if selected_regime %}
+        <div class="govuk-form-group">
+          <label class="govuk-label govuk-label--s" for="section">Section</label>
+          <select class="govuk-select" id="section" name="section"
+                  onchange="this.form.submit()">
+            <option value="">— select a section —</option>
+            {% for sched in regime_schedules %}
+            <optgroup label="{{ sched.schedule_name }}">
+              {% for sec in sched.sections.all %}
+              <option value="{{ sec.section_id }}"
+                      {% if sec.section_id == selected_section_id %}selected{% endif %}>
+                {{ sec.section_name }}
+              </option>
+              {% endfor %}
+            </optgroup>
+            {% endfor %}
+            {% for sec in regime_direct_sections %}
+            <option value="{{ sec.section_id }}"
+                    {% if sec.section_id == selected_section_id %}selected{% endif %}>
+              {{ sec.section_name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        {% endif %}
+
+      </form>
+
+      {# ── Zone 2: Routing table ─────────────────────────────────────────── #}
+      {% if selected_section %}
+
+        <hr class="govuk-section-break govuk-section-break--m govuk-section-break--visible">
+
+        <h2 class="govuk-heading-m">
+          {{ selected_section.section_name }}
+          <span class="govuk-caption-m">{{ selected_section.section_id }}</span>
+        </h2>
+
+        {% if routing_rows %}
+        <table class="govuk-table">
+          <caption class="govuk-table__caption govuk-table__caption--s">Routing table</caption>
+          <thead class="govuk-table__head">
+            <tr class="govuk-table__row">
+              <th scope="col" class="govuk-table__header govuk-!-width-one-quarter">Current node</th>
+              <th scope="col" class="govuk-table__header govuk-!-width-one-quarter">Answer value</th>
+              <th scope="col" class="govuk-table__header govuk-!-width-one-quarter">Next node</th>
+              <th scope="col" class="govuk-table__header">Order</th>
+            </tr>
+          </thead>
+          <tbody class="govuk-table__body">
+            {% for row in routing_rows %}
+            <tr class="govuk-table__row">
+              <td class="govuk-table__cell">
+                <code>{{ row.current_node }}</code>
+              </td>
+              <td class="govuk-table__cell">
+                {% if row.answer_value %}
+                  <code>{{ row.answer_value }}</code>
+                {% else %}
+                  <span class="govuk-hint govuk-!-margin-0">(any)</span>
+                {% endif %}
+              </td>
+              <td class="govuk-table__cell">
+                {% if row.next_node %}
+                  <code>{{ row.next_node }}</code>
+                {% else %}
+                  <strong class="govuk-tag govuk-tag--grey">END</strong>
+                {% endif %}
+              </td>
+              <td class="govuk-table__cell">{{ row.order_in_section }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="govuk-body govuk-hint">No routing rows configured for this section.</p>
+        {% endif %}
+
+        {# ── Zone 3: Node detail panels ─────────────────────────────────── #}
+        {% if detail_questions or detail_sets %}
+
+          <hr class="govuk-section-break govuk-section-break--m govuk-section-break--visible">
+          <h2 class="govuk-heading-m">Node details</h2>
+
+          {# Q-node cards #}
+          {% for qid, q in detail_questions.items %}
+          <div class="govuk-summary-card">
+            <div class="govuk-summary-card__title-wrapper">
+              <h3 class="govuk-summary-card__title">
+                <code>{{ qid }}</code>
+                <span class="govuk-caption-m" style="font-weight:normal"> question</span>
+              </h3>
+              <ul class="govuk-summary-card__actions">
+                <li class="govuk-summary-card__action">
+                  <a class="govuk-link"
+                     href="/tools/question/{{ qid }}/edit/?back_regime={{ selected_regime_id }}&amp;back_section={{ selected_section_id }}">
+                    Change<span class="govuk-visually-hidden"> {{ qid }}</span>
+                  </a>
+                </li>
+              </ul>
+            </div>
+            <div class="govuk-summary-card__content">
+              <dl class="govuk-summary-list">
+                <div class="govuk-summary-list__row">
+                  <dt class="govuk-summary-list__key">Question text</dt>
+                  <dd class="govuk-summary-list__value">{{ q.question_text }}</dd>
+                </div>
+                <div class="govuk-summary-list__row">
+                  <dt class="govuk-summary-list__key">Type</dt>
+                  <dd class="govuk-summary-list__value">
+                    <code>{{ q.question_type }}</code>
+                  </dd>
+                </div>
+                {% if q.hint %}
+                <div class="govuk-summary-list__row">
+                  <dt class="govuk-summary-list__key">Hint</dt>
+                  <dd class="govuk-summary-list__value">{{ q.hint }}</dd>
+                </div>
+                {% endif %}
+                {% if q.guidance %}
+                <div class="govuk-summary-list__row">
+                  <dt class="govuk-summary-list__key">Guidance</dt>
+                  <dd class="govuk-summary-list__value">{{ q.guidance }}</dd>
+                </div>
+                {% endif %}
+                {% if q.options %}
+                <div class="govuk-summary-list__row">
+                  <dt class="govuk-summary-list__key">Options</dt>
+                  <dd class="govuk-summary-list__value">
+                    <code>{{ q.options }}</code>
+                  </dd>
+                </div>
+                {% endif %}
+              </dl>
+            </div>
+          </div>
+          {% endfor %}
+
+          {# S-node (QuestionSet) cards #}
+          {% for sid, qs in detail_sets.items %}
+          <div class="govuk-summary-card">
+            <div class="govuk-summary-card__title-wrapper">
+              <h3 class="govuk-summary-card__title">
+                <code>{{ sid }}</code>
+                <span class="govuk-caption-m" style="font-weight:normal"> question set</span>
+              </h3>
+              <ul class="govuk-summary-card__actions">
+                <li class="govuk-summary-card__action">
+                  <a class="govuk-link"
+                     href="/tools/set/{{ sid }}/edit/?back_regime={{ selected_regime_id }}&amp;back_section={{ selected_section_id }}">
+                    Change<span class="govuk-visually-hidden"> {{ sid }}</span>
+                  </a>
+                </li>
+              </ul>
+            </div>
+            <div class="govuk-summary-card__content">
+              <dl class="govuk-summary-list">
+                <div class="govuk-summary-list__row">
+                  <dt class="govuk-summary-list__key">Set title</dt>
+                  <dd class="govuk-summary-list__value">{{ qs.set_title }}</dd>
+                </div>
+                {% if qs.set_hint %}
+                <div class="govuk-summary-list__row">
+                  <dt class="govuk-summary-list__key">Hint</dt>
+                  <dd class="govuk-summary-list__value">{{ qs.set_hint }}</dd>
+                </div>
+                {% endif %}
+              </dl>
+
+              <h4 class="govuk-heading-s govuk-!-margin-top-4">Members</h4>
+              <table class="govuk-table govuk-!-margin-bottom-0">
+                <thead class="govuk-table__head">
+                  <tr class="govuk-table__row">
+                    <th scope="col" class="govuk-table__header">Order</th>
+                    <th scope="col" class="govuk-table__header">Question ID</th>
+                    <th scope="col" class="govuk-table__header">Question text</th>
+                    <th scope="col" class="govuk-table__header">Type</th>
+                    <th scope="col" class="govuk-table__header">Required</th>
+                  </tr>
+                </thead>
+                <tbody class="govuk-table__body">
+                  {% for member in qs.members.all %}
+                  <tr class="govuk-table__row">
+                    <td class="govuk-table__cell">{{ member.display_order }}</td>
+                    <td class="govuk-table__cell"><code>{{ member.question_id }}</code></td>
+                    <td class="govuk-table__cell">{{ member.question.question_text }}</td>
+                    <td class="govuk-table__cell"><code>{{ member.question.question_type }}</code></td>
+                    <td class="govuk-table__cell">
+                      {% if member.required %}Yes{% else %}No{% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {% endfor %}
+
+        {% endif %}{# detail_questions or detail_sets #}
+
+      {% endif %}{# selected_section #}
+
+    </div>
+  </div>
+
+{% endblock %}
