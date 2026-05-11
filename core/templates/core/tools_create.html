@@ -19,7 +19,7 @@
       <h1 class="govuk-heading-l">Create new regime</h1>
 
       <p class="govuk-body">
-        Complete all six steps to define the new regime. Each step saves immediately when you confirm.
+        Complete all seven steps to define the new regime. Each step saves immediately when you confirm.
       </p>
 
       {# ── Task list ─────────────────────────────────────────────────────── #}
@@ -53,13 +53,14 @@
       {# ── All complete block ─────────────────────────────────────────────── #}
       {% if all_complete %}
       <div class="govuk-inset-text">
-        All steps complete. The new regime has been created and is ready to use.
+        The required steps are complete. Your regime has been created.
+        Optional steps (Questions, Sets, Set members, Schedules) can be
+        completed now or revisited later.
       </div>
-      <div class="govuk-button-group">
-        <a href="/tools/viewer/?regime={{ target_regime_id }}" class="govuk-button">
-          View regime in configuration viewer
-        </a>
-      </div>
+      <a href="/tools/viewer/?regime={{ target_regime_id }}"
+         class="govuk-button">
+        View new regime in configuration viewer
+      </a>
       {% endif %}
 
       {# ── Abandon draft ─────────────────────────────────────────────────── #}

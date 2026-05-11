@@ -289,7 +289,15 @@ def tools_create(request):
             'action_url':   action_url,
         })
 
-    all_complete = all(s['status'] == 'complete' for s in steps)
+    REQUIRED_STEPS = {
+        'META_ADD_REGIME',
+        'META_ADD_SECTIONS',
+        'META_ADD_ROUTING',
+    }
+    all_complete = all(
+        statuses.get(sid) == 'complete'
+        for sid in REQUIRED_STEPS
+    )
 
     # ── Read target regime ID from META_ADD_REGIME answer ─────────────────────
     target_regime_id = ''
