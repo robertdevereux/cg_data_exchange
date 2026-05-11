@@ -1,24 +1,34 @@
 """
-Admin Tools: Regime Configuration Viewer
-=========================================
-Staff-only views for inspecting and editing regime configuration.
+Admin Tools: Regime Configuration Viewer and Creation Wizard
+=============================================================
+Staff-only views for inspecting, editing, and creating regime configuration.
 
+  /tools/                                     — staff landing page
   /tools/viewer/                              — browse regimes / routing tables
   /tools/question/<question_id>/edit/         — edit a single question
   /tools/set/<set_id>/edit/                   — edit a QuestionSet header
+  /tools/create/                              — regime creation wizard (task list)
+  /tools/create/abandon/                      — abandon current draft and restart
 """
+
+import uuid
 
 from django.contrib.auth.decorators import user_passes_test
 from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.http import require_POST
 
+from .interfaces import bootstrap_section_statuses, get_or_create_case
 from .models import (
+    Case,
     Question,
     QuestionSet,
     Regime,
     Routing,
     Schedule,
     Section,
+    SectionStatus,
 )
+from .session import update_session
 
 staff_required = user_passes_test(lambda u: u.is_staff)
 
@@ -201,3 +211,126 @@ def tools_set_edit(request, set_id):
         'back_section': back_section,
     }
     return render(request, 'core/tools_set_edit.html', context)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. REGIME CREATION WIZARD
+# ─────────────────────────────────────────────────────────────────────────────
+
+@staff_required
+def tools_create(request):
+    """
+    Regime creation wizard.
+    Creates/finds a draft Case against META regime for the admin user,
+    shows six steps as a GDS task list, each linking into Layer 2.
+    Processors run automatically on confirmation of each step.
+    """
+    try:
+        meta_regime = Regime.objects.get(regime_id='META')
+    except Regime.DoesNotExist:
+        return render(request, 'core/tools_create.html', {
+            'error': 'META regime not found — run load_test_data first.'
+        })
+
+    # ── Find or create a draft case for this admin user ───────────────────────
+    case = (
+        Case.objects
+        .filter(user=request.user, regime=meta_regime, status=Case.DRAFT)
+        .order_by('-started_at')
+        .first()
+    )
+    if not case:
+        case = Case.objects.create(
+            case_id=str(uuid.uuid4()),
+            user=request.user,
+            regime=meta_regime,
+            status=Case.DRAFT,
+        )
+
+    # ── Bootstrap section statuses ────────────────────────────────────────────
+    meta_sections = Section.objects.filter(
+        regime=meta_regime, schedule__isnull=True
+    ).order_by('display_order')
+
+    bootstrap_section_statuses(request.user, meta_regime, meta_sections)
+
+    statuses = {
+        ss.section_id: ss.status
+        for ss in SectionStatus.objects.filter(
+            user=request.user, regime=meta_regime, section__in=meta_sections,
+        )
+    }
+
+    # ── Build task list ───────────────────────────────────────────────────────
+    _status_label = {
+        'not_started': 'Not yet started',
+        'in_progress': 'In progress',
+        'complete':    'Completed',
+    }
+    _status_tag = {
+        'not_started': 'govuk-tag--grey',
+        'in_progress': 'govuk-tag--blue',
+        'complete':    '',
+    }
+
+    steps = []
+    for section in meta_sections:
+        status = statuses.get(section.section_id, 'not_started')
+        if section.section_type in (1, 2):
+            action_url = f'/section/{section.section_id}/table/'
+        else:
+            action_url = f'/section/{section.section_id}/start/'
+        steps.append({
+            'section':      section,
+            'status':       status,
+            'status_label': _status_label.get(status, 'Not yet started'),
+            'status_tag':   _status_tag.get(status, 'govuk-tag--grey'),
+            'action_url':   action_url,
+        })
+
+    all_complete = all(s['status'] == 'complete' for s in steps)
+
+    # ── Set session so Layer 2 knows how to navigate ──────────────────────────
+    update_session(request, {
+        'user_id':         request.user.pk,
+        'actor_id':        request.user.pk,
+        'regime_id':       meta_regime.regime_id,
+        'case_id':         case.case_id,
+        'return_url':      '/tools/create/',
+        'regime_home_url': '/tools/create/',
+        'breadcrumbs': [
+            {'label': 'Platform administration', 'url': '/tools/'},
+            {'label': 'Create new regime',       'url': '/tools/create/'},
+        ],
+    })
+
+    context = {
+        'steps':        steps,
+        'all_complete': all_complete,
+        'case_id':      case.case_id,
+    }
+    return render(request, 'core/tools_create.html', context)
+
+
+@staff_required
+@require_POST
+def tools_create_abandon(request):
+    """
+    Marks the current draft META case as lapsed so the admin
+    can start a fresh creation session.
+    """
+    try:
+        meta_regime = Regime.objects.get(regime_id='META')
+        Case.objects.filter(
+            user=request.user,
+            regime=meta_regime,
+            status=Case.DRAFT,
+        ).update(status=Case.LAPSED)
+        # Clear section statuses so the new case starts fresh
+        SectionStatus.objects.filter(
+            user=request.user,
+            regime=meta_regime,
+        ).delete()
+    except Regime.DoesNotExist:
+        pass
+    return redirect('/tools/create/')

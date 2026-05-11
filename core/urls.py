@@ -23,6 +23,14 @@ urlpatterns = [
          views_admin_tools.tools_set_edit,
          name='tools_set_edit'),
 
+    path('tools/create/',
+         views_admin_tools.tools_create,
+         name='tools_create'),
+
+    path('tools/create/abandon/',
+         views_admin_tools.tools_create_abandon,
+         name='tools_create_abandon'),
+
 
     # ── Standard section flow ─────────────────────────────────────────────────
     path('section/<str:section_id>/start/',
