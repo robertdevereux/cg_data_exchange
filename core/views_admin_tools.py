@@ -299,6 +299,11 @@ def tools_create(request):
         for sid in REQUIRED_STEPS
     )
 
+    # ── Submit completed case so the next visit starts fresh ─────────────────
+    if all_complete and case.status == Case.DRAFT:
+        case.status = Case.SUBMITTED
+        case.save()
+
     # ── Read target regime ID from META_ADD_REGIME answer ─────────────────────
     target_regime_id = ''
     try:
@@ -348,12 +353,12 @@ def tools_create_abandon(request):
         Case.objects.filter(
             user=request.user,
             regime=meta_regime,
-            status=Case.DRAFT,
+            status__in=[Case.DRAFT, Case.SUBMITTED],
         ).update(status=Case.LAPSED)
         # Clear section statuses so the new case starts fresh
         SectionStatus.objects.filter(
             user=request.user,
-            regime=meta_regime,
+            section__regime=meta_regime,
         ).delete()
     except Regime.DoesNotExist:
         pass

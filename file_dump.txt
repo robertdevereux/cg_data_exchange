@@ -8,6 +8,7 @@ SKIP_DIRS = {
     ".git", "__pycache__", ".venv", "venv", "env",
     "node_modules", ".mypy_cache", ".pytest_cache",
     "migrations",  # remove this if you want migrations included
+    "_reference", # exclude reference implementation from file dump
 }
 
 def combine_files(output_file="file_dump.txt"):
@@ -65,2493 +66,6 @@ if __name__ == '__main__':
     main()
 
 
-##### ===== _reference/manage.py ===== #####
-
-#!/usr/bin/env python
-"""Django's command-line utility for administrative tasks."""
-import os
-import sys
-
-
-def main():
-    """Run administrative tasks."""
-    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'main.settings')
-    try:
-        from django.core.management import execute_from_command_line
-    except ImportError as exc:
-        raise ImportError(
-            "Couldn't import Django. Are you sure it's installed and "
-            "available on your PYTHONPATH environment variable? Did you "
-            "forget to activate a virtual environment?"
-        ) from exc
-    execute_from_command_line(sys.argv)
-
-
-if __name__ == '__main__':
-    main()
-
-
-##### ===== _reference/q_schedules.py ===== #####
-
-from app1.models import Schedule, Regime
-
-Schedule.objects.all().delete()
-print("✅ All existing schedule data deleted!")
-
-# Schedule data
-schedules = [
-    {"schedule_id": "Schedule_1", "schedule_name": "Jewelry", "regime_ids": ["Regime_1"]},
-    {"schedule_id": "Schedule_2", "schedule_name": "Schedule for land and building", "regime_ids": ["Regime_1"]},
-    {"schedule_id": "Schedule_1", "schedule_name": "Personal Details", "regime_ids": ["Regime_2"]},
-    {"schedule_id": "Schedule_3", "schedule_name": "Other Details", "regime_ids": ["Regime_2"]},
-    {"schedule_id": "Schedule_2", "schedule_name": "Driving licence details", "regime_ids": ["Regime_3"]}
-]
-
-# Insert into the database
-for sched in schedules:
-    schedule, created = Schedule.objects.update_or_create(
-        schedule_id=sched["schedule_id"],
-        defaults={"schedule_name": sched["schedule_name"]}
-    )
-    # Link the schedule to regimes
-    for regime_id in sched["regime_ids"]:
-        regime = Regime.objects.filter(regime_id=regime_id).first()
-        if regime:
-            schedule.regimes.add(regime)
-
-print("✅ New Schedule data added successfully!")
-
-
-##### ===== _reference/rob.py ===== #####
-
-
-
-##### ===== _reference/rob2.py ===== #####
-
-# This routine sums the values of different keys
-# Needs an additional test (at $$$ below) only to create total field for selected answers 
-# and initial consistency needs to ensure these are all numeric answer types
-
-
-# create some test data
-a={1: {'A': 23, 'B': 300}, 2: {'A': 3, 'B': 40}, 5:{'A': 1000, 'B': 2000}}
-print('a is: ',a)
-
-
-# set up variable names for running totals, and record count, as a list
-names=[]
-for key in a[1]: # $$$ insert extra check here $$$
-	name_original=str(key)
-	name_total=name_original+'_total'
-	names.append([name_original,name_total])
-
-# create new dictionay items
-a['Total']={}
-a['Total']['record_count']=0
-for name in names:
-	a['Total'][name[1]]=0
-
-# compute running totals and record count (note only one iteration however many fields to be summed)
-for i in iter(a):
-	if i!='Total':
-		a['Total']['record_count']+=1
-		for name in names:
-			a['Total'][name[1]]+=a[i][name[0]]
-
-print('a is now: ',a)
-
-##### ===== _reference/app1/__init__.py ===== #####
-
-
-
-##### ===== _reference/app1/admin.py ===== #####
-
-from django.contrib import admin
-
-# Register your models here.
-
-
-##### ===== _reference/app1/apps.py ===== #####
-
-from django.apps import AppConfig
-
-
-class App1Config(AppConfig):
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'app1'
-
-
-##### ===== _reference/app1/forms.py ===== #####
-
-from django import forms
-from .models import User, Regime, Schedule,Section, Permission
-
-
-class RegimeForm(forms.ModelForm):
-    class Meta:
-        model = Regime
-        fields = ["regime_id", "regime_name"]  # Adjust based on your model
-
-class ScheduleForm(forms.ModelForm):
-    class Meta:
-        model = Schedule
-        fields = ["regime", "schedule_id", "schedule_name"]  # Adjust based on your model
-
-class SectionForm(forms.ModelForm):
-    class Meta:
-        model = Section
-        fields = ["schedule", "section_id", "section_name", "section_type"]  # Adjust based on your model
-
-
-
-##### ===== _reference/app1/models.py ===== #####
-
-from django.db import models
-import json
-
-### 🔹 Top Level: Regime (e.g., a Tax or Benefit System) ###
-class Regime(models.Model):
-    regime_id = models.CharField(max_length=100, primary_key=True)
-    regime_name = models.CharField(max_length=255)
-
-    def __str__(self):
-        return self.regime_name
-
-### 🔹 Middle Level: Schedule (A grouping of Sections, eg IHT schedule) ###
-class Schedule(models.Model):
-    schedule_id = models.CharField(max_length=100, primary_key=True)
-    schedule_name = models.CharField(max_length=255)
-
-    # Link to Regime
-    regime = models.ForeignKey(
-        Regime,
-        to_field="regime_id",
-        on_delete=models.CASCADE
-    )
-
-    def __str__(self):
-        return self.schedule_name
-
-### 🔹 Bottom Level: Section (may belong to a Schedule or directly to a Regime) ###
-class Section(models.Model):
-    SECTION_MODE_CHOICES = [
-        ("single", "One question per page"),
-        ("multi", "All questions on one page"),
-        ("flexible", "Flexible layout"),
-        ("custom", "Custom section with bespoke view"),
-    ]
-
-    section_id = models.CharField(max_length=100, primary_key=True)
-    section_name = models.CharField(max_length=255)
-    section_type = models.IntegerField(default=0)
-    section_records = models.IntegerField(default=0)
-
-    section_mode = models.CharField(
-        max_length=10,
-        choices=SECTION_MODE_CHOICES,
-        default="flexible",
-        help_text="Controls how this section is rendered"
-    )
-
-    custom_view_name = models.CharField(
-        max_length=100,
-        blank=True,
-        null=True,
-        help_text="Django view name to use if section_mode is 'custom'"
-    )
-
-    schedule = models.ForeignKey(
-        Schedule,
-        to_field="schedule_id",
-        on_delete=models.CASCADE,
-        null=True,
-        blank=True
-    )
-
-    regime = models.ForeignKey(
-        'Regime',
-        to_field="regime_id",
-        on_delete=models.CASCADE,
-        null=True,
-        blank=True
-    )
-
-    def __str__(self):
-        return self.section_name
-
-    def get_regime(self):
-        if self.schedule:
-            return self.schedule.regime
-        return self.regime
-
-### 🔹 Master List of Questions (Independent of Sections) ###
-class Question(models.Model):
-    QUESTION_TYPE_CHOICES = [
-        ('text', 'Text'),
-        ('number', 'Number'),
-        ('radio', 'Radio'),
-        ('picklist', 'Pick List'),
-        ('variant-a', 'Variant A'),
-        ('variant-b', 'Variant B'),
-    ]
-    ANSWER_TYPE_CHOICES = [
-        ('text', 'Text'),
-        ('number', 'Number'),
-        ('date', 'Date'),
-    ]
-
-    question_id = models.CharField(max_length=50, primary_key=True)  # Unique identifier (Q1, Q2, etc.)
-    question_text = models.TextField(blank=True, null=True)  # Main question text
-    question_type = models.CharField(max_length=20, choices=QUESTION_TYPE_CHOICES)
-    guidance = models.TextField(blank=True, null=True)  # Long guidance text before the question
-    hint = models.CharField(max_length=255, blank=True, null=True)  # Short hint after the question
-    answer_type = models.CharField(max_length=20, choices=ANSWER_TYPE_CHOICES, blank=True, null=True)  # Expected answer type
-    options = models.TextField(blank=True, null=True)  # Semi-colon separated values for radio/picklist
-    parent_question = models.ForeignKey(
-        'self', on_delete=models.CASCADE, blank=True, null=True, related_name='sub_questions'
-    )  # Links sub-questions to a variant screen
-
-    def __str__(self):
-        return f"{self.question_id} - {self.question_text}"
-
-### 🔹 Routing (Defines the flow of questions within a Section) ###
-class Routing(models.Model):
-    section_id = models.CharField(max_length=100, default="section_1")
-    current_question = models.CharField(max_length=50)
-    answer_value = models.TextField(blank=True, null=True)  # Optional: branching logic
-    next_question = models.CharField(max_length=50, default="Q1")
-    order_in_section = models.PositiveIntegerField(default=0)
-    totalled = models.PositiveIntegerField(default=0)
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=['section_id', 'current_question', 'answer_value'],
-                name="unique_routing_rule"
-            )
-        ]
-        ordering = ['section_id', 'order_in_section']  # Default sort order
-
-
-### 🔹 Permissions (Controls Access to Sections, which in turn define access to Schedule/Regime) ###
-class Permission(models.Model):
-    user_id = models.CharField(max_length=100)  # External user system assumed
-    section = models.ForeignKey(
-        Section,
-        to_field="section_id",
-        on_delete=models.CASCADE
-    )
-
-    class Meta:
-        unique_together = ('user_id', 'section')  # Prevent duplicates
-
-    def __str__(self):
-        return f"{self.user_id} can access {self.section.section_name}"
-
-class AnswerBasic(models.Model):
-    user_id = models.CharField(max_length=100)
-    regime_id = models.CharField(max_length=100)
-    question_id = models.CharField(max_length=100)
-    answer = models.JSONField()
-    created_at = models.DateTimeField(auto_now_add=True)  # Timestamp for when the answer is created
-
-    class Meta:
-        unique_together = ("user_id", "regime_id", "question_id")  # Ensures only 1 record per (user, regime, question)
-
-    def set_answer(self, value):
-        """Handles conversion of lists to JSON for checkbox answers."""
-        if isinstance(value, list):  # Convert list to JSON string
-            self.answer = json.dumps(value)
-        else:  # Store text as-is
-            self.answer = value
-
-    def get_answer(self):
-        """Handles conversion of JSON string back to Python list if necessary."""
-        try:
-            return json.loads(self.answer)  # Convert back to list if it's JSON
-        except json.JSONDecodeError:
-            return self.answer  # Return as-is if it's plain text
-
-class AnswerTable(models.Model):
-    user_id = models.CharField(max_length=100)
-    regime_id = models.CharField(max_length=100)
-    question_id = models.CharField(max_length=100)  # Reference to the table (usually section_id)
-    answer = models.JSONField(default=list)  # ✅ Stores multiple rows of answers; default = empty list
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        unique_together = ("user_id", "regime_id", "question_id")  # One table per user/regime/section
-
-    def __str__(self):
-        return f"User {self.user_id} - Table {self.question_id}"
-
-
-class SectionStatus(models.Model):
-    STATUS_CHOICES = [
-        ("not_started", "Not Started"),
-        ("in_progress", "In Progress"),
-        ("complete", "Complete"),
-    ]
-
-    user_id = models.CharField(max_length=100)
-    regime_id = models.CharField(max_length=100)
-    section_id = models.CharField(max_length=100)  # One status per section
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="not_started")  # Overall section status
-
-    def __str__(self):
-        return f"User {self.user_id} - Section {self.section_id} ({self.status})"
-
-class User(models.Model):
-    user_id = models.CharField(max_length=100, unique=True)  # User identifier (assumed external system handles users)
-    user_name = models.CharField(max_length=255, default="AN Other")
-
-    def __str__(self):
-        return self.user_id
-
-class ScheduleStatus(models.Model):
-    STATUS_CHOICES = [
-        ("not_started", "Not Started"),
-        ("in_progress", "In Progress"),
-        ("complete", "Complete"),
-    ]
-
-    user_id = models.CharField(max_length=100)
-    regime_id = models.CharField(max_length=100)
-    schedule_id = models.CharField(max_length=100)  # One status per schedule
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="not_started")  # Overall schedule status
-
-    def __str__(self):
-        return f"User {self.user_id} - Schedule {self.schedule_id} ({self.status})"
-
-
-##### ===== _reference/app1/tests.py ===== #####
-
-from django.test import TestCase
-
-# Create your tests here.
-
-
-##### ===== _reference/app1/urls.py ===== #####
-
-from django.urls import path
-from .views import restart_process, assign_routing_order2
-from .views_data import load_dummy_data, upload_regimes, upload_schedules, upload_sections, upload_routing, upload_questions, upload_permissions, new_regime, new_schedule, new_section, display_regimes, display_schedules, display_sections,display_routing,display_questions, display_permissions, display_answer_basic
-from .views_select import select_schedule, select_section, record_schedule_choice, record_section_choice
-from .views_gather import process_section, question_router, process_answer, review_section, confirm_section
-from .views_screens import screen, task_list, table_details, delete_table_record
-from . import views
-
-urlpatterns = [
-
-    # from views
-    path("restart/", restart_process, name="restart_process"),
-    path('assign_routing_order/', assign_routing_order2, name='assign_routing_order'),
-
-    # from views_data: upload files
-    path('load_dummy_data/', load_dummy_data, name='load_dummy_data'),
-    path('upload/regimes/', upload_regimes, name='upload_regimes'),
-    path('upload/schedules/', upload_schedules, name='upload_schedules'),
-    path('upload/sections/', upload_sections, name='upload_sections'),
-    path('upload/routing/', upload_routing, name='upload_routing'),
-    path('upload/questions/', upload_questions, name='upload_questions'),
-    path('upload/permissions/', upload_permissions, name='upload_permissions'),
-
-    # from views_data: enter data to define new elements
-    path('new/regime/', new_regime, name='new_regime'),
-    path('new/schedule/', new_schedule, name='new_schedule'),
-    path('new/section/', new_section, name='new_section'),
-
-    # from views_data: display data
-    path('display/permissions/', display_permissions, name='display_permissions'),
-    path('display/regimes/', display_regimes, name='display_regimes'),
-    path('display/schedules/', display_schedules, name='display_schedules'),
-    path('display/sections/', display_sections, name='display_sections'),
-    path('display/routing/', display_routing, name='display_routing'),
-    path('display/questions/', display_questions, name='display_questions'),
-    path('display/answer_basic/', display_answer_basic, name='display_answer_basic'),
-
-    # from views_select
-    path("select_schedule/", select_schedule, name="select_schedule"),
-    path("select_section/<str:schedule_id>/", select_section, name="select_section"), # with schedule
-    path("select_section/", select_section, name="select_section"),  # no schedule_id = simple regime
-    #path("summarise_selection/<str:schedule_id>/<str:section_id>/", summarise_selection, name="summarise_selection"),
-    path("record-section/<str:section_id>/", record_section_choice, name="record_section_choice"),
-    path("record-schedule/<str:schedule_id>/", record_schedule_choice, name="record_schedule_choice"),
-
-
-    # from views_gather
-    path("process_section/", process_section, name="process_section"),
-    path("question/<str:question_id>/", question_router, name="question_router"),
-    path("process/<str:question_id>/", process_answer, name="process_answer"),
-    path("review_section/", review_section, name="review_section"),
-    path("confirm_section/", confirm_section, name="confirm_section"),
-
-    # from views_screens
-    path("task_list/", task_list, name="task_list"),
-    path("screen/<str:question_id>/", screen, name="screen"),
-    path("table_details",table_details,name="table_details"),
-    path('section/<str:section_id>/delete/<int:record_index>/', delete_table_record, name='delete_table_record'),
-
-
-
-]
-
-
-##### ===== _reference/app1/views.py ===== #####
-
-import csv, json, bleach
-from django.shortcuts import render, redirect, get_object_or_404
-from django.http import HttpResponse, JsonResponse, HttpResponseNotFound
-from django.contrib import messages
-from urllib.parse import urlencode
-from .models import Permission, Regime, Schedule, Section, Routing, Question
-
-def restart_process(request):
-    print("******** SESSION DATA BEFORE FLUSH ********")
-    print(request.session.items())  # Prints all session key-value pairs
-    request.session.clear()
-    request.session.flush()
-    request.session.create()  # Ensures a new session ID is generated
-
-    print("******** SESSION DATA AFTER FLUSH ********")
-    print(request.session.items())  # Prints all session key-value pairs
-
-    return redirect("user_login")
-
-def task_list(request):
-    progress=[{'name':'Task 1', 'hint':'some hint', 'status':'Not started'}]
-    return render(request, "app1/task_list.html", {"progress": progress})
-
-def total(table_answers, column_names):
-    # This routine sums the values of specified columns in a table
-    # column_names needs to be a list of the identifiers for the selected column questions
-
-    # FOR NOW create some test data in the format of table_answers
-    table_answers = {1: {'A': 23, 'B': 300}, 2: {'A': 3, 'B': 40}, 5: {'A': 1000, 'B': 2000}}
-    print('a is: ', a)
-    names=['A','C']
-
-    # set up variable names for running totals, and record count, as a list
-    names_totals = []
-    for key in a[1]:  # $$$ insert extra check here $$$
-        name_original = str(key)
-        name_total = name_original + '_total'
-        names.append([name_original, name_total])
-
-    # create new dictionay items
-    a['Total'] = {}
-    a['Total']['record_count'] = 0
-    for name in names:
-        a['Total'][name[1]] = 0
-
-    # compute running totals and record count (note only one iteration however many fields to be summed)
-    for i in iter(a):
-        if i != 'Total':
-            a['Total']['record_count'] += 1
-            for name in names:
-                a['Total'][name[1]] += a[i][name[0]]
-
-    print('a is now: ', a)
-
-def assign_routing_order2(request):
-    section_ids = Routing.objects.values_list('section_id', flat=True).distinct()
-
-    updated = 0
-
-    for section in section_ids:
-        routings = Routing.objects.filter(section_id=section).order_by('id')  # assume id ~ original insert order
-        for i, route in enumerate(routings):
-            route.order_in_section = i
-            route.save(update_fields=['order_in_section'])
-            updated += 1
-
-    messages.success(request, f"✅ Assigned order to {updated} routing entries.")
-    return redirect('user_login')
-
-
-'''
-def model_to_dict(model, unique_field):
-    # unique field is a string; model is just the model name (not a string)
-    return {
-        obj[unique_field]: {k: v for k, v in obj.items() if k != unique_field}
-        for obj in model.objects.values()
-    }
-'''
-
-##### ===== _reference/app1/views_data.py ===== #####
-
-import csv, re, io
-
-from django.http import HttpResponse
-from django.shortcuts import render, redirect
-from django.contrib import messages
-from .models import Regime, Schedule, Section, Routing, Question, Permission, AnswerBasic, AnswerTable
-from .forms import RegimeForm, ScheduleForm, SectionForm  # We'll create these forms
-
-def clean_uploaded_csv(file, expected_field_count=None, strict_column_check=True):
-    """
-    Cleans and returns rows from a CSV file-like object.
-
-    Args:
-        file: Django UploadedFile (request.FILES['file'])
-        expected_field_count: int, optional
-        strict_column_check: bool, if True, raises on non-empty extra columns
-
-    Returns:
-        (header, rows): list of header columns, list of cleaned row lists
-
-    Raises:
-        ValueError if header is missing or if rows are malformed
-    """
-    content = file.read().decode('utf-8', errors='ignore')
-    print(f"📏 Raw content length: {len(content)}")
-
-    # Normalize line endings
-    content = content.replace('\r\n', '\n').replace('\r', '\n')
-    raw_lines = content.split('\n')
-
-    # Remove fully empty lines (just whitespace or commas)
-    meaningful_lines = []
-    for line in raw_lines:
-        fields = [f.strip() for f in line.split(',')]
-        if any(field for field in fields):
-            meaningful_lines.append(','.join(fields))
-
-    print(f"🧹 Non-empty lines: {len(meaningful_lines)}")
-
-    # Strip control characters
-    cleaned_lines = [re.sub(r'[\x00-\x1F\x7F-\x9F]', '', line) for line in meaningful_lines]
-
-    print("🧪 Sample cleaned lines:")
-    for i, line in enumerate(cleaned_lines[:5]):
-        print(f"  {i+1}: {repr(line)} — {line.count(',')} commas")
-
-    # Parse with CSV reader
-    csvfile = io.StringIO('\n'.join(cleaned_lines))
-    reader = csv.reader(csvfile)
-
-    try:
-        header = next(reader)
-        print(f"🧠 Header: {header}")
-    except StopIteration:
-        raise ValueError("Empty or invalid CSV file — no header row found.")
-
-    rows = []
-    for i, row in enumerate(reader, start=2):
-        base_fields = row[:len(header)]
-        extra_fields = row[len(header):]
-
-        # Check for unexpected data in extra fields
-        if strict_column_check and extra_fields and any(f.strip() for f in extra_fields):
-            raise ValueError(f"❌ Row {i} has unexpected extra data columns: {extra_fields}")
-
-        rows.append(base_fields)
-
-    if expected_field_count and len(header) != expected_field_count:
-        raise ValueError(
-            f"❌ Expected {expected_field_count} columns, but header has {len(header)}."
-        )
-
-    return header, rows
-
-def upload_regimes(request):
-    if request.method == 'POST' and request.FILES.get('file'):
-        file = request.FILES['file']
-        reader = csv.reader(file.read().decode('utf-8').splitlines())
-        next(reader)  # Skip header row
-        for row in reader:
-            p=Regime(regime_id=row[0],regime_name=row[1])
-            p.save()
-        messages.success(request, "Regimes uploaded successfully!")
-        return redirect('upload_regimes')
-
-    return render(request, 'app1/upload_csv.html', {'data_name':'Regime'})
-
-def upload_schedules(request):
-    if request.method == 'POST' and request.FILES.get('file'):
-        file = request.FILES['file']
-        reader = csv.reader(file.read().decode('utf-8').splitlines())
-        next(reader)  # Skip header row
-        for row in reader:
-            p=Schedule(regime_id=row[0],schedule_id=row[1],schedule_name=row[2])
-            p.save()
-        messages.success(request, "Schedules uploaded successfully!")
-        return redirect('upload_schedules')
-
-    return render(request, 'app1/upload_csv.html', {'data_name':'Schedule'})
-
-def upload_sections(request):
-    if request.method == 'POST' and request.FILES.get('file'):
-        file = request.FILES['file']
-        reader = csv.reader(file.read().decode('utf-8').splitlines())
-        next(reader)  # Skip header row
-        for row in reader:
-            p=Section(schedule_id=row[0],section_id=row[1],section_name=row[2], section_type=0)
-            p.save()
-        messages.success(request, "Sections uploaded successfully!")
-        return redirect('upload_sections')
-
-    return render(request, 'app1/upload_csv.html', {'data_name':'Section'})
-
-
-def upload_routing(request):
-    if request.method == 'POST' and request.FILES.get('file'):
-        try:
-            header, rows = clean_uploaded_csv(
-                request.FILES['file'],
-                expected_field_count=6,
-                strict_column_check=True
-            )
-        except ValueError as e:
-            messages.error(request, f"❌ Error: {str(e)}")
-            return redirect('upload_routing')
-
-        success_count = 0
-        error_count = 0
-
-        for i, row in enumerate(rows, start=2):
-            row = [cell.strip() if cell else None for cell in row]
-
-            mapped_data = {
-                'next_question': row[3],
-                'order_in_section': int(row[4]) if row[4] else 0,
-                'totalled': int(row[5]) if row[5] else 0,
-            }
-
-            try:
-                Routing.objects.update_or_create(
-                    section_id=row[0],
-                    current_question=row[1],
-                    answer_value=row[2],  # Can be blank/None
-                    defaults=mapped_data
-                )
-                print(f"✅ Row {i}: Routing loaded for {row[0]} → {row[3]}")
-                success_count += 1
-            except Exception as e:
-                print(f"❌ Row {i} error: {e}")
-                error_count += 1
-
-        messages.success(
-            request,
-            f"✅ Routing upload complete: {success_count} loaded, {error_count} errors."
-        )
-        return redirect('upload_routing')
-
-    return render(request, 'app1/upload_csv.html', {'data_name': 'Routing'})
-
-def upload_questions(request):
-    if request.method == 'POST' and request.FILES.get('file'):
-        try:
-            header, rows = clean_uploaded_csv(
-                request.FILES['file'],
-                expected_field_count=8, # matching the number of fields in mapped_data below, plus question_id
-                strict_column_check=True # throws an error if file has data beyond first 8 cols
-            )
-        except ValueError as e:
-            messages.error(request, f"❌ Error: {str(e)}")
-            return redirect('upload_questions')
-
-        error_count=0
-        success_count=0
-
-        for i, row in enumerate(rows, start=2):
-            # Ensure row has exactly 8 fields
-            row = (row + [None] * 8)[:8]
-            row = [cell.strip() if cell else None for cell in row]
-
-            mapped_data = {
-                'guidance': row[1],
-                'question_text': row[2],
-                'hint': row[3],
-                'question_type': row[4],
-                'options': row[5],
-                'answer_type': row[6],
-                'parent_question_id': row[7],
-            }
-
-            question_id = row[0]
-            if not question_id:
-                print(f"⚠️ Skipping row {i}: missing question ID")
-                error_count += 1
-                continue
-
-            try:
-                Question.objects.update_or_create(
-                    question_id=question_id,
-                    defaults=mapped_data
-                )
-                #print(f"✅ Row {i}: Loaded question {question_id}")
-                success_count += 1
-            except Exception as e:
-                print(f"❌ Row {i} error: {e}")
-                error_count += 1
-
-        messages.success(
-            request,
-            f"✅ Upload complete: {success_count} questions loaded, {error_count} errors. See console for details."
-        )
-        return redirect('upload_questions')
-
-    else:
-        messages.error(request, "No file uploaded.")
-        return render(request, 'app1/upload_questions.html')
-
-
-def upload_permissions(request):
-    if request.method == 'POST' and request.FILES.get('file'):
-        file = request.FILES['file']
-        reader = csv.reader(file.read().decode('utf-8').splitlines())
-        next(reader)  # Skip header row
-        for row in reader:
-            p=Permission(user_id=row[0],regime_id=row[1],schedule_id=row[2],section_id=row[3])
-            p.save()
-        messages.success(request, "Permissions uploaded successfully!")
-        return redirect('upload_permissions')
-
-    return render(request, 'app1/upload_csv.html', {'data_name':'Permission'})
-
-def new_regime(request):
-    """ View to create a new regime """
-    if request.method == "POST":
-        form = RegimeForm(request.POST)
-        if form.is_valid():
-            form.save()
-            messages.success(request, "New regime created successfully!")
-            return redirect("new_regime")  # Redirect to the same page after success
-    else:
-        form = RegimeForm()
-
-    return render(request, "app1/new_regime.html", {"form": form})
-
-def new_schedule(request):
-    """ View to create a new schedule """
-    if request.method == "POST":
-        form = ScheduleForm(request.POST)
-        if form.is_valid():
-            form.save()
-            messages.success(request, "New schedule created successfully!")
-            return redirect("new_schedule")
-    else:
-        form = ScheduleForm()
-
-    return render(request, "app1/new_schedule.html", {"form": form})
-
-def new_section(request):
-    """ View to create a new section """
-    if request.method == "POST":
-        form = SectionForm(request.POST)
-        if form.is_valid():
-            form.save()
-            messages.success(request, "New section created successfully!")
-            return redirect("new_section")
-    else:
-        form = SectionForm()
-
-    return render(request, "app1/new_section.html", {"form": form})
-
-def display_regimes(request):
-    data = Regime.objects.order_by('regime_id').all()
-    return render(request, 'app1/display_regimes.html', {'dbtest_data': data})
-
-def display_schedules(request):
-    data = Schedule.objects.order_by('regime_id','schedule_id').all()
-    return render(request, 'app1/display_schedules.html', {'dbtest_data': data})
-
-def display_sections(request):
-    data = Section.objects.order_by('schedule_id','section_id').all()
-    return render(request, 'app1/display_sections.html', {'dbtest_data': data})
-
-def display_routing(request):
-    data = Routing.objects.order_by('section_id', 'order_in_section').all()
-    return render(request, 'app1/display_routing.html', {'dbtest_data': data})
-
-def display_questions(request):
-    data = Question.objects.order_by('question_id').all()
-    return render(request, 'app1/display_questions.html', {'dbtest_data': data})
-
-def display_permissions(request):
-    data = Permission.objects.order_by('user_id','section_id').all()
-    return render(request, 'app1/display_permissions.html', {'dbtest_data': data})
-
-def display_answer_basic(request):
-    data = AnswerBasic.objects.order_by('user_id','regime_id','question_id','answer','created_at').all()
-    return render(request, 'app1/display_answer_basic.html', {'dbtest_data': data})
-
-def load_dummy_data(request):
-    # --- Regimes ---
-    regimes = [
-        Regime(regime_id="HMRC_IHT", regime_name="HMRC – Inheritance Tax"),
-        Regime(regime_id="DWP_UC",   regime_name="DWP – Universal Credit"),
-        Regime(regime_id="DWP_FG",   regime_name="DWP – Funeral Grant")
-    ]
-    Regime.objects.bulk_create(regimes, ignore_conflicts=True)
-
-    # --- Schedules ---
-    schedules = [
-        Schedule(schedule_id="IHT_bank", schedule_name="Bank Accounts", regime_id="HMRC_IHT"),
-        Schedule(schedule_id="IHT_property", schedule_name="Property & Assets", regime_id="HMRC_IHT"),
-        Schedule(schedule_id="UC_family", schedule_name="Household & Family", regime_id="DWP_UC"),
-        Schedule(schedule_id="UC_housing", schedule_name="Housing Costs", regime_id="DWP_UC"),
-    ]
-    Schedule.objects.bulk_create(schedules, ignore_conflicts=True)
-
-    # --- Sections ---
-    sections = [
-        Section(section_id="IHT_bank_UKbank", section_name="UK Bank Accounts", schedule_id="IHT_bank",section_type=1),
-        Section(section_id="IHT_bank_NS", section_name="National Savings & Investments", schedule_id="IHT_bank",section_type=1),
-        Section(section_id="IHT_property_home", section_name="Main Residence", schedule_id="IHT_property"),
-        Section(section_id="IHT_property_other", section_name="Other Properties", schedule_id="IHT_property"),
-        Section(section_id="UC_family_children", section_name="Children and Dependents", schedule_id="UC_family"),
-        Section(section_id="UC_family_income", section_name="Partner Income", schedule_id="UC_family"),
-        Section(section_id="UC_housing_rent", section_name="Rent and Tenancy", schedule_id="UC_housing"),
-        Section(section_id="UC_housing_bills", section_name="Utility Bills", schedule_id="UC_housing"),
-        Section(section_id="FG_details",section_name="Funeral grant form", regime_id="DWP_FG")
-    ]
-    Section.objects.bulk_create(sections, ignore_conflicts=True)
-
-    # --- Users ---
-    users = [
-        User(user_id="user_alice", user_name="Alice Johnson"),        # Partial IHT
-        User(user_id="user_bob", user_name="Bob Smith"),              # Partial UC
-        User(user_id="user_carla", user_name="Carla Hughes"),        # Full IHT
-        User(user_id="user_dan", user_name="Dan Patel"),             # Full UC
-        User(user_id="user_eve", user_name="Eve Miller"),            # Full ALL
-    ]
-    User.objects.bulk_create(users, ignore_conflicts=True)
-
-    # --- Permissions ---
-    permissions = [
-        # Partial access
-        Permission(user_id="user_alice", section_id="IHT_bank_UKbank"),
-        Permission(user_id="user_alice", section_id="IHT_bank_NS"),
-        Permission(user_id="user_bob", section_id="UC_family_income"),
-        Permission(user_id="user_bob", section_id="UC_housing_rent"),
-    ]
-
-    # Full access for Carla (HMRC_IHT)
-    iht_sections = Section.objects.filter(schedule__regime_id="HMRC_IHT")
-    permissions += [
-        Permission(user_id="user_carla", section=section) for section in iht_sections
-    ]
-
-    # Full access for Dan (DWP_UC)
-    uc_sections = Section.objects.filter(schedule__regime_id="DWP_UC")
-    permissions += [
-        Permission(user_id="user_dan", section=section) for section in uc_sections
-    ]
-
-    # Full access for Eve (all sections)
-    all_sections = Section.objects.all()
-    permissions += [
-        Permission(user_id="user_eve", section=section) for section in all_sections
-    ]
-
-    Permission.objects.bulk_create(permissions, ignore_conflicts=True)
-
-    questions = [
-        Question(
-            question_id="FG_Q1",
-            question_type="text",
-            question_text="What is your full name?",
-            hint="As shown on official documents.",
-            answer_type="text",
-        ),
-        Question(
-            question_id="FG_Q2",
-            question_type="text",
-            question_text="Please briefly describe your relationship to the deceased.",
-            guidance="Include any relevant details like family or friend.",
-            answer_type="text",
-        ),
-        Question(
-            question_id="FG_Q3",
-            question_type="radio",
-            question_text="Are you currently receiving any benefits?",
-            options="Yes;No",
-            answer_type="text",
-        ),
-        Question(
-            question_id="FG_Q4",
-            question_type="checkbox",
-            question_text="Which of the following costs are you applying for?",
-            guidance="Tick all that apply.",
-            options="Funeral Director fees; Cremation or burial; Travel expenses; Medical certificates",
-            answer_type="text",
-        )
-    ]
-
-    Question.objects.bulk_create(questions, ignore_conflicts=True)
-
-    routings = [
-        Routing(
-            section_id="FG_details",
-            order_in_section=1,
-            current_question="FG_Q1",
-            next_question="FG_Q2"
-        ),
-        Routing(
-            section_id="FG_details",
-            order_in_section=2,
-            current_question="FG_Q2",
-            next_question="FG_Q3"
-        ),
-        Routing(
-            section_id="FG_details",
-            order_in_section=3,
-            current_question="FG_Q3",
-            next_question="FG_Q4"
-        ),
-        Routing(
-            section_id="FG_details",
-            order_in_section=4,
-            current_question="FG_Q4",
-            next_question="END"
-        )
-    ]
-
-    Routing.objects.bulk_create(routings, ignore_conflicts=True)
-
-    return HttpResponse("Dummy data loaded successfully.")
-
-##### ===== _reference/app1/views_gather.py ===== #####
-
-import csv, json, bleach
-from django.shortcuts import render, redirect, get_object_or_404
-from django.http import HttpResponse, JsonResponse, HttpResponseNotFound
-from django.views.decorators.http import require_POST
-from django.urls import reverse
-
-from django.contrib import messages
-from urllib.parse import urlencode
-from core_home.views import end_url
-from .models import Permission, Regime, Schedule, Section, Routing, Question, AnswerBasic, AnswerTable, ScheduleStatus, SectionStatus
-
-ALLOWED_TAGS = ["b", "i", "u", "strong", "em", "h1", "h2", "h3", "p", "ul", "ol", "li", "br"]
-
-def process_section(request):
-    select_dict = request.session.get('select_dict')
-    section_id = select_dict['section_id']
-
-    # === 1. Get full routing data and store it ===
-    routing_data = list(
-        Routing.objects.filter(section_id=section_id)
-        .order_by('order_in_section')
-        .values()
-    )
-    request.session["routing_table"] = routing_data
-
-    # === 2. Extract ordered list of unique question_ids from routing ===
-    seen = set()
-    question_ids = []
-    for route in routing_data:
-        qid = route["current_question"]
-        if qid not in seen:
-            question_ids.append(qid)
-            seen.add(qid)
-
-    # === 3. Fetch corresponding questions ===
-    questions = Question.objects.filter(question_id__in=question_ids)
-
-    # === 4. Build and store question lookup table ===
-    request.session["question_table"] = {
-        str(q.question_id): {
-            "text": q.question_text,
-            "guidance": q.guidance,
-            "hint": q.hint,
-            "question_type": q.question_type,
-            "options": q.options if q.options else "",
-        }
-        for q in questions
-    }
-
-    # === 5. Initialise session state ===
-    first_question_id = question_ids[0]
-    select_dict['first_question_id'] = first_question_id
-    request.session["asked_ids"] = [first_question_id]
-    request.session["select_dict"] = select_dict
-    request.session.modified = True
-
-    # === 6. Handle section type ===
-    if select_dict['section_type'] == 0:
-        # Classic section – prepopulate answers from DB
-        basic_answers = {
-            str(a.question_id): a.answer
-            for a in AnswerBasic.objects.filter(
-                user_id=select_dict["user_id"],
-                regime_id=select_dict["regime_id"],
-                question_id__in=question_ids
-            )
-        }
-        request.session["basic_answers"] = basic_answers
-        return redirect("question_router", question_id=first_question_id)
-
-    else:
-        # Table section logic unchanged
-        user_id = select_dict["user_id"]
-        regime_id = select_dict["regime_id"]
-
-        try:
-            answer_record = AnswerTable.objects.get(
-                user_id=user_id,
-                regime_id=regime_id,
-                question_id=section_id
-            )
-            record_count = len(answer_record.answer)
-        except AnswerTable.DoesNotExist:
-            record_count = 0
-
-        select_dict["records"] = record_count
-        request.session["select_dict"] = select_dict
-        request.session["table_row"] = {}
-        request.session.modified = True
-
-        # Get summary context
-        summary = get_table_summary_context(user_id, section_id)
-
-        return render(request, "app1/table_summary.html", {
-            "name": select_dict["section_name"],
-            "first_question": first_question_id,
-            **summary  # expands to 'records', 'summary_totals'
-        })
-
-def question_router(request, question_id):
-    question = request.session["question_table"].get(str(question_id))
-
-    if not question:
-        return HttpResponseNotFound(f"Question data for question id {question_id} not found in session.")
-
-    # Use `question_type` to determine the correct screen type
-    if question["question_type"].lower() == "radio":
-        return redirect("screen", question_id=question_id)
-        #return redirect("screen", question_id=question_id)
-    elif question["question_type"].lower() == "text":
-        return redirect("screen", question_id=question_id)
-        #return redirect("screen", question_id=question_id)
-    elif question["question_type"].lower() == "textarea":
-        return redirect("screen", question_id=question_id)
-    elif question["question_type"].lower() == "checkbox":
-        return redirect("screen", question_id=question_id)
-    elif question["question_type"].lower() == "table":
-        return redirect("screen", question_id=question_id)
-    else:
-        print(f"Unknown question type for {question_id}: {question['question_type']}")
-        return redirect("completion_page")  # Default fallback
-
-def update_schedule_status(user_id, regime_id, schedule_id):
-
-    section_statuses = SectionStatus.objects.filter(
-        user_id=user_id, regime_id=regime_id, section_id__in=Section.objects.filter(schedule_id=schedule_id).values_list("section_id", flat=True)
-    ).values_list("status", flat=True) # Get all sections within this schedule
-
-    if not section_statuses or all(status == "not_started" for status in section_statuses): # Determine the overall schedule status
-        new_status = "not_started"
-    elif all(status == "complete" for status in section_statuses):
-        new_status = "complete"
-    else:
-        new_status = "in_progress"
-
-    ScheduleStatus.objects.update_or_create( # Update or create the schedule status
-        user_id=user_id, regime_id=regime_id, schedule_id=schedule_id,
-        defaults={"status": new_status}
-    )
-
-def process_answer(request, question_id):
-    if request.method == "POST":
-
-        # collect the user response for question_id in the right format (as per question_type)
-        question_data = request.session["question_table"].get(str(question_id))
-        if question_data["question_type"].lower() == "checkbox":
-            user_response = request.POST.getlist("question")
-        else:
-            user_response = request.POST.get("question", "").strip()
-
-        # === Get routing info and asked_ids ===
-        routing_table = request.session.get("routing_table", [])
-        asked_ids = request.session.get("asked_ids", [])
-        ordered_qids = list(dict.fromkeys(
-            route["current_question"] for route in routing_table
-        ))
-
-        # === Trim asked_ids up to this question, based on routing order ===
-        if question_id in ordered_qids:
-            index = ordered_qids.index(question_id)
-            new_asked_ids = ordered_qids[:index + 1]
-        else:
-            new_asked_ids = asked_ids + [question_id]  # fallback
-
-        # === Store the current answer in session ===
-        section_type = request.session.get("select_dict", {}).get("section_type")
-        if section_type == 0:
-            answers = request.session.get("basic_answers", {})
-            answers[question_id] = user_response
-            request.session["basic_answers"] = answers
-        else:
-            table_row = request.session.get("table_row", {})
-            table_row[question_id] = user_response
-            request.session["table_row"] = table_row
-
-        request.session["asked_ids"] = new_asked_ids
-        request.session.modified = True
-
-        # === Determine next question via routing logic ===
-        next_question_id = None
-        for route in routing_table:
-            if route["current_question"] == str(question_id):
-                if route["answer_value"]:
-                    allowed = [val.strip().lower() for val in route["answer_value"].split(";")]
-                    if isinstance(user_response, list):
-                        match = any(val.lower() in allowed for val in user_response)
-                    else:
-                        match = user_response.lower() in allowed
-                    if match:
-                        next_question_id = route["next_question"]
-                        break
-                else:
-                    next_question_id = route["next_question"]
-
-        # === If END, go to review ===
-        if next_question_id == "END":
-            return redirect("review_section")
-
-        assert next_question_id is not None, f"No routing found from {question_id} with answer {user_response}"
-
-        # === Append next question if not already in path ===
-        if next_question_id not in new_asked_ids:
-            new_asked_ids.append(next_question_id)
-            request.session["asked_ids"] = new_asked_ids
-            request.session.modified = True
-
-        return redirect("question_router", question_id=next_question_id)
-
-    # Fallback for GET
-    return redirect("question_router", question_id=question_id)
-
-def review_section(request):
-    select_dict = request.session.get("select_dict", {})
-    section_type = select_dict.get("section_type")
-    asked_ids = request.session.get("asked_ids", [])
-
-    # Load questions used in this section
-    questions = Question.objects.filter(
-        question_id__in=asked_ids
-    ).in_bulk(field_name="question_id")
-
-    # === Prepare answers based on section type ===
-    rows = []
-
-    if section_type == 0:
-        # === Classic Section ===
-        session_answers = request.session.get("basic_answers", {})
-
-        for qid in asked_ids:
-            question = questions.get(qid)
-            raw_answer = session_answers.get(qid)
-            display_answer = ", ".join(raw_answer) if isinstance(raw_answer, list) else raw_answer or "[No Answer]"
-
-            rows.append({
-                "question_id": qid,
-                "question": question.question_text if question else "[Unknown Question]",
-                "answer": display_answer
-            })
-
-    else:
-        # === Table Section ===
-        latest_row = request.session.get("table_row", {})
-
-        for qid in asked_ids:
-            question = questions.get(qid)
-            raw_answer = latest_row.get(qid)
-            display_answer = ", ".join(raw_answer) if isinstance(raw_answer, list) else raw_answer or "[No Answer]"
-
-            rows.append({
-                "question_id": qid,
-                "question": question.question_text if question else "[Unknown Question]",
-                "answer": display_answer
-            })
-
-    # Route to confirm_section to commit answers to DB
-    context={}
-    context['asked_ids'] = asked_ids
-    if section_type==0:
-        context['section_answers'] = session_answers
-    confirm_url = reverse("confirm_section")
-    return render(request, "app1/review_section.html", {
-        "rows": rows,
-        "confirm_url": confirm_url,
-        "context":context
-    })
-
-#@require_POST
-def confirm_section(request):
-
-    select_dict = request.session["select_dict"]
-    section_type = select_dict["section_type"]
-    section_id = select_dict["section_id"]
-    regime_id = select_dict["regime_id"]
-    user_id = select_dict["user_id"]
-    schedule_id = select_dict.get("schedule_id")  # different cos might not be schedule...
-    old_record_count = select_dict.get("records")  # different cos might not be records...
-
-    # === Classic Section: write individual answers ===
-    if section_type == 0:
-        answers = request.session.get("basic_answers", {})
-        asked_ids = request.session.get("asked_ids", [])
-        # 💡 Prune session answers down to asked_ids only
-        answers = {qid: answers[qid] for qid in asked_ids if qid in answers}
-
-        # Delete any answers previously saved to DB which no longer apply (eg cos user revisited and took shorter route)
-        AnswerBasic.objects.filter(
-            user_id=user_id,
-            regime_id=regime_id,
-            question_id__in=AnswerBasic.objects.filter(
-                user_id=user_id,
-                regime_id=regime_id
-            ).exclude(question_id__in=asked_ids).values_list("question_id", flat=True)
-        ).delete()
-
-        for question_id, value in answers.items():
-            AnswerBasic.objects.update_or_create(
-                user_id=user_id,
-                regime_id=regime_id,
-                question_id=question_id,
-                defaults={"answer": value}
-            )
-
-        # ✅ Mark section as complete (if classic)
-        SectionStatus.objects.update_or_create(
-            user_id=user_id,
-            regime_id=regime_id,
-            section_id=section_id,
-            defaults={"status": "complete"}
-        )
-
-        # 📌 Update schedule status if relevant (if classic)
-        if schedule_id:
-            update_schedule_status(user_id, regime_id, schedule_id)
-
-        a=continue_url(request)
-        return redirect(a)
-
-    # === Table Section: append full row to AnswerTable ===
-    else:
-        row = request.session.get("table_row", {})
-        if row:
-            answer_table, _ = AnswerTable.objects.get_or_create(
-                user_id=user_id,
-                regime_id=regime_id,
-                question_id=section_id,
-                defaults={"answer": []}
-            )
-            answer_table.answer.append(row)
-            answer_table.save(update_fields=["answer"])
-
-            # Update record count in session; reinitialise table_row
-            new_record_count = old_record_count + 1
-            select_dict["records"] = new_record_count
-            request.session["select_dict"] = select_dict
-            request.session["table_row"] = {}
-            request.session.modified = True
-
-            summary = get_table_summary_context(user_id, section_id)
-
-            return render(request, "app1/table_summary.html", {
-                "name": select_dict["section_name"],
-                "first_question": select_dict["first_question_id"],
-                **summary
-            })
-
-        else:
-            # No row data found (unexpected)
-            messages.warning(request, "No data to save. Please complete a table row first.")
-            return redirect("process_section")
-
-def continue_url(request):
-    select_dict = request.session.get('select_dict')
-    print("sch count=",select_dict['schedule_count'],"sec count=",select_dict['section_count'])
-    if select_dict['section_count'] == 1:
-        return 'regime_'+select_dict['regime_id'].lower()+":start"
-    elif select_dict['schedule_count'] == 0:
-        return reverse("select_section")
-    else:
-        return reverse("select_section", kwargs={"schedule_id": select_dict['schedule_id']})
-
-def count_and_sum(user_id, section_id, target_qids):
-    """
-    Returns the number of records and, optionally, column totals for a user's table section.
-
-    Args:
-        user_id (str): The user's ID.
-        section_id (str): The ID of the table section.
-        target_qids (list[str]): List of question IDs to total.
-                                 If an empty list is passed, no totals will be computed.
-
-    Returns:
-        tuple: (record_count, totals_list), where:
-            - record_count (int): Number of records (rows) stored.
-            - totals_list (list[float]): Totals per question ID (same order as target_qids),
-                                         or an empty list if target_qids is empty.
-    """
-    try:
-        entry = AnswerTable.objects.get(user_id=user_id, question_id=section_id)
-        rows = entry.answer  # List of row dicts
-    except AnswerTable.DoesNotExist:
-        return 0, [0 for _ in target_qids]  # No data = 0 records, 0s for each column
-
-    record_count = len(rows)
-
-    # If no question IDs to total, return just the count and empty totals
-    if not target_qids:
-        return record_count, []
-
-    totals = {qid: 0 for qid in target_qids}
-
-    for row in rows:
-        for qid in target_qids:
-            value = row.get(qid)
-            try:
-                totals[qid] += float(value)
-            except (TypeError, ValueError):
-                pass  # Skip invalid or missing values
-
-    totals_list = [totals[qid] for qid in target_qids]
-    return record_count, totals_list
-
-
-def get_table_summary_context(user_id, section_id):
-    # Get record count + totals (only for totalled=1 fields)
-    total_qids = list(Routing.objects.filter(
-        section_id=section_id,
-        totalled=1
-    ).values_list("current_question", flat=True))
-
-    record_count, totals = count_and_sum(user_id, section_id, total_qids)
-
-    # Get labels
-    questions = Question.objects.filter(question_id__in=total_qids).in_bulk(field_name="question_id")
-    question_texts = [questions[qid].question_text for qid in total_qids if qid in questions]
-
-    # Zip for template use
-    summary_totals = list(zip(question_texts, totals))
-
-    return {
-        "records": record_count,
-        "summary_totals": summary_totals
-    }
-
-
-##### ===== _reference/app1/views_screens.py ===== #####
-
-import csv, json, bleach
-from django.shortcuts import render, redirect
-from django.urls import reverse
-from django.http import HttpResponse, JsonResponse, HttpResponseNotFound
-from app1.models import AnswerBasic, AnswerTable, Question
-
-ALLOWED_TAGS = ["b", "i", "u", "strong", "em", "h1", "h2", "h3", "p", "ul", "ol", "li", "br"]
-
-def task_list(request):
-    progress=[{'name':'Task 1', 'hint':'some hint', 'status':'Not started'}]
-    return render(request, "app1/task_list.html", {"progress": progress})
-
-def screen(request, question_id):
-    question = request.session["question_table"].get(str(question_id))
-    question_type = question["question_type"].lower()
-    html_name = f"app1/template_{question_type}.html"
-
-    select_dict = request.session.get("select_dict", {})
-    section_type = select_dict.get("section_type")
-    regime_name = select_dict.get("regime_name")
-
-    context = {
-        "regime_name": regime_name,
-        "question_id": question_id,
-        "question_text": question["text"],
-        "guidance": bleach.clean(question["guidance"], tags=ALLOWED_TAGS) if question.get("guidance") else "",
-        "hint": bleach.clean(question["hint"], tags=ALLOWED_TAGS) if question.get("hint") else "",
-        "options": [opt.strip() for opt in question.get("options", "").split(";") if opt.strip()],
-    }
-
-    if section_type == 0:
-        # Classic: pre-populate with answers in session["basic_answers"]
-        session_answers = request.session.get("basic_answers", {})
-        previous = session_answers.get(question_id)
-        context['section_answers']=session_answers
-    else:
-        # Table: pre-populate with answers in  session["table_row"]
-        table_row = request.session.get("table_row", {})
-        previous = table_row.get(question_id)
-        context['section_answers']=table_row
-
-    if question_type == "checkbox": # Adjust per question type
-        context["previous_answers"] = previous if isinstance(previous, list) else []
-    else:
-        context["previous_answer"] = previous if previous else ""
-
-    context['asked_ids']=request.session.get("asked_ids")
-    return render(request, html_name, context)
-
-def table_details(request):
-    select_dict = request.session.get("select_dict", {})
-    section_id = select_dict.get("section_id")
-    user_id = select_dict.get("user_id")
-    regime_id = select_dict.get("regime_id")
-
-    # Fetch stored rows
-    try:
-        answer_obj = AnswerTable.objects.get(
-            user_id=user_id,
-            regime_id=regime_id,
-            question_id=section_id
-        )
-        records = answer_obj.answer  # List of dicts
-    except AnswerTable.DoesNotExist:
-        records = []
-
-    # Get all question IDs used across rows (preserves order of first appearance)
-    question_ids = []
-    seen = set()
-    for row in records:
-        for qid in row:
-            if qid not in seen:
-                question_ids.append(qid)
-                seen.add(qid)
-
-    # Load question metadata
-    questions = Question.objects.filter(question_id__in=question_ids).in_bulk(field_name="question_id")
-
-    # Prepare display headers (question text) and row values
-    headers = [questions[qid].question_text if qid in questions else qid for qid in question_ids]
-
-    table_rows = []
-    for row in records:
-        row_values = []
-        for qid in question_ids:
-            val = row.get(qid)
-            if isinstance(val, list):
-                val = ", ".join(val)
-            row_values.append(val or "-")
-        table_rows.append(row_values)
-
-    return render(request, "app1/table_details.html", {
-        "section_id": section_id,
-        "section_name": select_dict.get("section_name"),
-        "table": {
-            "headers": headers,
-            "rows": table_rows
-        },
-        "has_records": bool(table_rows)
-    })
-
-def delete_table_record(request, section_id, record_index):
-    select_dict = request.session.get("select_dict", {})
-    user_id = select_dict.get("user_id")
-    regime_id = select_dict.get("regime_id")
-
-    try:
-        answer_obj = AnswerTable.objects.get(
-            user_id=user_id,
-            regime_id=regime_id,
-            question_id=section_id
-        )
-        records = answer_obj.answer
-    except AnswerTable.DoesNotExist:
-        records = []
-
-    # Safely delete the record if index is valid
-    if 0 <= record_index < len(records):
-        del records[record_index]
-        # Save back updated records
-        AnswerTable.objects.update_or_create(
-            user_id=user_id,
-            regime_id=regime_id,
-            question_id=section_id,
-            defaults={"answer": records}
-        )
-
-    # Redirect back to the table details page
-    return redirect(reverse("table_details"))
-
-
-
-
-##### ===== _reference/app1/views_select.py ===== #####
-
-from django.shortcuts import render, redirect
-from django.urls import reverse
-from .models import Schedule, Section, ScheduleStatus, SectionStatus
-
-def select_schedule(request):
-
-    # Get schedules the user can access under this regime
-    select_dict=request.session.get("select_dict")
-    regime_id = select_dict["regime_id"]
-    section_ids = request.session.get("section_ids", []) # all sections in selected regime that user can access
-    schedule_ids = (
-        Section.objects.filter(section_id__in=section_ids, schedule__regime_id=regime_id)
-        .values_list("schedule_id", flat=True)
-        .distinct()
-    )
-    schedules = Schedule.objects.filter(schedule_id__in=schedule_ids).values("schedule_id", "schedule_name")
-
-    # Get schedule completion statuses, and populate list of schedules (progress) for html
-    user_id = select_dict["user_id"]
-    schedule_statuses = {
-        status.schedule_id: status.get_status_display()
-        for status in ScheduleStatus.objects.filter(user_id=user_id, regime_id=regime_id)
-    }
-    progress = [
-        {
-            "schedule_id": schedule["schedule_id"],
-            "name": schedule["schedule_name"],
-            "href": reverse("record_schedule_choice", kwargs={"schedule_id": schedule["schedule_id"]}),
-            "status": schedule_statuses.get(schedule["schedule_id"], "Not started")
-        }
-        for schedule in schedules
-    ]
-
-    # Define the url to use when all schedules complete, get regime name, and render select_schedule html
-    home_name = f"regime_{regime_id.lower()}:start"
-    url_home = reverse(home_name)
-    regime_name = select_dict["regime_name"]
-    return render(request, "app1/select_schedule_2.html", {"progress": progress, 'regime_name':regime_name, 'url_home':url_home})
-
-def record_schedule_choice(request, schedule_id):
-    select_dict = request.session.get("select_dict", {})
-    select_dict["schedule_id"] = schedule_id
-    select_dict["section_id"] = ""  # clear any pre-existing downstream values, as starting new schedule
-    request.session["select_dict"] = select_dict
-    request.session.modified = True
-
-    return redirect("select_section", schedule_id=schedule_id)
-
-def select_section(request, schedule_id=None):
-
-    # Flush any previous completed section data
-    for key in ["basic_answers", "table_row", "asked_ids", "routing_table", "question_table"]:
-        request.session.pop(key, None)
-    for subkey in ["first_question_id", "section_id", "section_name", "section_type"]:
-        request.session.get("select_dict", {}).pop(subkey, None)
-    request.session.modified = True
-
-    # Get permitted sections for this schedule
-    select_dict=request.session.get("select_dict")
-    regime_id = select_dict["regime_id"]
-    section_ids = request.session.get("section_ids")
-    sections = Section.objects.filter(
-        section_id__in=section_ids,
-        schedule_id=schedule_id,
-        schedule__regime_id=regime_id
-    ).values("section_id", "section_name")
-
-    # Fetch any existing SectionStatus records
-    user_id=select_dict['user_id']
-    section_id_list = [s["section_id"] for s in sections]
-    existing_statuses = {
-        status.section_id: status.get_status_display()
-        for status in SectionStatus.objects.filter(
-            user_id=user_id,
-            regime_id=regime_id,
-            section_id__in=section_id_list
-        )
-    }
-
-    # Ensure each section has a status (create if needed), and create list of all sections for html
-    progress = []
-    for section in sections:
-        section_id = section["section_id"]
-
-        if section_id not in existing_statuses:
-            SectionStatus.objects.create(
-                user_id=user_id,
-                regime_id=regime_id,
-                section_id=section_id,
-                status="not_started"
-            )
-            status_value = "not_started"
-        else:
-            status_value = existing_statuses[section_id]
-
-        progress.append({
-            "name": section["section_name"],
-            "section_id": section_id,
-            "href": reverse("record_section_choice", kwargs={"section_id": section_id}),
-            "status": status_value
-        })
-
-    # define the url to use when all sections complete, get regime name, and render select_section html
-    if select_dict['schedule_count'] == 0:
-        url_home =  'regime_' + select_dict['regime_id'].lower() + ":start"
-    else:
-        url_home =  reverse("select_schedule")
-    regime_name = select_dict["regime_name"]
-    return render(request, "app1/select_section_2.html", {"progress": progress,'regime_name':regime_name, 'url_home':url_home})
-
-def record_section_choice(request, section_id):
-    section_ids = request.session.get("section_ids", [])
-    select_dict = request.session.get("select_dict", {})
-
-    # Safety check: make sure user can access this section
-    try:
-        section = Section.objects.get(
-            section_id=section_id,
-            section_id__in=section_ids
-        )
-    except Section.DoesNotExist:
-        return redirect("select_schedule")  # or another safe fallback
-
-    # Update only section-specific values
-    select_dict.update({
-        "section_id": section.section_id,
-        "section_name": section.section_name,
-        "section_type": section.section_type,
-    })
-
-    request.session["select_dict"] = select_dict
-    request.session["previous_question_ids"] = request.session.get("question_ids", [])
-    request.session.modified = True
-
-    return redirect("process_section")
-
-
-
-
-
-##### ===== _reference/core_home/__init__.py ===== #####
-
-
-
-##### ===== _reference/core_home/admin.py ===== #####
-
-from django.contrib import admin
-
-# Register your models here.
-
-
-##### ===== _reference/core_home/apps.py ===== #####
-
-from django.apps import AppConfig
-
-
-class CoreHomeConfig(AppConfig):
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'core_home'
-
-
-##### ===== _reference/core_home/models.py ===== #####
-
-from django.db import models
-
-# Create your models here.
-
-
-##### ===== _reference/core_home/tests.py ===== #####
-
-from django.test import TestCase
-
-# Create your tests here.
-
-
-##### ===== _reference/core_home/urls.py ===== #####
-
-# core_home/urls.py
-from django.urls import path
-
-from core_home.views import consistency_check, user_login, select_regime
-
-urlpatterns = [
-    path('', consistency_check, name='home'),
-    path('user_login/', user_login, name='user_login'),
-    path('select_regime/', select_regime, name='select_regime'),
-]
-
-
-##### ===== _reference/core_home/views.py ===== #####
-
-# core_home/views.py
-
-from django.shortcuts import render, redirect
-from django.urls import reverse
-from django.http import HttpResponse
-from django.db.models import Q
-from app1.models import Permission, Regime, Schedule, Section, Routing, Question
-
-def consistency_check(request):
-
-    # Retrieve all questions and routing data; create errors variable
-    question_ids = set(Question.objects.values_list("question_id", flat=True)) # set gives faster lookup using 'in'
-    routing_data = list(Routing.objects.values("section_id", "current_question", "next_question", "answer_value"))
-    errors = []
-
-    # Check 1 - Ensure all `current_question` and `next_question` exist in `Question`
-    for route in routing_data:
-        section_id = route["section_id"]
-        current_q = route["current_question"]
-        next_q = route["next_question"]
-
-        if current_q not in question_ids:
-            errors.append(
-                f"Routing error in Section '{section_id}': current_question '{current_q}' does not exist in Question table.")
-
-        if next_q and next_q != "END" and next_q not in question_ids:
-            errors.append(
-                f"Routing error in Section '{section_id}': next_question '{next_q}' does not exist in Question table.")
-
-    # Check 2 - Ensure every `answer_value` in Routing exists in `Question.options`
-    question_options = {
-        q.question_id: set(q.options.split("; ")) if q.options else set()  # Convert options to set for easy checking
-        for q in Question.objects.all()
-    }
-
-    for route in routing_data:
-        section_id = route["section_id"]
-        current_q = route["current_question"]
-        answer_value = route["answer_value"]
-
-        if answer_value and current_q in question_options:
-            valid_options = question_options[current_q]  # Get allowed options for this question
-            provided_answers = set(answer_value.split("; "))  # Split Routing's answer_value into a set
-
-            if not provided_answers.issubset(valid_options):  # Check if all answers are valid
-                errors.append(
-                    f"Routing error in Section '{section_id}':  current_question {current_q}' has invalid answer_value '{answer_value}'. "
-                    f"Valid options: {valid_options}"
-                )
-
-    # Check 3: all Sections must belong to a Schedule or Regime
-    bad_sections = Section.objects.filter(schedule__isnull=True, regime__isnull=True)
-    if bad_sections.exists():
-        bad_section_names = [s.section_name for s in bad_sections[:5]]
-        errors.append(
-            f"{bad_sections.count()} sections have no schedule or regime: "
-            + ", ".join(bad_section_names) + ("..." if bad_sections.count() > 5 else "")
-        )
-
-    # If errors exist, show them then exit via HttpResponse
-
-    if errors:
-        return HttpResponse(
-            "<h3>The data on questions and routing has failed the consistency checks</h3>"
-            "<p>Fix the following issues:</p>"
-            "<ul>" + "".join([f"<li>{error}</li>" for error in errors]) + "</ul>"
-        )
-
-    # if no errors, continue to user login
-    return redirect('user_login')
-
-def user_login(request):
-    message = None  # Default message
-
-    if request.method == "POST":
-        user_id = request.POST.get("user_id", "").strip()
-
-        # Pull all permitted section_ids for the user
-        user_section_ids = list( # Note: the opening brackets also permit the separate line treatment below
-            Permission.objects
-            .filter(user_id=user_id)
-            .values_list("section_id", flat=True)
-            .distinct()
-        )
-
-        if user_section_ids:
-
-            user_regimes_query = get_permitted_regimes(user_id)
-            user_regimes_list = [
-                {
-                    "id": str(r.regime_id),
-                    "name": r.regime_name,
-                    # "dept": r.regime_id.split("_")[0], # example of dynamic optional field
-                    # "type": "Benefits"                 # example of hardcoded optional field
-                }
-                for r in user_regimes_query
-            ]
-
-            # create select_dict with user_id
-            request.session["select_dict"] = {"user_id": user_id}  # initialise a new select_dic
-            request.session["user_regimes_list"] = user_regimes_list
-            request.session["user_section_ids"] = user_section_ids
-            request.session.modified = True
-
-            return redirect("select_regime")
-        else:
-            message = "No such user_id with valid permissions"
-
-    return render(request, "app1/login.html", {"message": message})
-
-def select_regime(request):
-    if request.method == "POST":
-
-        # get user choice of regime_id and check it's valid
-        regime_id = request.POST.get("selected_regime")
-        user_regimes_list = request.session.get("user_regimes_list", [])
-        user_regime_ids = [r["id"] for r in user_regimes_list]
-        if not regime_id or regime_id not in user_regime_ids:
-            return HttpResponse("Something that should be impossible has occurred in select_regime")
-
-        # get name for selected_regime_id
-        regime_name = next( #cycles through regime_list to find a match on id
-            (r["name"] for r in user_regimes_list if r["id"] == regime_id),"Unknown Regime"
-        )
-
-        # Look in Section to find those belonging to regime_id for which user has permission (user_section_ids)
-        user_section_ids = request.session.get('user_section_ids', [])
-        section_query = Section.objects.filter( # keep as a query for re-use below if only one section
-            section_id__in=user_section_ids
-        ).filter(
-            Q(schedule__regime_id=regime_id) | Q(regime_id=regime_id)
-        )
-        section_ids = list(section_query.values_list("section_id", flat=True))
-        m = len(section_ids)
-
-        # Step 2: Get schedules tied to those sections
-        schedule_ids = list(
-            Section.objects
-            .filter(section_id__in=section_ids, schedule__regime_id=regime_id)
-            .values_list("schedule_id", flat=True)
-            .distinct()
-        )
-        n = len(schedule_ids)
-
-        # Step 3: Update session
-        select_dict = request.session.get("select_dict", {})
-        select_dict["regime_id"] = regime_id
-        select_dict["regime_name"] = regime_name
-        select_dict["schedule_count"] = n
-        select_dict["section_count"] = m
-        request.session["schedule_ids"] = schedule_ids
-        request.session["section_ids"] = section_ids
-
-        if n == 0:
-            select_dict["schedule_id"] = ""
-            select_dict["schedule_name"] = ""
-
-        if m == 1:
-            section = section_query.first()
-            select_dict["section_id"] = section.section_id
-            select_dict["section_name"] = section.section_name
-            select_dict["section_type"] = section.section_type
-
-        request.session["select_dict"] = select_dict
-        request.session.modified = True
-
-        return redirect(f"regime_{regime_id.lower()}:start") # go to selected regime app, start, and to home html
-
-    # On GET: just pull from session, no DB call
-    user_regimes_list = request.session.get("user_regimes_list", {})
-    return render(request, "app1/select_regime.html", {"regimes": user_regimes_list})
-
-def get_permitted_regimes(user_id):
-    # Get all permitted sections
-    user_sections = Section.objects.filter(permission__user_id=user_id)
-
-    # Directly linked regimes
-    direct_ids = user_sections.filter(regime__isnull=False).values_list('regime__regime_id', flat=True)
-
-    # Indirect via schedule
-    indirect_ids = user_sections.filter(schedule__isnull=False).values_list('schedule__regime__regime_id', flat=True)
-
-    # Combine and deduplicate
-    all_ids = set(direct_ids).union(set(indirect_ids))
-
-    # Return Regime queryset
-    return Regime.objects.filter(regime_id__in=all_ids)
-
-def start_url(request):
-    select_dict = request.session.get('select_dict')
-    section_count = select_dict['section_count']
-    schedule_count = select_dict['schedule_count']
-
-    if section_count == 1:
-        continue_html = reverse("process_section")
-    elif schedule_count == 0:
-        continue_html = reverse("select_section")
-    else:
-        continue_html = reverse("select_schedule")
-
-    return continue_html
-
-def end_url(request):
-    select_dict = request.session.get('select_dict')
-    regime_id = select_dict['regime_id']
-    section_count = select_dict['section_count']
-    schedule_count=select_dict['schedule_count']
-    schedule_id=select_dict['schedule_id']
-
-    if section_count == 1:
-        continue_html = reverse("regime_"+regime_id.lower()+":start")
-    elif schedule_count==0:
-        continue_html = reverse("select_section")
-    else:
-        continue_html = reverse("select_section", kwargs={"schedule_id":schedule_id})
-
-    return continue_html
-
-##### ===== _reference/main/__init__.py ===== #####
-
-
-
-##### ===== _reference/main/asgi.py ===== #####
-
-"""
-ASGI config for main project.
-
-It exposes the ASGI callable as a module-level variable named ``application``.
-
-For more information on this file, see
-https://docs.djangoproject.com/en/5.1/howto/deployment/asgi/
-"""
-
-import os
-
-from django.core.asgi import get_asgi_application
-
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'main.settings')
-
-application = get_asgi_application()
-
-
-##### ===== _reference/main/settings.py ===== #####
-
-"""
-Django settings for main project.
-
-Generated by 'django-admin startproject' using Django 5.1.
-
-For more information on this file, see
-https://docs.djangoproject.com/en/5.1/topics/settings/
-
-For the full list of settings and their values, see
-https://docs.djangoproject.com/en/5.1/ref/settings/
-"""
-
-from pathlib import Path
-
-# my addition to imports (used on next addition)
-import sys
-import os
-import dj_database_url
-import logging
-
-# Set up basic logging
-logging.basicConfig(level=logging.DEBUG)
-
-
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-# Get the value of the environment variable 'IS_REMOTE' and store it in is_remote_flag
-print("IS_REMOTE is set to:", os.getenv('IS_REMOTE', 'NOT SET'))
-is_remote_flag = os.getenv('IS_REMOTE', 'false').lower() == 'true'
-
-# Set DEBUG to True, both locally and remotely
-# idc swap to 'DEBUG = not is_remote_flag' to enable DEBUG locally, but disable DEBUG remotely
-DEBUG = True
-
-# Log the values of the environment variables for debugging
-logging.debug(f"IS_REMOTE: {is_remote_flag}")
-logging.debug(f"DATABASE_URL: {os.getenv('DATABASE_URL')}")
-
-SECRET_KEY = os.getenv('SECRET_KEY')
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
-# SECURITY WARNING: keep the secret key used in production secret!
-#SECRET_KEY = 'django-insecure-!$nwz7ku_wr%k+vipn*_419-qi(@t=)!gi!1jh4gw)pj@iia#_'
-# SECURITY WARNING: don't run with debug turned on in production!
-#DEBUG = True
-
-ALLOWED_HOSTS = ['data-driven-forms.onrender.com','localhost', '127.0.0.1']
-
-
-# Application definition
-
-INSTALLED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
-    'tester', # this one from RD
-    'app1', # this one from RD
-    'core_home', # this one from RD
-    'regime_dwp_uc', # this one from RD
-    'regime_dwp_fg',# this one from RD
-    'regime_hmrc_iht', # this one from RD
-]
-
-MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    "whitenoise.middleware.WhiteNoiseMiddleware",
-]
-
-ROOT_URLCONF = 'main.urls'
-
-TEMPLATES = [
-    {
-        'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
-        'APP_DIRS': True,
-        'OPTIONS': {
-            'context_processors': [
-                'django.template.context_processors.debug',
-                'django.template.context_processors.request',
-                'django.contrib.auth.context_processors.auth',
-                'django.contrib.messages.context_processors.messages',
-            ],
-        },
-    },
-]
-
-WSGI_APPLICATION = 'main.wsgi.application'
-
-# My amendments to database settings based on whether we're running remotely or locally
-if is_remote_flag:
-    # Remote database (via DATABASE_URL)
-    logging.debug("Running in remote environment, using DATABASE_URL.")
-    DATABASES = {
-        'default': dj_database_url.config(
-            default=os.getenv('DATABASE_URL'),
-            conn_max_age=600,
-            ssl_require=True
-        )
-    }
-else:
-    # Local database settings
-    logging.debug("Running in local environment, using local database settings.")
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': 'data_driven_forms',
-            'USER': 'robert',
-            'PASSWORD': 'downingstreet',
-            'HOST': 'localhost',
-            'PORT': '5432',
-        }
-    }
-
-# Database
-# https://docs.djangoproject.com/en/5.1/ref/settings/#databases
-#
-#DATABASES = {
-#    'default': {
-#        'ENGINE': 'django.db.backends.sqlite3',
-#        'NAME': BASE_DIR / 'db.sqlite3',
-#    }
-#}
-
-
-# Password validation
-# https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
-
-AUTH_PASSWORD_VALIDATORS = [
-    {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-    },
-]
-
-
-# Internationalization
-# https://docs.djangoproject.com/en/5.1/topics/i18n/
-
-LANGUAGE_CODE = 'en-us'
-
-TIME_ZONE = 'UTC'
-
-USE_I18N = True
-
-USE_TZ = True
-
-
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.1/howto/static-files/
-
-STATIC_URL = '/static/'
-
-# Ensures Django knows where to find static files in development
-STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, "app1/static"),
-]
-
-# Ensures Django knows where to find files in production (Only needed for collectstatic)
-STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
-
-# Default primary key field type
-# https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
-
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-SESSION_COOKIE_AGE = 86400  # 24 hours (86400 seconds)
-# Note default setting is SESSION_EXPIRE_AT_BROWSER_CLOSE = False so the command above keeps things tidy.
-
-##### ===== _reference/main/urls.py ===== #####
-
-"""
-URL configuration for main project.
-
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/5.1/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  path('', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
-Including another URLconf
-    1. Import the include() function: from django.urls import include, path
-    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
-"""
-from django.contrib import admin
-from django.urls import path, include
-from django.conf.urls.static import static
-from django.conf import settings
-import os
-
-
-urlpatterns = [
-
-    path('', include('core_home.urls')),  # root path goes to core_home
-
-    path('regime-dwp-uc/', include(('regime_dwp_uc.urls', 'regime_dwp_uc'), namespace='regime_dwp_uc')),
-    path('regime-dwp-fg/', include(('regime_dwp_fg.urls', 'regime_dwp_fg'), namespace='regime_dwp_fg')),
-    path('regime-hmrc-iht/', include(('regime_hmrc_iht.urls','regime_hmrc_iht'), namespace='regime_hmrc_iht')),
-
-    path('app1/', include('app1.urls')),  # This makes sure all app1 views are prefixed
-    path('admin/', admin.site.urls), # this sends http://127.0.0.1:8000/admin off to admin site
-    path('tester/', include('tester.urls')),  # this sends http://127.0.0.1:8000/tester off to tester app (and that sends '' to tester_home
-] + static('/assets/', document_root=os.path.join(settings.BASE_DIR, 'app1/static/assets'))
-
-
-##### ===== _reference/main/wsgi.py ===== #####
-
-"""
-WSGI config for main project.
-
-It exposes the WSGI callable as a module-level variable named ``application``.
-
-For more information on this file, see
-https://docs.djangoproject.com/en/5.1/howto/deployment/wsgi/
-"""
-
-import os
-
-from django.core.wsgi import get_wsgi_application
-
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'main.settings')
-
-application = get_wsgi_application()
-
-
-##### ===== _reference/regime_dwp_fg/__init__.py ===== #####
-
-
-
-##### ===== _reference/regime_dwp_fg/admin.py ===== #####
-
-from django.contrib import admin
-
-# Register your models here.
-
-
-##### ===== _reference/regime_dwp_fg/apps.py ===== #####
-
-from django.apps import AppConfig
-
-
-class RegimeDwpFgConfig(AppConfig):
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'regime_dwp_fg'
-
-
-##### ===== _reference/regime_dwp_fg/models.py ===== #####
-
-from django.db import models
-
-# Create your models here.
-
-
-##### ===== _reference/regime_dwp_fg/tests.py ===== #####
-
-from django.test import TestCase
-
-# Create your tests here.
-
-
-##### ===== _reference/regime_dwp_fg/urls.py ===== #####
-
-from django.urls import path
-from . import views
-
-app_name = "regime_dwp_fg"
-
-urlpatterns = [
-    path('', views.start, name='start'),
-]
-
-
-##### ===== _reference/regime_dwp_fg/views.py ===== #####
-
-from django.shortcuts import render
-from django.urls import reverse
-from core_home.views import start_url
-
-def start(request):
-    select_dict = request.session.get('select_dict')
-    regime_id = select_dict['regime_id']
-    regime_name = select_dict['regime_name']
-
-    home_html = 'regime_' + regime_id.lower() + '/home.html'
-    continue_html=start_url(request)
-    print('The home page for ', regime_name, ' will send user to ', continue_html, ' for data entry')
-
-    return render(request, home_html, {'regime_name': regime_name, 'continue_html': continue_html})
-
-
-
-
-
-##### ===== _reference/regime_dwp_uc/__init__.py ===== #####
-
-
-
-##### ===== _reference/regime_dwp_uc/admin.py ===== #####
-
-from django.contrib import admin
-
-# Register your models here.
-
-
-##### ===== _reference/regime_dwp_uc/apps.py ===== #####
-
-from django.apps import AppConfig
-
-
-class RegimeDwpUcConfig(AppConfig):
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'regime_dwp_uc'
-
-
-##### ===== _reference/regime_dwp_uc/models.py ===== #####
-
-from django.db import models
-
-# Create your models here.
-
-
-##### ===== _reference/regime_dwp_uc/tests.py ===== #####
-
-from django.test import TestCase
-
-# Create your tests here.
-
-
-##### ===== _reference/regime_dwp_uc/urls.py ===== #####
-
-# regime_uc/urls.py
-from django.urls import path
-from regime_dwp_uc.views import start
-from . import views
-
-urlpatterns = [
-    path('', views.start, name='start'),
-]
-
-##### ===== _reference/regime_dwp_uc/views.py ===== #####
-
-from django.shortcuts import render
-from core_home.views import start_url
-
-def start(request):
-    select_dict = request.session.get('select_dict')
-    regime_id = select_dict['regime_id']
-    regime_name = select_dict['regime_name']
-
-    home_html = 'regime_' + regime_id.lower() + '/home.html'
-    continue_html = start_url(request)
-    print('The home page for ', regime_name, ' will send user to ', continue_html, ' for data entry')
-
-    return render(request, home_html, {'regime_name': regime_name, 'continue_html': continue_html})
-
-
-
-##### ===== _reference/regime_hmrc_iht/__init__.py ===== #####
-
-
-
-##### ===== _reference/regime_hmrc_iht/admin.py ===== #####
-
-from django.contrib import admin
-
-# Register your models here.
-
-
-##### ===== _reference/regime_hmrc_iht/apps.py ===== #####
-
-from django.apps import AppConfig
-
-
-class RegimeHmrcIhtConfig(AppConfig):
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'regime_hmrc_iht'
-
-
-##### ===== _reference/regime_hmrc_iht/models.py ===== #####
-
-from django.db import models
-
-# Create your models here.
-
-
-##### ===== _reference/regime_hmrc_iht/tests.py ===== #####
-
-from django.test import TestCase
-
-# Create your tests here.
-
-
-##### ===== _reference/regime_hmrc_iht/urls.py ===== #####
-
-from django.urls import path
-from . import views
-
-urlpatterns = [
-    path('', views.start, name='start'),  # Or name it more precisely if needed
-]
-
-
-##### ===== _reference/regime_hmrc_iht/views.py ===== #####
-
-from django.shortcuts import render
-from core_home.views import start_url
-
-def start(request):
-    select_dict = request.session.get('select_dict')
-    regime_id = select_dict['regime_id']
-    regime_name = select_dict['regime_name']
-
-    home_html = 'regime_' + regime_id.lower() + '/home.html'
-    continue_html = start_url(request)
-    print('The home page for ', regime_name, ' will send user to ', continue_html, ' for data entry')
-
-    return render(request, home_html, {'regime_name': regime_name, 'continue_html': continue_html})
-
-
-
-##### ===== _reference/tester/__init__.py ===== #####
-
-
-
-##### ===== _reference/tester/admin.py ===== #####
-
-from django.contrib import admin
-
-# Register your models here.
-
-
-##### ===== _reference/tester/apps.py ===== #####
-
-from django.apps import AppConfig
-
-
-class TesterConfig(AppConfig):
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'tester'
-
-
-##### ===== _reference/tester/models.py ===== #####
-
-from django.db import models
-
-class DBTest(models.Model):
-    id = models.AutoField(primary_key=True)  # Auto-incrementing ID field
-    colour = models.CharField(max_length=50)  # Colour field with max 50 characters
-
-    class Meta:
-        db_table = 'basic5_dbtest'  # Explicitly set the table name in the DB
-
-    def __str__(self):
-        return f"{self.id} - {self.colour}"
-
-
-
-##### ===== _reference/tester/tests.py ===== #####
-
-from django.test import TestCase
-
-# Create your tests here.
-
-
-##### ===== _reference/tester/urls.py ===== #####
-
-# myapp/urls.py
-from django.urls import path
-from . import views
-
-urlpatterns = [
-    path('', views.tester_home),
-    path('p2/', views.p2),
-    path('check-db/', views.check_db_connection, name='check_db_connection'),
-    path('display/', views.display_dbtest_data, name='display_dbtest_data'),
-    path('load_data/',views.load_data_to_db, name='load_data_to_db')
-    #path(‘new2’, views.new2, name = "template1"), illustration of using {% url ... %} HTML tag
-    #path('displayCourse/<courseName>',  views.displayCourse),  illustration of passing 1 var
-    #path('scoreCard/<courseName>/<hole>', views.scoreCard),  illustration of passing 2 vars
-]
-
-##### ===== _reference/tester/views.py ===== #####
-
-from django.shortcuts import render
-from django.http import HttpResponse
-from django.db import connections
-from django.db.utils import OperationalError
-from .models import DBTest
-
-
-def tester_home(request):
-    return HttpResponse("This is the home page of the app tester")
-
-def p2(request):
-    return HttpResponse("This is the second page of the app tester")
-
-def check_db_connection(request):
-    db_conn = connections['default']
-    try:
-        db_conn.cursor()
-        return HttpResponse("Database connection successful!")
-    except OperationalError:
-        return HttpResponse("Database connection failed!")
-
-def load_data_to_db(request):
-    a=DBTest(colour="Red")
-    a.save()
-    a = DBTest(colour="Blue")
-    a.save()
-    a = DBTest(colour="Green")
-    a.save()
-    return HttpResponse("Successfully saved three records")
-
-def display_dbtest_data(request):
-    # Query all rows from the DBTest table
-    dbtest_data = DBTest.objects.all()
-
-    # Pass the data to the template
-    return render(request, 'tester/display_data.html', {'dbtest_data': dbtest_data})
-
-
 ##### ===== config/__init__.py ===== #####
 
 
@@ -2590,7 +104,10 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
+import os
 from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -2600,12 +117,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-2!pwt51d$+%kp960d0u6)f4wmtdxat2o!qw%6zy)i&%w!ex%w$'
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-dev-only')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [os.environ.get('RENDER_EXTERNAL_HOSTNAME', '127.0.0.1')]
 
 
 # Application definition
@@ -2625,6 +142,7 @@ AUTH_USER_MODEL = 'core.User'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -2657,10 +175,27 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
+'''
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
+    }
+}
+'''
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'config.db_backend',
+        'NAME': os.environ.get('DB_NAME'),
+        'USER': os.environ.get('DB_USER'),
+        'PASSWORD': os.environ.get('DB_PASSWORD'),
+        'HOST': os.environ.get('DB_HOST'),
+        'PORT': os.environ.get('DB_PORT'),
+        'OPTIONS': {
+            'sslmode': 'require',
+            'channel_binding': 'require',
+            }
     }
 }
 
@@ -2701,15 +236,44 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+WHITENOISE_USE_FINDERS = True
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+TEST_RUNNER = 'config.test_runner.LoadOnceTestRunner'
+
 LOGIN_URL = '/accounts/login/'
 LOGIN_REDIRECT_URL = '/demo/'
 LOGOUT_REDIRECT_URL = '/accounts/login/'
+
+
+##### ===== config/test_runner.py ===== #####
+
+"""
+Custom test runner that loads test fixtures exactly once per suite.
+
+Django's default behaviour calls setUpTestData once per TestCase class,
+which means load_test_data (a slow Neon network call) runs N times where
+N is the number of test classes.  This runner loads the data a single time
+after the test database is created, outside any class-level savepoint.
+
+Django's TestCase still wraps every individual test method in a transaction
+that rolls back on completion, so per-test mutations (e.g. deleting alice's
+answers in setUp) are fully undone before the next test runs.
+"""
+
+from django.core.management import call_command
+from django.test.runner import DiscoverRunner
+
+
+class LoadOnceTestRunner(DiscoverRunner):
+    def setup_databases(self, **kwargs):
+        result = super().setup_databases(**kwargs)
+        call_command('load_test_data', verbosity=0)
+        return result
 
 
 ##### ===== config/urls.py ===== #####
@@ -2784,6 +348,76 @@ from django.core.wsgi import get_wsgi_application
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 
 application = get_wsgi_application()
+
+
+##### ===== config/db_backend/__init__.py ===== #####
+
+
+
+##### ===== config/db_backend/base.py ===== #####
+
+"""
+Custom PostgreSQL database backend with connection retry for Neon scale-to-zero.
+
+Neon's free tier pauses the database after inactivity. The first request after
+a pause can hit an OperationalError while Neon wakes up. This wrapper retries
+the initial connection up to 3 times (2 s apart) before giving up.
+
+Only the connection-establishment path is affected. Queries against an already-
+open connection bypass this wrapper entirely (ensure_connection() returns
+immediately when self.connection is not None).
+"""
+
+import logging
+import time
+
+from django.db import OperationalError
+from django.db.backends.postgresql.base import DatabaseWrapper as PostgresDatabaseWrapper
+
+logger = logging.getLogger(__name__)
+
+# PostgreSQL SQLSTATE class '08' = connection_exception family.
+# psycopg2 also raises OperationalError for pure socket failures (refused,
+# timeout, DNS), in which case pgcode is None — those should also be retried.
+_CONNECTION_PGCODE_PREFIX = '08'
+
+_MAX_RETRIES = 3
+_RETRY_DELAY = 2  # seconds
+
+
+def _is_connection_error(exc: OperationalError) -> bool:
+    """Return True if exc looks like a transient connection failure."""
+    cause = getattr(exc, '__cause__', None)
+    if cause is None:
+        # Wrapped without an underlying psycopg2 cause — treat as connection error.
+        return True
+    pgcode = getattr(cause, 'pgcode', None)
+    # pgcode is None  → socket-level failure (connection refused, timeout, …)
+    # pgcode starts with '08' → PostgreSQL connection_exception class
+    return pgcode is None or pgcode.startswith(_CONNECTION_PGCODE_PREFIX)
+
+
+class DatabaseWrapper(PostgresDatabaseWrapper):
+    """PostgreSQL backend that retries connection establishment on failure."""
+
+    def ensure_connection(self):
+        if self.connection is not None:
+            # Already connected — skip retry logic entirely.
+            return super().ensure_connection()
+
+        for attempt in range(1, _MAX_RETRIES + 1):
+            try:
+                super().ensure_connection()
+                return
+            except OperationalError as exc:
+                if not _is_connection_error(exc) or attempt == _MAX_RETRIES:
+                    raise
+                logger.warning(
+                    'DB connection attempt %d/%d failed (Neon waking up?), '
+                    'retrying in %ds — %s',
+                    attempt, _MAX_RETRIES, _RETRY_DELAY, exc,
+                )
+                time.sleep(_RETRY_DELAY)
 
 
 ##### ===== core/__init__.py ===== #####
@@ -4179,7 +1813,6 @@ a backtrack that changes Q_nino_yn from Yes to No, pruning Q_nino_value
 from the confirmed answer set.
 """
 
-from django.core.management import call_command
 from django.test import Client, TestCase
 
 from .models import Answer, AnswerHistory, SectionStatus, User
@@ -4188,10 +1821,6 @@ from .permissions import get_permitted_sections
 
 class TestSimpleS1YesBranch(TestCase):
     """Walk alice through SIMPLE_S1 via the Yes branch and confirm."""
-
-    @classmethod
-    def setUpTestData(cls):
-        call_command('load_test_data', verbosity=0)
 
     def setUp(self):
         self.client = Client()
@@ -4256,10 +1885,6 @@ class TestSimpleS1YesBranch(TestCase):
 class TestBacktrack(TestCase):
     """Backtrack from Q_nino_yn=Yes to No prunes Q_nino_value from confirmed answers."""
 
-    @classmethod
-    def setUpTestData(cls):
-        call_command('load_test_data', verbosity=0)
-
     def setUp(self):
         self.client = Client()
         self.client.login(username='alice', password='testpass123')
@@ -4305,10 +1930,6 @@ class TestBacktrack(TestCase):
 class TestPermissions(TestCase):
     """Unit tests for get_permitted_sections covering all three grant scopes."""
 
-    @classmethod
-    def setUpTestData(cls):
-        call_command('load_test_data', verbosity=0)
-
     def test_alice_acting_for_herself_sees_all_sections(self):
         """alice has regime-level grants for all three regimes → all 8 sections."""
         alice = User.objects.get(username='alice')
@@ -4342,10 +1963,6 @@ class TestPermissions(TestCase):
 
 class TestSolicitor1Flow(TestCase):
     """solicitor1 navigating for alice should reach SCHED_S3 and no further."""
-
-    @classmethod
-    def setUpTestData(cls):
-        call_command('load_test_data', verbosity=0)
 
     def setUp(self):
         self.client = Client()
@@ -5310,9 +2927,41 @@ def section_confirm_table(request, section_id):
 def section_done(request, section_id):
     section = get_object_or_404(Section, section_id=section_id)
     pss = get_session(request)
-    return_url = pss.get('return_url')
+
+    user_id           = pss.get('user_id')
+    regime_id         = pss.get('regime_id')
+    schedule_id       = pss.get('schedule_id')
+    regime_home_url   = pss.get('regime_home_url')
+    schedule_list_url = pss.get('schedule_list_url')
+    return_url        = pss.get('return_url')
+
+    if user_id and regime_id and regime_home_url:
+        # All sections in the regime complete?
+        all_complete = not SectionStatus.objects.filter(
+            user_id=user_id,
+            regime_id=regime_id,
+        ).exclude(status='complete').exists()
+
+        if all_complete:
+            return redirect(regime_home_url)
+
+        # All sections in the current schedule complete?
+        if schedule_id and schedule_list_url:
+            schedule_complete = not SectionStatus.objects.filter(
+                user_id=user_id,
+                regime_id=regime_id,
+                section__schedule_id=schedule_id,
+            ).exclude(status='complete').exists()
+
+            if schedule_complete:
+                return redirect(schedule_list_url)
+
+        if return_url:
+            return redirect(return_url)
+
     if return_url:
         return redirect(return_url)
+
     logger.warning(
         'section_done: no return_url in session for section %s (user %s) — '
         'falling back to /. Layer 1 must set return_url before entering Layer 2.',
@@ -5937,27 +3586,16 @@ Covers:
      gracefully (falls back to dept home)
 """
 
-from django.core.management import call_command
 from django.test import Client, TestCase
 
 from core.models import SectionStatus, User
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Shared test fixture
-# ─────────────────────────────────────────────────────────────────────────────
-
-class _Base(TestCase):
-    @classmethod
-    def setUpTestData(cls):
-        call_command('load_test_data', verbosity=0)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # A. Login redirect
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestLoginRedirect(_Base):
+class TestLoginRedirect(TestCase):
     """POST to login should redirect to /demo/ (LOGIN_REDIRECT_URL)."""
 
     def test_login_lands_at_demo(self):
@@ -5976,7 +3614,7 @@ class TestLoginRedirect(_Base):
 # B. Department home
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestDeptHome(_Base):
+class TestDeptHome(TestCase):
     """Multi-regime user sees cards; single-regime user is auto-redirected."""
 
     def setUp(self):
@@ -6019,7 +3657,7 @@ class TestDeptHome(_Base):
 # C. DEMO_SIMPLE — Pattern A (single section, direct jump)
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestPatternA_DemoSimple(_Base):
+class TestPatternA_DemoSimple(TestCase):
     """
     Full DEMO_SIMPLE journey for carla (fresh user, no prior answers).
     Pattern A: regime home → Start → section_start → questions → confirm
@@ -6122,7 +3760,7 @@ class TestPatternA_DemoSimple(_Base):
 # D. DEMO_SECTIONS — Pattern B (section task list)
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestPatternB_DemoSections(_Base):
+class TestPatternB_DemoSections(TestCase):
     """
     DEMO_SECTIONS journey for bob (fresh for this regime).
     Pattern B: regime home → Start → section task list → section →
@@ -6225,7 +3863,7 @@ class TestPatternB_DemoSections(_Base):
 # E. DEMO_SCHEDULES — Pattern C (schedule → section task list)
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestPatternC_DemoSchedules(_Base):
+class TestPatternC_DemoSchedules(TestCase):
     """
     DEMO_SCHEDULES journey for alice.
     Pattern C: regime home → Start → schedule list → section list →
@@ -6322,7 +3960,7 @@ class TestPatternC_DemoSchedules(_Base):
 # F. Pre-population (cross-regime suggestions)
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestPrePopulation(_Base):
+class TestPrePopulation(TestCase):
     """
     Alice has completed SIMPLE_S1. When she starts SECTIONS_S1, shared
     questions (Q_full_name, Q_dob, Q_nino_yn) should appear as suggestions.
@@ -6354,7 +3992,7 @@ class TestPrePopulation(_Base):
 # G. section_done fallback (no return_url in session)
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestSectionDoneFallback(_Base):
+class TestSectionDoneFallback(TestCase):
     """
     When section_done is reached with no return_url in session, it should
     fall back to /regime/<regime_id>/ (the core Layer 1 URL, not /demo/).
@@ -6393,7 +4031,7 @@ class TestSectionDoneFallback(_Base):
 # H. regime_home router — unknown regime falls back to dept home
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestRegimeHomeRouter(_Base):
+class TestRegimeHomeRouter(TestCase):
     """regime_home router handles unmapped regime_id gracefully."""
 
     def setUp(self):
@@ -6851,9 +4489,15 @@ def select_schedule(request, regime_id):
         })
 
     regime_home_url = reverse('dept_demo:regime_home', kwargs={'regime_id': regime_id})
-    base_crumbs = pss.get('breadcrumbs', [])
-    crumbs = base_crumbs + [{'label': regime.regime_name, 'url': regime_home_url}]
-    update_session(request, {'breadcrumbs': crumbs})
+    crumbs = [
+        {'label': 'HMRC',                 'url': '/demo/'},
+        {'label': 'Personal Tax Account', 'url': '/demo/regimes/'},
+        {'label': regime.regime_name,     'url': regime_home_url},
+    ]
+    update_session(request, {
+        'breadcrumbs':    crumbs,
+        'regime_home_url': regime_home_url,
+    })
     return render(request, 'dept_demo/nav/select_schedule.html', {
         'regime':      regime,
         'schedules':   schedule_data,
@@ -6932,24 +4576,39 @@ def select_section(request, regime_id, schedule_id=None):
                              kwargs={'regime_id': regime_id})
 
     regime_home_url = reverse('dept_demo:regime_home', kwargs={'regime_id': regime_id})
-    base_crumbs = pss.get('breadcrumbs', [])
 
     if schedule_id:
-        # Pattern C: breadcrumbs were set by select_schedule; add schedule crumb
-        schedule_list_url = reverse(
+        # Pattern C: build from scratch — regime crumb + schedule crumb
+        section_list_url = reverse(
             'dept_demo:select_section_in_schedule',
             kwargs={'regime_id': regime_id, 'schedule_id': schedule_id},
         )
-        crumbs = base_crumbs + [{'label': schedule.schedule_name, 'url': schedule_list_url}]
+        crumbs = [
+            {'label': 'HMRC',                 'url': '/demo/'},
+            {'label': 'Personal Tax Account', 'url': '/demo/regimes/'},
+            {'label': regime.regime_name,     'url': regime_home_url},
+            {'label': schedule.schedule_name, 'url': section_list_url},
+        ]
     else:
-        # Pattern B: build regime crumb from base
+        # Pattern B: build from scratch — regime crumb only
         regime_sections_url = reverse('dept_demo:regime_demo_sections')
-        crumbs = base_crumbs + [{'label': regime.regime_name, 'url': regime_sections_url}]
+        crumbs = [
+            {'label': 'HMRC',                 'url': '/demo/'},
+            {'label': 'Personal Tax Account', 'url': '/demo/regimes/'},
+            {'label': regime.regime_name,     'url': regime_sections_url},
+        ]
+
+    schedule_list_url = (
+        reverse('dept_demo:select_schedule', kwargs={'regime_id': regime_id})
+        if schedule_id else None
+    )
 
     update_session(request, {
-        'return_url':  return_url,
-        'schedule_id': schedule_id,
-        'breadcrumbs': crumbs,
+        'return_url':       return_url,
+        'schedule_id':      schedule_id,
+        'breadcrumbs':      crumbs,
+        'regime_home_url':  regime_home_url,
+        'schedule_list_url': schedule_list_url,
     })
 
     return render(request, 'dept_demo/nav/select_section.html', {
@@ -7166,11 +4825,12 @@ def regime_simple_home(request):
 
     # Set the four SESSION_KEYS + return_url so section_done knows where to go
     update_session(request, {
-        'user_id':    user.pk,
-        'actor_id':   actor.pk,
-        'regime_id':  regime.regime_id,
-        'case_id':    case.case_id,
-        'return_url': request.path,
+        'user_id':         user.pk,
+        'actor_id':        actor.pk,
+        'regime_id':       regime.regime_id,
+        'case_id':         case.case_id,
+        'return_url':      request.path,
+        'regime_home_url': request.path,
         'breadcrumbs': [
             {'label': 'HMRC',                 'url': '/demo/'},
             {'label': 'Personal Tax Account', 'url': '/demo/regimes/'},

@@ -95,6 +95,10 @@ from core.models import (
 # Q53  META regime ID                            — META_ADD_REGIME question
 # Q54  META regime name                          — META_ADD_REGIME question
 # Q55  META department ID                        — META_ADD_REGIME question
+# Q56  META section ID                           — META_ADD_ROUTING column
+# Q57  META current node                         — META_ADD_ROUTING column
+# Q58  META answer value                         — META_ADD_ROUTING column
+# Q59  META next node                            — META_ADD_ROUTING column
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -404,6 +408,16 @@ class Command(BaseCommand):
         question('Q55', 'Department ID', 'text',
                  hint='Department identifier, e.g. DWP.')
 
+        # META_ADD_ROUTING columns
+        question('Q56', 'Section ID', 'text',
+                 hint='The section this routing row belongs to.')
+        question('Q57', 'Current node', 'text',
+                 hint='Q-number or S-number for this screen.')
+        question('Q58', 'Answer value (leave blank for unconditional)', 'text',
+                 hint='The answer that triggers this route. Blank means always follow this route.')
+        question('Q59', 'Next node (leave blank for END)', 'text',
+                 hint='Q-number or S-number for the next screen. Blank means END.')
+
         # ── 4. REGIMES ────────────────────────────────────────────────────────
         self.stdout.write('Creating regimes…')
 
@@ -560,6 +574,17 @@ class Command(BaseCommand):
                 'schedule':            None,
                 'display_order':       6,
                 'column_question_ids': 'Q42;Q43;Q44;Q45',
+            }
+        )
+        Section.objects.update_or_create(
+            section_id='META_ADD_ROUTING',
+            defaults={
+                'section_name':        'Add routing',
+                'section_type':        1,
+                'regime':              meta_regime,
+                'schedule':            None,
+                'display_order':       7,
+                'column_question_ids': 'Q56;Q57;Q58;Q59',
             }
         )
 

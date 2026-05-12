@@ -31,6 +31,7 @@ def dispatch_meta_processor(section, case, user):
         'META_ADD_QUESTIONS':   process_meta_questions,
         'META_ADD_SETS':        process_meta_sets,
         'META_ADD_SETMEMBERS':  process_meta_setmembers,
+        'META_ADD_ROUTING':     process_meta_routing,
     }
     fn = processors.get(section.section_id)
     if fn:
@@ -214,6 +215,47 @@ def process_meta_setmembers(case, user):
                 'display_order': display_order,
                 'required':      required,
             }
+        )
+
+
+def process_meta_routing(case, user):
+    """
+    Read META_ADD_ROUTING rows and write to Routing table.
+    Each row: section_id, current_node, answer_value, next_node, order.
+    Deletes all existing routing for each affected section before writing,
+    so re-confirming the step replaces rather than duplicates.
+    """
+    rows = _get_table_rows(case, user, 'META_ADD_ROUTING')
+    if not rows:
+        return
+
+    # Collect affected section IDs and delete their existing routing
+    section_ids = list({(row.get('Q56') or '').strip() for row in rows})
+    section_ids = [s for s in section_ids if s]
+    from .models import Routing
+    Routing.objects.filter(section__section_id__in=section_ids).delete()
+
+    for order, row in enumerate(rows, start=1):
+        section_id   = (row.get('Q56') or '').strip()
+        current_node = (row.get('Q57') or '').strip()
+        answer_value = (row.get('Q58') or '').strip() or None
+        next_node    = (row.get('Q59') or '').strip() or None
+
+        if not section_id or not current_node:
+            continue
+        try:
+            section = Section.objects.get(section_id=section_id)
+        except Section.DoesNotExist:
+            logger.warning('process_meta_routing: section %s not found',
+                           section_id)
+            continue
+        from .models import Routing
+        Routing.objects.create(
+            section=section,
+            current_node=current_node,
+            answer_value=answer_value,
+            next_node=next_node,
+            order_in_section=order,
         )
 
 
