@@ -8,6 +8,7 @@ Staff-only views for inspecting, editing, and creating regime configuration.
   /tools/question/<question_id>/edit/         — edit a single question
   /tools/set/<set_id>/edit/                   — edit a QuestionSet header
   /tools/create/                              — regime creation wizard (task list)
+  /tools/create/save/                         — save wizard and exit to /tools/
   /tools/create/abandon/                      — abandon current draft and restart
 """
 
@@ -20,6 +21,7 @@ from django.views.decorators.http import require_POST
 from .interfaces import bootstrap_section_statuses, get_or_create_case
 from .models import (
     Answer,
+    AnswerTable,
     Case,
     Question,
     QuestionSet,
@@ -263,17 +265,6 @@ def tools_create(request):
     }
 
     # ── Build task list ───────────────────────────────────────────────────────
-    _status_label = {
-        'not_started': 'Not yet started',
-        'in_progress': 'In progress',
-        'complete':    'Completed',
-    }
-    _status_tag = {
-        'not_started': 'govuk-tag--grey',
-        'in_progress': 'govuk-tag--blue',
-        'complete':    '',
-    }
-
     steps = []
     for section in meta_sections:
         status = statuses.get(section.section_id, 'not_started')
@@ -281,11 +272,26 @@ def tools_create(request):
             action_url = f'/section/{section.section_id}/table/'
         else:
             action_url = f'/section/{section.section_id}/start/'
+
+        if status == 'complete':
+            link_label   = f'Amend — {section.section_name}'
+            status_label = 'Completed'
+            status_tag   = ''  # green by default
+        elif status == 'in_progress':
+            link_label   = section.section_name
+            status_label = 'In progress'
+            status_tag   = 'govuk-tag--blue'
+        else:
+            link_label   = section.section_name
+            status_label = 'Not yet started'
+            status_tag   = 'govuk-tag--grey'
+
         steps.append({
             'section':      section,
             'status':       status,
-            'status_label': _status_label.get(status, 'Not yet started'),
-            'status_tag':   _status_tag.get(status, 'govuk-tag--grey'),
+            'status_label': status_label,
+            'status_tag':   status_tag,
+            'link_label':   link_label,
             'action_url':   action_url,
         })
 
@@ -299,10 +305,8 @@ def tools_create(request):
         for sid in REQUIRED_STEPS
     )
 
-    # ── Submit completed case so the next visit starts fresh ─────────────────
-    if all_complete and case.status == Case.DRAFT:
-        case.status = Case.SUBMITTED
-        case.save()
+    # Do NOT auto-submit the case here — submission is explicit
+    # via the "Save new regime and exit" button (tools_create_save view).
 
     # ── Read target regime ID from META_ADD_REGIME answer ─────────────────────
     target_regime_id = ''
@@ -337,29 +341,78 @@ def tools_create(request):
         'all_complete':     all_complete,
         'case_id':          case.case_id,
         'target_regime_id': target_regime_id,
+        'save_url':         '/tools/create/save/',
     }
     return render(request, 'core/tools_create.html', context)
 
 
 @staff_required
-@require_POST
-def tools_create_abandon(request):
+def tools_create_save(request):
     """
-    Marks the current draft META case as lapsed so the admin
-    can start a fresh creation session.
+    POST only. Saves and exits the creation wizard:
+    - Marks the META case as SUBMITTED
+    - Deletes Answer and AnswerTable records for this case
+      (processors have already written to real tables)
+    - Deletes SectionStatus records for this case
+    - Redirects to /tools/
     """
+    if request.method != 'POST':
+        return redirect('/tools/create/')
+
     try:
         meta_regime = Regime.objects.get(regime_id='META')
-        Case.objects.filter(
-            user=request.user,
-            regime=meta_regime,
-            status__in=[Case.DRAFT, Case.SUBMITTED],
-        ).update(status=Case.LAPSED)
-        # Clear section statuses so the new case starts fresh
+    except Regime.DoesNotExist:
+        return redirect('/tools/')
+
+    case = (
+        Case.objects
+        .filter(user=request.user, regime=meta_regime, status=Case.DRAFT)
+        .order_by('-started_at')
+        .first()
+    )
+    if case:
+        case.status = Case.SUBMITTED
+        case.save()
+
+        Answer.objects.filter(user=request.user, case=case).delete()
+        AnswerTable.objects.filter(user=request.user, case=case).delete()
+
         SectionStatus.objects.filter(
             user=request.user,
             section__regime=meta_regime,
         ).delete()
+
+    return redirect('/tools/')
+
+
+@staff_required
+def tools_create_abandon(request):
+    """
+    Discards the current draft and restarts the creation wizard.
+    Lapses draft/submitted META cases, deletes their answers and
+    section statuses, then redirects back to /tools/create/.
+    """
+    if request.method != 'POST':
+        return redirect('/tools/create/')
+
+    try:
+        meta_regime = Regime.objects.get(regime_id='META')
     except Regime.DoesNotExist:
-        pass
+        return redirect('/tools/create/')
+
+    cases = Case.objects.filter(
+        user=request.user,
+        regime=meta_regime,
+        status__in=[Case.DRAFT, Case.SUBMITTED],
+    )
+    for case in cases:
+        Answer.objects.filter(user=request.user, case=case).delete()
+        AnswerTable.objects.filter(user=request.user, case=case).delete()
+    cases.update(status=Case.LAPSED)
+
+    SectionStatus.objects.filter(
+        user=request.user,
+        section__regime=meta_regime,
+    ).delete()
+
     return redirect('/tools/create/')

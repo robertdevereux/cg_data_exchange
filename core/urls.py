@@ -27,6 +27,10 @@ urlpatterns = [
          views_admin_tools.tools_create,
          name='tools_create'),
 
+    path('tools/create/save/',
+         views_admin_tools.tools_create_save,
+         name='tools_create_save'),
+
     path('tools/create/abandon/',
          views_admin_tools.tools_create_abandon,
          name='tools_create_abandon'),

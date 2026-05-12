@@ -23,44 +23,45 @@
       </p>
 
       {# ── Task list ─────────────────────────────────────────────────────── #}
-      <ul class="govuk-task-list">
+      <ol class="govuk-task-list">
         {% for step in steps %}
         <li class="govuk-task-list__item govuk-task-list__item--with-link">
           <div class="govuk-task-list__name-and-hint">
-            {% if step.status == 'complete' %}
-            <span class="govuk-task-list__name-and-hint">
-              {{ step.section.section_name }}
-            </span>
-            {% else %}
             <a class="govuk-link govuk-task-list__link"
                href="{{ step.action_url }}"
                aria-describedby="status-{{ step.section.section_id }}">
-              {{ step.section.section_name }}
+              {{ step.link_label }}
             </a>
-            {% endif %}
           </div>
-          <div class="govuk-task-list__status" id="status-{{ step.section.section_id }}">
-            {% if step.status == 'complete' %}
-            <strong class="govuk-tag">{{ step.status_label }}</strong>
-            {% else %}
-            <strong class="govuk-tag {{ step.status_tag }}">{{ step.status_label }}</strong>
-            {% endif %}
+          <div class="govuk-task-list__status"
+               id="status-{{ step.section.section_id }}">
+            <strong class="govuk-tag {{ step.status_tag }}">
+              {{ step.status_label }}
+            </strong>
           </div>
         </li>
         {% endfor %}
-      </ul>
+      </ol>
 
       {# ── All complete block ─────────────────────────────────────────────── #}
       {% if all_complete %}
       <div class="govuk-inset-text">
         The required steps are complete. Your regime has been created.
         Optional steps (Questions, Sets, Set members, Schedules) can be
-        completed now or revisited later.
+        completed now or revisited via the configuration viewer later.
       </div>
-      <a href="/tools/viewer/?regime={{ target_regime_id }}"
-         class="govuk-button">
-        View new regime in configuration viewer
-      </a>
+      <div class="govuk-button-group">
+        <a href="/tools/viewer/?regime={{ target_regime_id }}"
+           class="govuk-button govuk-button--secondary">
+          View regime in configuration viewer
+        </a>
+        <form method="post" action="{{ save_url }}" style="display:inline">
+          {% csrf_token %}
+          <button class="govuk-button">
+            Save new regime and exit
+          </button>
+        </form>
+      </div>
       {% endif %}
 
       {# ── Abandon draft ─────────────────────────────────────────────────── #}
