@@ -198,10 +198,31 @@ class Command(BaseCommand):
             }
         )
 
+        # ── DWP test users ────────────────────────────────────────────────────
+        for username, first, last in [
+            ('dwp_alice', 'Alice', 'Chapman'),
+            ('dwp_bob',   'Bob',   'Chapman'),
+            ('dwp_agent1', 'Agent', 'One'),
+        ]:
+            u, created = User.objects.get_or_create(
+                username=username,
+                defaults={
+                    'first_name': first,
+                    'last_name':  last,
+                    'email':      f'{username}@example.com',
+                    'password':   pw,
+                },
+            )
+            if created:
+                counters['User'] += 1
+
         alice      = User.objects.get(username='alice')
         bob        = User.objects.get(username='bob')
         carla      = User.objects.get(username='carla')  # noqa: F841
         solicitor1 = User.objects.get(username='solicitor1')
+        dwp_alice  = User.objects.get(username='dwp_alice')
+        dwp_bob    = User.objects.get(username='dwp_bob')
+        dwp_agent1 = User.objects.get(username='dwp_agent1')
 
         # ── 2. SHARED QUESTION POOL ───────────────────────────────────────────
         self.stdout.write('Creating shared questions…')
@@ -797,6 +818,26 @@ class Command(BaseCommand):
         if created:
             counters['Permission'] += 1
 
+        # ── DWP user permissions ──────────────────────────────────────────────
+        # Blanket all-regime permissions (regime=None, section=None).
+        # Grants access to all non-PLATFORM regimes — including any DWP-specific
+        # regimes created later via the wizard.
+        for u in [dwp_alice, dwp_bob]:
+            _, created = Permission.objects.get_or_create(
+                actor=u, user=u, regime=None, section=None,
+                defaults={'can_delegate': False, 'granted_by': None},
+            )
+            if created:
+                counters['Permission'] += 1
+
+        # dwp_agent1 acting for dwp_alice (blanket scope)
+        _, created = Permission.objects.get_or_create(
+            actor=dwp_agent1, user=dwp_alice, regime=None, section=None,
+            defaults={'can_delegate': False, 'granted_by': None},
+        )
+        if created:
+            counters['Permission'] += 1
+
         # ── 10. CASES ─────────────────────────────────────────────────────────
         self.stdout.write('Creating cases…')
 
@@ -930,9 +971,13 @@ class Command(BaseCommand):
 
         self.stdout.write('')
         self.stdout.write('Users:      alice / bob / carla / solicitor1  (pw: testpass123)')
+        self.stdout.write('            dwp_alice / dwp_bob / dwp_agent1  (pw: testpass123)')
         self.stdout.write('Regimes:    DEMO_SIMPLE · DEMO_SECTIONS · DEMO_SCHEDULES')
         self.stdout.write('Alice:      SIMPLE_S1 complete, answer history present')
         self.stdout.write('Bob:        SECTIONS_S1 complete, S2+S3 not started')
         self.stdout.write('Carla:      no answers (fresh start)')
         self.stdout.write('solicitor1: SCHED_S3+S4 (Financial Information) for alice; SECTIONS_S2 (Your Finances) for bob')
+        self.stdout.write('dwp_alice:  blanket all-regime permission (self)')
+        self.stdout.write('dwp_bob:    blanket all-regime permission (self)')
+        self.stdout.write('dwp_agent1: blanket permission acting for dwp_alice')
         self.stdout.write(self.style.SUCCESS('─' * 50))

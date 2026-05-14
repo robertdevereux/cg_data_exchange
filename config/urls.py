@@ -21,6 +21,9 @@ from django.views.static import serve
 from django.conf import settings
 import os
 
+from dept_demo import urls as dept_demo_urls
+from dept_dwp import urls as dept_dwp_urls
+
 # Local static directory that holds our GDS assets.
 _GDS_STATIC = os.path.join(settings.BASE_DIR, 'core', 'static')
 
@@ -34,22 +37,17 @@ _gds_assets = [
     'assets/fonts/light-f591b13f7d-v2.woff',
 ]
 
-if settings.ACTIVE_DEPT == 'DWP':
-    from dept_dwp import urls as dept_urls
-    dept_prefix    = 'dwp/'
-    dept_namespace = 'dept_dwp'
-    _dept_home     = '/dwp/'
-else:
-    from dept_demo import urls as dept_urls
-    dept_prefix    = 'demo/'
-    dept_namespace = 'dept_demo'
-    _dept_home     = '/demo/'
+# ACTIVE_DEPT controls the root redirect (/) only.
+# Both dept apps are always registered at their own prefixes so tests can
+# hit /demo/... and /dwp/... directly regardless of the ACTIVE_DEPT setting.
+_dept_home = '/dwp/' if settings.ACTIVE_DEPT == 'DWP' else '/demo/'
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('accounts/', include('django.contrib.auth.urls')),
     path('', include('core.urls', namespace='core')),
-    path(dept_prefix, include((dept_urls, dept_namespace))),
+    path('demo/', include((dept_demo_urls, 'dept_demo'))),
+    path('dwp/',  include((dept_dwp_urls, 'dept_dwp'))),
 ] + [
     path(asset, serve, {
         'path': 'govuk-' + asset,   # maps to core/static/govuk-assets/...
