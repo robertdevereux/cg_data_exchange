@@ -76,11 +76,23 @@ def process_meta_regime(case, user):
 
 def _get_table_rows(case, user, section_id):
     """Return the list of row dicts from AnswerTable for a given section."""
+    print(f'DEBUG _get_table_rows: section_id={section_id}, '
+          f'case={case.case_id}, user={user.username}')
     try:
         section = Section.objects.get(section_id=section_id)
-        at = AnswerTable.objects.get(user=user, case=case, section=section)
-        return at.answer  # list of dicts
-    except (Section.DoesNotExist, AnswerTable.DoesNotExist):
+        print(f'DEBUG _get_table_rows: section found={section}')
+        at = AnswerTable.objects.get(
+            user=user, case=case, section=section
+        )
+        print(f'DEBUG _get_table_rows: AnswerTable found, '
+              f'rows={at.answer}')
+        return at.answer
+    except Section.DoesNotExist:
+        print(f'DEBUG _get_table_rows: Section NOT FOUND: {section_id}')
+        return []
+    except AnswerTable.DoesNotExist:
+        print(f'DEBUG _get_table_rows: AnswerTable NOT FOUND for '
+              f'section={section_id}, case={case.case_id}')
         return []
 
 
@@ -226,6 +238,8 @@ def process_meta_routing(case, user):
     so re-confirming the step replaces rather than duplicates.
     """
     rows = _get_table_rows(case, user, 'META_ADD_ROUTING')
+    print(f'DEBUG process_meta_routing: case={case.case_id}, '
+          f'user={user.username}, rows={rows}')
     if not rows:
         return
 
