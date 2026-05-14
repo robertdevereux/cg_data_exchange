@@ -19,6 +19,8 @@ Department apps may:
   Section etc.) for read purposes
 - Build any Layer 1 navigation pattern they choose, provided it sets the four
   SESSION_KEYS correctly
+- Use call_regime(), call_schedules(), or call_sections() as a single-call
+  shortcut that sets all session keys and returns the entry URL
 """
 
 import uuid
@@ -93,3 +95,131 @@ def bootstrap_section_statuses(user, regime, sections):
             section=section,
             defaults={'status': 'not_started'},
         )
+
+
+# ── Call helpers ──────────────────────────────────────────────────────────────
+
+def _build_permitted_lists(permitted):
+    """
+    Derive permitted_schedule_ids and permitted_section_ids from a permitted
+    sections queryset.
+
+    schedule_ids: distinct, ordered by schedule display_order then schedule_id.
+    section_ids:  list of section_id strings.
+    """
+    permitted_schedule_ids = list(dict.fromkeys(
+        permitted
+        .filter(schedule__isnull=False)
+        .order_by('schedule__display_order', 'schedule__schedule_id')
+        .values_list('schedule__schedule_id', flat=True)
+    ))
+    permitted_section_ids = list(
+        permitted.values_list('section_id', flat=True)
+    )
+    return permitted_schedule_ids, permitted_section_ids
+
+
+def call_regime(request, regime, actor, user):
+    """
+    Full-regime entry point.
+
+    Finds/creates a case, bootstraps section statuses, writes all SESSION_KEYS
+    plus permitted_schedule_ids, permitted_section_ids, and return_url to
+    session, then returns the Layer 1 entry URL.
+
+    The returned URL may begin with /regime/... — remap to the dept prefix
+    in the calling view if needed (core does not know the dept's URL structure).
+    """
+    from django.db.models import Q
+    from .permissions import get_permitted_sections
+    from .nav_reference import resolve_layer1_entry_url
+    from .session import update_session
+
+    permitted = get_permitted_sections(actor, user).filter(
+        Q(regime=regime) | Q(schedule__regime=regime)
+    )
+
+    case = get_or_create_case(user, regime)
+    bootstrap_section_statuses(user, regime, permitted)
+
+    permitted_schedule_ids, permitted_section_ids = _build_permitted_lists(permitted)
+
+    update_session(request, {
+        'user_id':                user.pk,
+        'actor_id':               actor.pk,
+        'regime_id':              regime.regime_id,
+        'case_id':                case.case_id,
+        'return_url':             request.path,
+        'permitted_schedule_ids': permitted_schedule_ids,
+        'permitted_section_ids':  permitted_section_ids,
+    })
+
+    return resolve_layer1_entry_url(permitted, regime.regime_id)
+
+
+def call_schedules(request, regime, actor, user, schedule_ids):
+    """
+    Schedule-filtered entry point.
+
+    Like call_regime but only includes sections whose schedule is in
+    schedule_ids. Useful when an intermediary has access to specific schedules
+    rather than the whole regime.
+    """
+    from .permissions import get_permitted_sections
+    from .nav_reference import resolve_layer1_entry_url
+    from .session import update_session
+
+    permitted = get_permitted_sections(actor, user).filter(
+        schedule__schedule_id__in=schedule_ids
+    )
+
+    case = get_or_create_case(user, regime)
+    bootstrap_section_statuses(user, regime, permitted)
+
+    permitted_schedule_ids, permitted_section_ids = _build_permitted_lists(permitted)
+
+    update_session(request, {
+        'user_id':                user.pk,
+        'actor_id':               actor.pk,
+        'regime_id':              regime.regime_id,
+        'case_id':                case.case_id,
+        'return_url':             request.path,
+        'permitted_schedule_ids': permitted_schedule_ids,
+        'permitted_section_ids':  permitted_section_ids,
+    })
+
+    return resolve_layer1_entry_url(permitted, regime.regime_id)
+
+
+def call_sections(request, regime, actor, user, section_ids):
+    """
+    Section-filtered entry point.
+
+    Like call_regime but only includes sections whose section_id is in
+    section_ids. Useful when an intermediary has access to specific sections
+    rather than the whole regime or schedule.
+    """
+    from .permissions import get_permitted_sections
+    from .nav_reference import resolve_layer1_entry_url
+    from .session import update_session
+
+    permitted = get_permitted_sections(actor, user).filter(
+        section_id__in=section_ids
+    )
+
+    case = get_or_create_case(user, regime)
+    bootstrap_section_statuses(user, regime, permitted)
+
+    permitted_schedule_ids, permitted_section_ids = _build_permitted_lists(permitted)
+
+    update_session(request, {
+        'user_id':                user.pk,
+        'actor_id':               actor.pk,
+        'regime_id':              regime.regime_id,
+        'case_id':                case.case_id,
+        'return_url':             request.path,
+        'permitted_schedule_ids': permitted_schedule_ids,
+        'permitted_section_ids':  permitted_section_ids,
+    })
+
+    return resolve_layer1_entry_url(permitted, regime.regime_id)

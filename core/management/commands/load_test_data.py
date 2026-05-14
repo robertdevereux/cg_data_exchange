@@ -25,6 +25,7 @@ from core.models import (
     Answer,
     AnswerHistory,
     Case,
+    Department,
     Permission,
     Question,
     QuestionSet,
@@ -418,7 +419,17 @@ class Command(BaseCommand):
         question('Q59', 'Next node (leave blank for END)', 'text',
                  hint='Q-number or S-number for the next screen. Blank means END.')
 
-        # ── 4. REGIMES ────────────────────────────────────────────────────────
+        # ── 4. DEPARTMENTS ────────────────────────────────────────────────────
+        Department.objects.get_or_create(
+            dept_id='HMRC',
+            defaults={'dept_name': 'HM Revenue & Customs'},
+        )
+        Department.objects.get_or_create(
+            dept_id='DWP',
+            defaults={'dept_name': 'Department for Work and Pensions'},
+        )
+
+        # ── 5. REGIMES ────────────────────────────────────────────────────────
         self.stdout.write('Creating regimes…')
 
         for rid, name, order in [

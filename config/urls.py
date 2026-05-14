@@ -34,11 +34,22 @@ _gds_assets = [
     'assets/fonts/light-f591b13f7d-v2.woff',
 ]
 
+if settings.ACTIVE_DEPT == 'DWP':
+    from dept_dwp import urls as dept_urls
+    dept_prefix    = 'dwp/'
+    dept_namespace = 'dept_dwp'
+    _dept_home     = '/dwp/'
+else:
+    from dept_demo import urls as dept_urls
+    dept_prefix    = 'demo/'
+    dept_namespace = 'dept_demo'
+    _dept_home     = '/demo/'
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('accounts/', include('django.contrib.auth.urls')),
     path('', include('core.urls', namespace='core')),
-    path('demo/', include('dept_demo.urls', namespace='dept_demo')),
+    path(dept_prefix, include((dept_urls, dept_namespace))),
 ] + [
     path(asset, serve, {
         'path': 'govuk-' + asset,   # maps to core/static/govuk-assets/...
@@ -46,5 +57,5 @@ urlpatterns = [
     })
     for asset in _gds_assets
 ] + [
-    path('', RedirectView.as_view(url='/demo/', permanent=False)),
+    path('', RedirectView.as_view(url=_dept_home, permanent=False)),
 ]

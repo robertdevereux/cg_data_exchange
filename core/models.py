@@ -38,6 +38,15 @@ class Regime(models.Model):
         return self.regime_name
 
 
+class Department(models.Model):
+    """Participating department. dept_id matches Regime.dept_id."""
+    dept_id   = models.CharField(max_length=20, primary_key=True)
+    dept_name = models.CharField(max_length=100)
+
+    def __str__(self):
+        return self.dept_name
+
+
 class Schedule(models.Model):
     """FA Object 2. Optional named grouping of Sections within a Regime."""
 

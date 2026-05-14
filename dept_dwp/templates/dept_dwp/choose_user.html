@@ -1,0 +1,49 @@
+{% extends "dept_dwp/base.html" %}
+
+{% block title %}Who are you acting for today? — DWP Account{% endblock %}
+
+{% block content %}
+<div class="govuk-grid-row">
+  <div class="govuk-grid-column-two-thirds">
+
+    <form method="post">
+      {% csrf_token %}
+
+      <div class="govuk-form-group">
+        <fieldset class="govuk-fieldset">
+          <legend class="govuk-fieldset__legend govuk-fieldset__legend--l">
+            <h1 class="govuk-fieldset__heading">
+              Who are you acting for today?
+            </h1>
+          </legend>
+
+          <div class="govuk-radios" data-module="govuk-radios">
+            {% for client in clients %}
+            <div class="govuk-radios__item">
+              <input class="govuk-radios__input"
+                     id="user_id_{{ client.user__pk }}"
+                     name="user_id"
+                     type="radio"
+                     value="{{ client.user__pk }}">
+              <label class="govuk-label govuk-radios__label"
+                     for="user_id_{{ client.user__pk }}">
+                {{ client.user__first_name }} {{ client.user__last_name }}
+              </label>
+            </div>
+            {% endfor %}
+          </div>
+        </fieldset>
+      </div>
+
+      <button type="submit" class="govuk-button" data-module="govuk-button">
+        Continue
+      </button>
+    </form>
+
+    <div class="govuk-inset-text">
+      You are signed in as {{ actor.get_full_name }}.
+    </div>
+
+  </div>
+</div>
+{% endblock %}

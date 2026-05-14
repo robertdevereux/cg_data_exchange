@@ -42,7 +42,10 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'core',
     'dept_demo',
+    'dept_dwp',
 ]
+
+ACTIVE_DEPT = os.environ.get('ACTIVE_DEPT', 'HMRC')
 
 AUTH_USER_MODEL = 'core.User'
 

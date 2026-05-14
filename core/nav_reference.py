@@ -18,7 +18,7 @@ from django.contrib.auth.decorators import login_required
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, render
 
-from .models import Regime, Schedule, SectionStatus, User
+from .models import Regime, Schedule, Section, SectionStatus, User
 from .permissions import get_permitted_sections
 from .session import get_session
 
@@ -92,18 +92,33 @@ def select_schedule(request, regime_id):
     user   = _resolve_user(pss, actor)
     regime = get_object_or_404(Regime, regime_id=regime_id)
 
-    permitted = get_permitted_sections(actor, user).filter(
-        schedule__regime_id=regime_id
-    ).select_related('schedule')
+    session_schedule_ids = pss.get('permitted_schedule_ids')
+    session_section_ids  = pss.get('permitted_section_ids')
 
-    schedule_ids = list(
-        permitted.values_list('schedule_id', flat=True).distinct()
-    )
-    schedules = (
-        Schedule.objects
-        .filter(schedule_id__in=schedule_ids)
-        .order_by('display_order')
-    )
+    if session_schedule_ids is not None and session_section_ids is not None:
+        # Use session-cached permission lists (set by call_regime / call_schedules)
+        permitted = Section.objects.filter(
+            section_id__in=session_section_ids,
+            schedule__isnull=False,
+        ).select_related('schedule')
+        schedules = (
+            Schedule.objects
+            .filter(schedule_id__in=session_schedule_ids)
+            .order_by('display_order')
+        )
+    else:
+        # Fallback: derive from DB (used in tests and direct URL access)
+        permitted = get_permitted_sections(actor, user).filter(
+            schedule__regime_id=regime_id
+        ).select_related('schedule')
+        schedule_ids = list(
+            permitted.values_list('schedule_id', flat=True).distinct()
+        )
+        schedules = (
+            Schedule.objects
+            .filter(schedule_id__in=schedule_ids)
+            .order_by('display_order')
+        )
 
     # Section statuses for the user, keyed by section_id
     section_statuses = {
@@ -170,9 +185,16 @@ def select_section(request, regime_id, schedule_id=None):
     user   = _resolve_user(pss, actor)
     regime = get_object_or_404(Regime, regime_id=regime_id)
 
-    permitted = get_permitted_sections(actor, user).filter(
-        Q(regime_id=regime_id) | Q(schedule__regime_id=regime_id)
-    )
+    session_section_ids = pss.get('permitted_section_ids')
+
+    if session_section_ids is not None:
+        # Use session-cached permission list (set by call_regime / call_sections)
+        permitted = Section.objects.filter(section_id__in=session_section_ids)
+    else:
+        # Fallback: derive from DB (used in tests and direct URL access)
+        permitted = get_permitted_sections(actor, user).filter(
+            Q(regime_id=regime_id) | Q(schedule__regime_id=regime_id)
+        )
 
     if schedule_id:
         schedule = get_object_or_404(Schedule, schedule_id=schedule_id)

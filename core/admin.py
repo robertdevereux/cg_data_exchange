@@ -7,6 +7,7 @@ from .models import (
     AnswerTable,
     AnswerTableHistory,
     Case,
+    Department,
     Permission,
     Question,
     Regime,
@@ -26,6 +27,16 @@ from .models import (
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     list_display = ('username', 'email', 'first_name', 'last_name', 'is_staff')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DEPARTMENT
+# ─────────────────────────────────────────────────────────────────────────────
+
+@admin.register(Department)
+class DepartmentAdmin(admin.ModelAdmin):
+    list_display = ('dept_id', 'dept_name')
+    ordering = ('dept_id',)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
