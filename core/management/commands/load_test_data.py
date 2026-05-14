@@ -406,8 +406,11 @@ class Command(BaseCommand):
                  hint='Unique identifier, e.g. DWP_BSP. Must not already exist.')
         question('Q54', 'Regime name', 'text',
                  hint='Full name of the service.')
-        question('Q55', 'Department ID', 'text',
-                 hint='Department identifier, e.g. DWP.')
+        # Q55 is a radio question; options are set dynamically below after
+        # Department records are created. Re-run load_test_data after adding a
+        # new Department to keep Q55 in sync with the Department table.
+        question('Q55', 'Department ID', 'radio',
+                 hint='Select the department for this regime.')
 
         # META_ADD_ROUTING columns
         question('Q56', 'Section ID', 'text',
@@ -428,6 +431,14 @@ class Command(BaseCommand):
             dept_id='DWP',
             defaults={'dept_name': 'Department for Work and Pensions'},
         )
+
+        # Populate Q55 options from Department records so the wizard dropdown
+        # always reflects the current set of participating departments.
+        # Re-run load_test_data after adding a new Department to keep in sync.
+        dept_options = ';'.join(
+            Department.objects.order_by('dept_id').values_list('dept_id', flat=True)
+        )
+        Question.objects.filter(question_id='Q55').update(options=dept_options)
 
         # ── 5. REGIMES ────────────────────────────────────────────────────────
         self.stdout.write('Creating regimes…')

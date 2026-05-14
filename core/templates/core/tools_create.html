@@ -49,6 +49,11 @@
         The required steps are complete. Your regime has been created.
         Optional steps (Questions, Sets, Set members, Schedules) can be
         completed now or revisited via the configuration viewer later.
+        {% if generated_file_path %}
+        <br><br>
+        Regime home page generated at <code>{{ generated_file_path }}</code> —
+        copy to your dept app templates folder.
+        {% endif %}
       </div>
       <div class="govuk-button-group">
         <a href="/tools/viewer/?regime={{ target_regime_id }}"

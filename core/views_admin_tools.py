@@ -12,8 +12,10 @@ Staff-only views for inspecting, editing, and creating regime configuration.
   /tools/create/abandon/                      — abandon current draft and restart
 """
 
+import os
 import uuid
 
+from django.conf import settings
 from django.contrib.auth.decorators import user_passes_test
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
@@ -322,6 +324,14 @@ def tools_create(request):
     except (Section.DoesNotExist, Answer.DoesNotExist):
         pass
 
+    # ── Check whether a regime home file was generated for this regime ────────
+    generated_file_path = None
+    if target_regime_id:
+        filename = f'{target_regime_id.lower()}_home.html'
+        filepath = os.path.join(settings.BASE_DIR, '_generated', filename)
+        if os.path.exists(filepath):
+            generated_file_path = os.path.join('_generated', filename)
+
     # ── Set session so Layer 2 knows how to navigate ──────────────────────────
     update_session(request, {
         'user_id':         request.user.pk,
@@ -337,11 +347,12 @@ def tools_create(request):
     })
 
     context = {
-        'steps':            steps,
-        'all_complete':     all_complete,
-        'case_id':          case.case_id,
-        'target_regime_id': target_regime_id,
-        'save_url':         '/tools/create/save/',
+        'steps':                steps,
+        'all_complete':         all_complete,
+        'case_id':              case.case_id,
+        'target_regime_id':     target_regime_id,
+        'save_url':             '/tools/create/save/',
+        'generated_file_path':  generated_file_path,
     }
     return render(request, 'core/tools_create.html', context)
 
