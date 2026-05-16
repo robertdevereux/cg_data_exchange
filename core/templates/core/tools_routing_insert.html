@@ -7,57 +7,143 @@
   <div class="govuk-grid-row">
     <div class="govuk-grid-column-two-thirds">
 
-      <a href="{{ routing_url }}" class="govuk-back-link">Back to routing</a>
+      <a href="{% url 'core:tools_section_routing' section.section_id %}" class="govuk-back-link">Back to routing</a>
 
       <span class="govuk-caption-l">{{ section.section_id }} — {{ section.section_name }}</span>
       <h1 class="govuk-heading-l">
         Insert node
-        {% if mode == 'first' %}
+        {% if position == 'first' %}
           — at start
-        {% elif mode == 'before' %}
-          — before {{ ref_node }}
-        {% elif mode == 'after' %}
-          — after {{ ref_node }}
-        {% elif mode == 'branch' %}
-          — branch {{ answer_value }} of {{ ref_node }}
+        {% elif position == 'before' %}
+          — before <code>{{ anchor_node }}</code>
+        {% elif position == 'after' and anchor_answer_value %}
+          — into branch <em>{{ anchor_answer_value }}</em> of <code>{{ anchor_node }}</code>
+        {% elif position == 'after' %}
+          — after <code>{{ anchor_node }}</code>
         {% endif %}
       </h1>
 
-      <form method="post" action="">
+      {% if not questions and not sets %}
+      <p class="govuk-body govuk-hint">
+        No available nodes — all Questions and QuestionSets are already used in this section's routing.
+      </p>
+      <a href="{% url 'core:tools_section_routing' section.section_id %}"
+         class="govuk-button govuk-button--secondary">Back to routing</a>
+
+      {% else %}
+      <form method="post" novalidate>
         {% csrf_token %}
+        <input type="hidden" name="position"            value="{{ position }}">
+        <input type="hidden" name="anchor_node"         value="{{ anchor_node }}">
+        <input type="hidden" name="anchor_answer_value" value="{{ anchor_answer_value }}">
 
-        <input type="hidden" name="mode"         value="{{ mode }}">
-        <input type="hidden" name="ref_node"     value="{{ ref_node }}">
-        <input type="hidden" name="answer_value" value="{{ answer_value }}">
-
+        {# ── Node type ────────────────────────────────────────────────────── #}
         <div class="govuk-form-group">
-          <label class="govuk-label govuk-label--s" for="new_node_id">
-            Select node to insert
-          </label>
-          {% if available_nodes %}
-          <select class="govuk-select" id="new_node_id" name="new_node_id">
-            <option value="">-- select --</option>
-            {% for n in available_nodes %}
-            <option value="{{ n.id }}">{{ n.label }}</option>
+          <fieldset class="govuk-fieldset">
+            <legend class="govuk-fieldset__legend govuk-fieldset__legend--s">
+              Node type
+            </legend>
+            <div class="govuk-radios govuk-radios--inline">
+              <div class="govuk-radios__item">
+                <input class="govuk-radios__input" id="node-type-q" name="node_type"
+                       type="radio" value="question" checked>
+                <label class="govuk-label govuk-radios__label" for="node-type-q">
+                  Question
+                </label>
+              </div>
+              <div class="govuk-radios__item">
+                <input class="govuk-radios__input" id="node-type-s" name="node_type"
+                       type="radio" value="set">
+                <label class="govuk-label govuk-radios__label" for="node-type-s">
+                  Set
+                </label>
+              </div>
+            </div>
+          </fieldset>
+        </div>
+
+        {# ── Question dropdown ────────────────────────────────────────────── #}
+        <div class="govuk-form-group" id="q-group">
+          <label class="govuk-label govuk-label--s" for="node-id-q">Question</label>
+          {% if questions %}
+          <select class="govuk-select" id="node-id-q" name="node_id">
+            <option value="">— select —</option>
+            {% for q in questions %}
+            <option value="{{ q.question_id }}">{{ q.question_id }} — {{ q.question_text }}</option>
             {% endfor %}
           </select>
           {% else %}
-          <p class="govuk-body govuk-hint">
-            No available nodes — all Questions and QuestionSets are already used in
-            this section's routing.
+          <p class="govuk-hint govuk-!-margin-bottom-0">
+            No questions available — all are already in this section's routing.
           </p>
           {% endif %}
         </div>
 
-        {% if available_nodes %}
-        <button class="govuk-button" data-module="govuk-button">Add node</button>
-        {% endif %}
-        <a href="{{ routing_url }}" class="govuk-button govuk-button--secondary"
-           style="margin-left:1rem;">Cancel</a>
+        {# ── Set dropdown ─────────────────────────────────────────────────── #}
+        <div class="govuk-form-group" id="s-group" style="display:none">
+          <label class="govuk-label govuk-label--s" for="node-id-s">Set</label>
+          {% if sets %}
+          <select class="govuk-select" id="node-id-s" name="node_id">
+            <option value="">— select —</option>
+            {% for s in sets %}
+            <option value="{{ s.set_id }}">{{ s.set_id }} — {{ s.set_title }}</option>
+            {% endfor %}
+          </select>
+          {% else %}
+          <p class="govuk-hint govuk-!-margin-bottom-0">
+            No sets available — all are already in this section's routing.
+          </p>
+          {% endif %}
+        </div>
+
+        {# ── Condition value (optional) ───────────────────────────────────── #}
+        <div class="govuk-form-group">
+          <label class="govuk-label govuk-label--s" for="answer_value">
+            Condition value
+            <span class="govuk-hint" style="display:inline">(optional)</span>
+          </label>
+          <div class="govuk-hint">
+            If this node should only be reached under a specific condition, enter the
+            answer value, e.g. <code>Yes</code> or <code>No</code>. Leave blank for unconditional.
+          </div>
+          <input class="govuk-input govuk-input--width-10"
+                 id="answer_value" name="answer_value" type="text">
+        </div>
+
+        <div class="govuk-button-group govuk-!-margin-top-6">
+          <button type="submit" class="govuk-button">Insert node</button>
+          <a href="{% url 'core:tools_section_routing' section.section_id %}"
+             class="govuk-link">Cancel</a>
+        </div>
 
       </form>
+      {% endif %}
 
     </div>
   </div>
+
+  <script>
+    (function () {
+      var radioQ  = document.getElementById('node-type-q');
+      var radioS  = document.getElementById('node-type-s');
+      var groupQ  = document.getElementById('q-group');
+      var groupS  = document.getElementById('s-group');
+      var selectQ = groupQ ? groupQ.querySelector('select') : null;
+      var selectS = groupS ? groupS.querySelector('select') : null;
+
+      function toggle() {
+        var isQ = radioQ.checked;
+        groupQ.style.display = isQ ? '' : 'none';
+        groupS.style.display = isQ ? 'none' : '';
+        // Disable the hidden select so it doesn't submit its value
+        if (selectQ) selectQ.disabled = !isQ;
+        if (selectS) selectS.disabled =  isQ;
+      }
+
+      radioQ.addEventListener('change', toggle);
+      radioS.addEventListener('change', toggle);
+      toggle();
+    })();
+  </script>
 
 {% endblock %}

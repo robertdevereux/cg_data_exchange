@@ -1446,25 +1446,39 @@ def tools_section_routing(request, section_id):
     })
 
 
+# ── Routing redirect helper ───────────────────────────────────────────────────
+
+def _routing_redirect(section_id):
+    """Redirect to the routing editor for the given section."""
+    return redirect(f'/tools/sections/{section_id}/routing/')
+
+
 # ── View: insert node ─────────────────────────────────────────────────────────
 
 @staff_required
 def tools_routing_insert(request, section_id):
     """GET: show insert form. POST: create new routing row(s)."""
     section = get_object_or_404(Section, section_id=section_id)
-    routing_url = f'/tools/sections/{section_id}/routing/'
 
     if request.method == 'POST':
-        new_node_id  = request.POST.get('new_node_id', '').strip()
-        mode         = request.POST.get('mode', '').strip()
-        ref_node     = request.POST.get('ref_node', '').strip()
-        answer_value = request.POST.get('answer_value', '').strip() or None
+        position            = request.POST.get('position', '').strip()
+        anchor_node         = request.POST.get('anchor_node', '').strip()
+        anchor_answer_value = request.POST.get('anchor_answer_value', '').strip() or None
+        node_type           = request.POST.get('node_type', 'question').strip()
+        new_node_id         = request.POST.get('node_id', '').strip()
+        new_answer_value    = request.POST.get('answer_value', '').strip() or None
 
-        # Validate
+        # Validate node exists and is not already in this section's routing
         if not new_node_id:
-            return redirect(routing_url)
+            return _routing_redirect(section_id)
+        if node_type == 'question':
+            if not Question.objects.filter(question_id=new_node_id).exists():
+                return _routing_redirect(section_id)
+        else:
+            if not QuestionSet.objects.filter(set_id=new_node_id).exists():
+                return _routing_redirect(section_id)
         if Routing.objects.filter(section=section, current_node=new_node_id).exists():
-            return redirect(routing_url)
+            return _routing_redirect(section_id)
 
         max_order = (
             Routing.objects.filter(section=section)
@@ -1473,7 +1487,7 @@ def tools_routing_insert(request, section_id):
             .first()
         ) or 0
 
-        if mode == 'first':
+        if position == 'first':
             Routing.objects.create(
                 section=section,
                 current_node=new_node_id,
@@ -1482,62 +1496,60 @@ def tools_routing_insert(request, section_id):
                 order_in_section=10,
             )
 
-        elif mode == 'before' and ref_node:
-            # All rows pointing to ref_node now point to new_node_id
-            Routing.objects.filter(section=section, next_node=ref_node).update(
+        elif position == 'before' and anchor_node:
+            # All rows pointing to anchor_node → new_node_id
+            Routing.objects.filter(section=section, next_node=anchor_node).update(
                 next_node=new_node_id
             )
             Routing.objects.create(
                 section=section,
                 current_node=new_node_id,
-                answer_value=None,
-                next_node=ref_node,
+                answer_value=new_answer_value,
+                next_node=anchor_node,
                 order_in_section=max_order + 10,
             )
 
-        elif mode == 'after' and ref_node:
-            try:
-                out_row = Routing.objects.get(section=section, current_node=ref_node)
-            except Routing.DoesNotExist:
-                return redirect(routing_url)
-            z = out_row.next_node
-            out_row.next_node = new_node_id
-            out_row.save()
-            Routing.objects.create(
-                section=section,
-                current_node=new_node_id,
-                answer_value=None,
-                next_node=z,
-                order_in_section=max_order + 10,
-            )
-
-        elif mode == 'branch' and ref_node:
-            try:
-                cond_row = Routing.objects.get(
-                    section=section,
-                    current_node=ref_node,
-                    answer_value=answer_value,
+        elif position == 'after' and anchor_node:
+            if anchor_answer_value is not None:
+                # Branch insert: find the specific condition row and splice in
+                try:
+                    cond_row = Routing.objects.get(
+                        section=section,
+                        current_node=anchor_node,
+                        answer_value=anchor_answer_value,
+                    )
+                except Routing.DoesNotExist:
+                    return _routing_redirect(section_id)
+                z = cond_row.next_node
+                cond_row.next_node = new_node_id
+                cond_row.save()
+            else:
+                # Simple linear after: anchor has one unconditional row
+                anchor_row = (
+                    Routing.objects
+                    .filter(section=section, current_node=anchor_node, answer_value__isnull=True)
+                    .first()
                 )
-            except Routing.DoesNotExist:
-                return redirect(routing_url)
-            z = cond_row.next_node
-            cond_row.next_node = new_node_id
-            cond_row.save()
+                if anchor_row is None:
+                    return _routing_redirect(section_id)
+                z = anchor_row.next_node
+                anchor_row.next_node = new_node_id
+                anchor_row.save()
             Routing.objects.create(
                 section=section,
                 current_node=new_node_id,
-                answer_value=None,
+                answer_value=new_answer_value,
                 next_node=z,
                 order_in_section=max_order + 10,
             )
 
         _renumber_routing(section)
-        return redirect(routing_url)
+        return _routing_redirect(section_id)
 
     # GET — build the form
-    mode         = request.GET.get('mode', 'first')
-    ref_node     = request.GET.get('node', '')
-    answer_value = request.GET.get('answer_value', '')
+    position            = request.GET.get('position', 'first')
+    anchor_node         = request.GET.get('anchor_node', '')
+    anchor_answer_value = request.GET.get('anchor_answer_value', '')
 
     existing_node_ids = set(
         Routing.objects.filter(section=section)
@@ -1545,19 +1557,15 @@ def tools_routing_insert(request, section_id):
         .distinct()
     )
     questions = Question.objects.exclude(question_id__in=existing_node_ids).order_by('question_id')
-    sets = QuestionSet.objects.exclude(set_id__in=existing_node_ids).order_by('set_id')
-    available_nodes = (
-        [{'id': q.question_id, 'label': f'{q.question_id}  {q.question_text}'} for q in questions]
-        + [{'id': s.set_id, 'label': f'{s.set_id}  {s.set_title}'} for s in sets]
-    )
+    sets      = QuestionSet.objects.exclude(set_id__in=existing_node_ids).order_by('set_id')
 
     return render(request, 'core/tools_routing_insert.html', {
-        'section':         section,
-        'mode':            mode,
-        'ref_node':        ref_node,
-        'answer_value':    answer_value,
-        'available_nodes': available_nodes,
-        'routing_url':     routing_url,
+        'section':             section,
+        'position':            position,
+        'anchor_node':         anchor_node,
+        'anchor_answer_value': anchor_answer_value,
+        'questions':           questions,
+        'sets':                sets,
     })
 
 

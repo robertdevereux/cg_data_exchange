@@ -38,7 +38,7 @@
 
       {% if tree|length == 1 and tree.0.type == 'end' %}
         <p class="govuk-body">No routing defined yet.</p>
-        <a href="{% url 'core:tools_routing_insert' section.section_id %}?mode=first"
+        <a href="{% url 'core:tools_routing_insert' section.section_id %}?position=first"
            class="govuk-button govuk-button--secondary">Add first node</a>
       {% else %}
 
@@ -147,7 +147,7 @@
             <button class="dots-btn" onclick="toggleMenu(this); event.stopPropagation();">&#8942;</button>
             <div class="action-menu">
               {% if node.condition_empty %}
-              <a href="{% url 'core:tools_routing_insert' section.section_id %}?mode=branch&node={{ node.node_id }}&answer_value={{ node.answer_value|urlencode }}">
+              <a href="{% url 'core:tools_routing_insert' section.section_id %}?position=after&anchor_node={{ node.node_id }}&anchor_answer_value={{ node.answer_value|urlencode }}">
                 Add first question to this branch
               </a>
               <hr class="am-sep">
@@ -174,11 +174,11 @@
             </span>
             <button class="dots-btn" onclick="toggleMenu(this); event.stopPropagation();">&#8942;</button>
             <div class="action-menu">
-              <a href="{% url 'core:tools_routing_insert' section.section_id %}?mode=before&node={{ node.node_id }}">
+              <a href="{% url 'core:tools_routing_insert' section.section_id %}?position=before&anchor_node={{ node.node_id }}">
                 Insert before
               </a>
               {% if not node.is_branching %}
-              <a href="{% url 'core:tools_routing_insert' section.section_id %}?mode=after&node={{ node.node_id }}">
+              <a href="{% url 'core:tools_routing_insert' section.section_id %}?position=after&anchor_node={{ node.node_id }}">
                 Insert after
               </a>
               {% endif %}
@@ -189,12 +189,14 @@
                 <input type="hidden" name="delete_mode" value="delete_all">
                 <button type="submit" class="am-link">Delete — remove and cut below</button>
               </form>
+              {% if node.is_branching %}
               <form method="post" action="{% url 'core:tools_routing_delete' section.section_id %}">
                 {% csrf_token %}
                 <input type="hidden" name="node_id"     value="{{ node.node_id }}">
                 <input type="hidden" name="delete_mode" value="promote">
-                <button type="submit" class="am-link">Delete — remove and promote below</button>
+                <button type="submit" class="am-link">Promote everything below, then edit further as necessary</button>
               </form>
+              {% endif %}
               {% if node.is_branching %}
               <hr class="am-sep">
               <form method="post" action="{% url 'core:tools_routing_add_condition' section.section_id %}">
