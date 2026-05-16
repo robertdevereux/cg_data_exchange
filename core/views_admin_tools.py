@@ -5,6 +5,8 @@ Staff-only views for inspecting, editing, and creating regime configuration.
 
   /tools/                                     — staff landing page
   /tools/viewer/                              — browse regimes / routing tables
+  /tools/questions/                           — read-only question bank listing
+  /tools/sets/                                — read-only question set listing
   /tools/question/<question_id>/edit/         — edit a single question
   /tools/set/<set_id>/edit/                   — edit a QuestionSet header
   /tools/create/                              — regime creation wizard (task list)
@@ -46,6 +48,37 @@ staff_required = user_passes_test(lambda u: u.is_staff)
 def tools_home(request):
     """Staff landing page — entry point for all platform admin tools."""
     return render(request, 'core/tools_home.html', {})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 0b. QUESTION BANK LISTING
+# ─────────────────────────────────────────────────────────────────────────────
+
+@staff_required
+def tools_questions_list(request):
+    """Read-only listing of all Question records ordered by question_id."""
+    questions = Question.objects.all().order_by('question_id')
+    return render(request, 'core/tools_questions_list.html', {
+        'questions': questions,
+    })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 0c. QUESTION SET LISTING
+# ─────────────────────────────────────────────────────────────────────────────
+
+@staff_required
+def tools_sets_list(request):
+    """Read-only listing of all QuestionSet records with their members."""
+    sets = (
+        QuestionSet.objects
+        .all()
+        .prefetch_related('members__question')
+        .order_by('set_id')
+    )
+    return render(request, 'core/tools_sets_list.html', {
+        'sets': sets,
+    })
 
 
 # ── Back-URL helper ───────────────────────────────────────────────────────────

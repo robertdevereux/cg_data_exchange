@@ -1,0 +1,70 @@
+{% extends "core/base.html" %}
+
+{% block title %}Question bank — Platform administration{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-full">
+
+      <a href="/tools/" class="govuk-back-link">Platform administration</a>
+
+      <h1 class="govuk-heading-l govuk-!-margin-top-4">Question bank</h1>
+
+      <div class="govuk-button-group govuk-!-margin-bottom-6">
+        <a href="/tools/questions/add/" class="govuk-button govuk-button--secondary">
+          Add question
+        </a>
+      </div>
+
+      <table class="govuk-table">
+        <caption class="govuk-table__caption govuk-table__caption--s govuk-visually-hidden">
+          All questions in the question bank
+        </caption>
+        <thead class="govuk-table__head">
+          <tr class="govuk-table__row">
+            <th scope="col" class="govuk-table__header" style="width:10%">ID</th>
+            <th scope="col" class="govuk-table__header" style="width:55%">Question text</th>
+            <th scope="col" class="govuk-table__header" style="width:15%">Type</th>
+            <th scope="col" class="govuk-table__header" style="width:20%">
+              <span class="govuk-visually-hidden">Actions</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody class="govuk-table__body">
+          {% for q in questions %}
+          <tr class="govuk-table__row">
+            <td class="govuk-table__cell">
+              <code style="font-size:0.875rem">{{ q.question_id }}</code>
+            </td>
+            <td class="govuk-table__cell">
+              {% if q.question_text|length > 80 %}
+                {{ q.question_text|truncatechars:80 }}
+              {% else %}
+                {{ q.question_text }}
+              {% endif %}
+            </td>
+            <td class="govuk-table__cell">{{ q.question_type }}</td>
+            <td class="govuk-table__cell">
+              <a href="{% url 'core:tools_question_edit' q.question_id %}"
+                 class="govuk-link">Edit</a>
+            </td>
+          </tr>
+          {% empty %}
+          <tr class="govuk-table__row">
+            <td class="govuk-table__cell" colspan="4">
+              No questions found.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <p class="govuk-body govuk-!-font-size-16 govuk-!-colour-secondary">
+        {{ questions|length }} question{{ questions|length|pluralize }} total.
+      </p>
+
+    </div>
+  </div>
+
+{% endblock %}

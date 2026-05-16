@@ -11,6 +11,14 @@ urlpatterns = [
          views_admin_tools.tools_home,
          name='tools_index'),
 
+    path('tools/questions/',
+         views_admin_tools.tools_questions_list,
+         name='tools_questions_list'),
+
+    path('tools/sets/',
+         views_admin_tools.tools_sets_list,
+         name='tools_sets_list'),
+
     path('tools/viewer/',
          views_admin_tools.tools_viewer,
          name='tools_viewer'),

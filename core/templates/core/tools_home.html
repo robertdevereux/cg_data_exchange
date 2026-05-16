@@ -24,7 +24,7 @@
             <h3 class="govuk-heading-s govuk-!-margin-bottom-3">Questions</h3>
             <ul class="govuk-list">
               <li>
-                <a href="/tools/questions/" class="govuk-link">View questions</a>
+                <a href="{% url 'core:tools_questions_list' %}" class="govuk-link">View questions</a>
               </li>
               <li>
                 <a href="/tools/questions/add/" class="govuk-link">Add questions</a>
@@ -43,7 +43,7 @@
             <h3 class="govuk-heading-s govuk-!-margin-bottom-3">Sets of questions</h3>
             <ul class="govuk-list">
               <li>
-                <a href="/tools/sets/" class="govuk-link">View sets</a>
+                <a href="{% url 'core:tools_sets_list' %}" class="govuk-link">View sets</a>
               </li>
               <li>
                 <a href="/tools/sets/add/" class="govuk-link">Add sets</a>
