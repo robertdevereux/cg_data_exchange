@@ -1,0 +1,137 @@
+{% extends "core/base.html" %}
+
+{% block title %}{{ schedule.schedule_id }} sections — Platform administration{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-full">
+
+      <a href="{% url 'core:tools_schedule_list' %}" class="govuk-back-link">Schedules</a>
+
+      <h1 class="govuk-heading-l govuk-!-margin-top-4">
+        {{ schedule.schedule_id }}
+        <span class="govuk-caption-l">{{ schedule.schedule_name }}</span>
+      </h1>
+      <p class="govuk-body govuk-hint govuk-!-margin-top-0">
+        Regime: {{ schedule.regime.regime_id }} — {{ schedule.regime.regime_name }}
+      </p>
+
+      {# ── Current members ──────────────────────────────────────────────────── #}
+      <h2 class="govuk-heading-s">Sections in this schedule</h2>
+
+      {% if members %}
+      <table class="govuk-table govuk-!-margin-bottom-6">
+        <thead class="govuk-table__head">
+          <tr class="govuk-table__row">
+            <th scope="col" class="govuk-table__header" style="width:20%">Section ID</th>
+            <th scope="col" class="govuk-table__header" style="width:30%">Name</th>
+            <th scope="col" class="govuk-table__header" style="width:10%">Order</th>
+            <th scope="col" class="govuk-table__header" style="width:10%">Routing rows</th>
+            <th scope="col" class="govuk-table__header" style="width:30%">
+              <span class="govuk-visually-hidden">Actions</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody class="govuk-table__body">
+          {% for s in members %}
+          <tr class="govuk-table__row">
+            <td class="govuk-table__cell">
+              <code style="font-size:0.875rem">{{ s.section_id }}</code>
+            </td>
+            <td class="govuk-table__cell">{{ s.section_name }}</td>
+            <td class="govuk-table__cell">{{ s.display_order }}</td>
+            <td class="govuk-table__cell">{{ s.routing_count }}</td>
+            <td class="govuk-table__cell">
+              <form method="post"
+                    action="{% url 'core:tools_schedule_section_reorder' schedule.schedule_id %}"
+                    style="display:inline">
+                {% csrf_token %}
+                <input type="hidden" name="section_id" value="{{ s.section_id }}">
+                <input type="hidden" name="direction" value="up">
+                <button type="submit" class="govuk-link"
+                        style="background:none;border:none;padding:0;cursor:pointer;font-size:1rem"
+                        {% if forloop.first %}disabled{% endif %}>↑</button>
+              </form>
+              &nbsp;
+              <form method="post"
+                    action="{% url 'core:tools_schedule_section_reorder' schedule.schedule_id %}"
+                    style="display:inline">
+                {% csrf_token %}
+                <input type="hidden" name="section_id" value="{{ s.section_id }}">
+                <input type="hidden" name="direction" value="down">
+                <button type="submit" class="govuk-link"
+                        style="background:none;border:none;padding:0;cursor:pointer;font-size:1rem"
+                        {% if forloop.last %}disabled{% endif %}>↓</button>
+              </form>
+              &nbsp;&nbsp;
+              <form method="post"
+                    action="{% url 'core:tools_schedule_section_remove' schedule.schedule_id %}"
+                    style="display:inline">
+                {% csrf_token %}
+                <input type="hidden" name="section_id" value="{{ s.section_id }}">
+                <button type="submit" class="govuk-link"
+                        style="background:none;border:none;padding:0;cursor:pointer;font-size:1rem;color:#d4351c">
+                  Remove
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="govuk-body govuk-hint">No sections assigned yet.</p>
+      {% endif %}
+
+      <hr class="govuk-section-break govuk-section-break--m govuk-section-break--visible">
+
+      {# ── Add section ──────────────────────────────────────────────────────── #}
+      <h2 class="govuk-heading-s govuk-!-margin-top-4">Add a section</h2>
+
+      {% if available %}
+      <form method="post"
+            action="{% url 'core:tools_schedule_section_add' schedule.schedule_id %}">
+        {% csrf_token %}
+
+        <div class="govuk-form-group">
+          <label class="govuk-label govuk-label--s" for="section_id">
+            Section
+          </label>
+          <div class="govuk-hint">
+            Shows unassigned sections belonging to regime {{ schedule.regime.regime_id }}.
+          </div>
+          <select class="govuk-select" id="section_id" name="section_id">
+            <option value="">— select —</option>
+            {% for s in available %}
+            <option value="{{ s.section_id }}">{{ s.section_id }} — {{ s.section_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="govuk-form-group">
+          <label class="govuk-label govuk-label--s" for="display_order">
+            Display order
+          </label>
+          <input class="govuk-input govuk-input--width-5"
+                 id="display_order" name="display_order" type="number"
+                 value="{{ next_order }}">
+        </div>
+
+        <div class="govuk-button-group">
+          <button type="submit" class="govuk-button govuk-button--secondary">
+            Add section
+          </button>
+        </div>
+      </form>
+      {% else %}
+      <p class="govuk-body govuk-hint">
+        No unassigned sections in regime {{ schedule.regime.regime_id }}.
+        <a href="{% url 'core:tools_section_create' %}" class="govuk-link">Create a section</a> first.
+      </p>
+      {% endif %}
+
+    </div>
+  </div>
+
+{% endblock %}

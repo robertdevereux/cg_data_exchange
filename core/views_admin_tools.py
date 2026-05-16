@@ -27,7 +27,7 @@ import uuid
 
 from django.conf import settings
 from django.contrib.auth.decorators import user_passes_test
-from django.db.models import Count
+from django.db.models import Count, Max
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
@@ -333,6 +333,201 @@ def tools_sections_list(request):
         'sections':  sections,
         'added':     request.GET.get('added', ''),
     })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 0l-bis. SCHEDULE VIEWS
+# ─────────────────────────────────────────────────────────────────────────────
+
+@staff_required
+def tools_schedule_list(request):
+    """List all schedules for the active department."""
+    schedules = (
+        Schedule.objects
+        .filter(regime__dept_id=settings.ACTIVE_DEPT)
+        .annotate(section_count=Count('sections', distinct=True))
+        .select_related('regime')
+        .order_by('regime__regime_id', 'display_order')
+    )
+    return render(request, 'core/tools_schedule_list.html', {
+        'schedules': schedules,
+        'added':     request.GET.get('added', ''),
+    })
+
+
+@staff_required
+def tools_schedule_create(request):
+    """Create a new schedule and redirect straight to section assignment."""
+    regimes = Regime.objects.filter(dept_id=settings.ACTIVE_DEPT).order_by('regime_id')
+    errors = {}
+    post = {}
+
+    if request.method == 'POST':
+        post = request.POST
+        schedule_name = post.get('schedule_name', '').strip()
+        regime_id     = post.get('regime', '').strip()
+        display_order = post.get('display_order', '0').strip()
+
+        if not schedule_name:
+            errors['schedule_name'] = 'Enter a schedule name'
+
+        regime = None
+        if not regime_id:
+            errors['regime'] = 'Select a regime'
+        else:
+            try:
+                regime = Regime.objects.get(regime_id=regime_id, dept_id=settings.ACTIVE_DEPT)
+            except Regime.DoesNotExist:
+                errors['regime'] = 'Select a valid regime'
+
+        if not errors:
+            # Auto-generate schedule_id: <regime_id>_SCH<N>
+            prefix = f'{regime_id}_SCH'
+            existing = (
+                Schedule.objects
+                .filter(schedule_id__istartswith=prefix)
+                .values_list('schedule_id', flat=True)
+            )
+            nums = []
+            for sid in existing:
+                suffix = sid[len(prefix):]
+                if suffix.isdigit():
+                    nums.append(int(suffix))
+            next_num = (max(nums) + 1) if nums else 1
+            schedule_id = f'{prefix}{next_num}'
+
+            try:
+                display_order_int = int(display_order)
+            except ValueError:
+                display_order_int = 0
+
+            Schedule.objects.create(
+                schedule_id=schedule_id,
+                schedule_name=schedule_name,
+                regime=regime,
+                display_order=display_order_int,
+            )
+            return redirect(f'/tools/schedules/{schedule_id}/sections/')
+
+    context = {
+        'regimes':      regimes,
+        'errors':       errors,
+        'post':         post,
+        'active_dept':  settings.ACTIVE_DEPT,
+    }
+    return render(request, 'core/tools_schedule_create.html', context)
+
+
+@staff_required
+def tools_schedule_sections(request, schedule_id):
+    """Manage sections assigned to a schedule."""
+    schedule = get_object_or_404(
+        Schedule.objects.select_related('regime'),
+        schedule_id=schedule_id,
+    )
+    members = (
+        Section.objects
+        .filter(schedule=schedule)
+        .annotate(routing_count=Count('routing_rules'))
+        .order_by('display_order', 'section_id')
+    )
+    available = (
+        Section.objects
+        .filter(regime=schedule.regime, schedule__isnull=True)
+        .order_by('section_id')
+    )
+    max_order = members.aggregate(m=Max('display_order'))['m'] or 0
+    next_order = max_order + 10
+
+    context = {
+        'schedule':   schedule,
+        'members':    members,
+        'available':  available,
+        'next_order': next_order,
+    }
+    return render(request, 'core/tools_schedule_sections.html', context)
+
+
+@staff_required
+def tools_schedule_section_add(request, schedule_id):
+    """POST: assign a section to this schedule."""
+    if request.method != 'POST':
+        return redirect(f'/tools/schedules/{schedule_id}/sections/')
+    schedule = get_object_or_404(Schedule.objects.select_related('regime'), schedule_id=schedule_id)
+    section_id    = request.POST.get('section_id', '').strip()
+    display_order = request.POST.get('display_order', '0').strip()
+    try:
+        section = Section.objects.get(section_id=section_id)
+    except Section.DoesNotExist:
+        return redirect(f'/tools/schedules/{schedule_id}/sections/')
+    try:
+        order_int = int(display_order)
+    except ValueError:
+        order_int = 0
+    section.schedule      = schedule
+    section.regime        = None
+    section.display_order = order_int
+    section.save()
+    return redirect(f'/tools/schedules/{schedule_id}/sections/')
+
+
+@staff_required
+def tools_schedule_section_remove(request, schedule_id):
+    """POST: return a section to direct regime ownership."""
+    if request.method != 'POST':
+        return redirect(f'/tools/schedules/{schedule_id}/sections/')
+    schedule = get_object_or_404(Schedule.objects.select_related('regime'), schedule_id=schedule_id)
+    section_id = request.POST.get('section_id', '').strip()
+    try:
+        section = Section.objects.get(section_id=section_id, schedule=schedule)
+    except Section.DoesNotExist:
+        return redirect(f'/tools/schedules/{schedule_id}/sections/')
+    section.schedule = None
+    section.regime   = schedule.regime
+    section.save()
+    return redirect(f'/tools/schedules/{schedule_id}/sections/')
+
+
+@staff_required
+def tools_schedule_section_reorder(request, schedule_id):
+    """POST: swap display_order with adjacent section (up or down)."""
+    if request.method != 'POST':
+        return redirect(f'/tools/schedules/{schedule_id}/sections/')
+    schedule  = get_object_or_404(Schedule, schedule_id=schedule_id)
+    section_id = request.POST.get('section_id', '').strip()
+    direction  = request.POST.get('direction', '').strip()
+    try:
+        section = Section.objects.get(section_id=section_id, schedule=schedule)
+    except Section.DoesNotExist:
+        return redirect(f'/tools/schedules/{schedule_id}/sections/')
+
+    members = list(
+        Section.objects
+        .filter(schedule=schedule)
+        .order_by('display_order', 'section_id')
+    )
+    idx = next((i for i, s in enumerate(members) if s.section_id == section_id), None)
+    if idx is None:
+        return redirect(f'/tools/schedules/{schedule_id}/sections/')
+
+    if direction == 'up' and idx > 0:
+        neighbour = members[idx - 1]
+    elif direction == 'down' and idx < len(members) - 1:
+        neighbour = members[idx + 1]
+    else:
+        return redirect(f'/tools/schedules/{schedule_id}/sections/')
+
+    # Swap display_order values
+    section.display_order, neighbour.display_order = neighbour.display_order, section.display_order
+    # If equal, force a gap
+    if section.display_order == neighbour.display_order:
+        if direction == 'up':
+            section.display_order -= 1
+        else:
+            section.display_order += 1
+    section.save()
+    neighbour.save()
+    return redirect(f'/tools/schedules/{schedule_id}/sections/')
 
 
 # ─────────────────────────────────────────────────────────────────────────────

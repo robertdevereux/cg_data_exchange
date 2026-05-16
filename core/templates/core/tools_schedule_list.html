@@ -1,0 +1,83 @@
+{% extends "core/base.html" %}
+
+{% block title %}Schedules — Platform administration{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-full">
+
+      <a href="{% url 'core:tools_index' %}" class="govuk-back-link">Platform administration</a>
+
+      <h1 class="govuk-heading-l govuk-!-margin-top-4">Schedules</h1>
+
+      {% if added %}
+      <div class="govuk-notification-banner govuk-notification-banner--success"
+           role="alert" aria-labelledby="govuk-notification-banner-title"
+           data-module="govuk-notification-banner">
+        <div class="govuk-notification-banner__header">
+          <h2 class="govuk-notification-banner__title" id="govuk-notification-banner-title">
+            Success
+          </h2>
+        </div>
+        <div class="govuk-notification-banner__content">
+          <p class="govuk-body">
+            Schedule <strong>{{ added }}</strong> has been created.
+          </p>
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="govuk-button-group govuk-!-margin-bottom-6">
+        <a href="{% url 'core:tools_schedule_create' %}" class="govuk-button govuk-button--secondary">
+          Create new schedule
+        </a>
+      </div>
+
+      <table class="govuk-table">
+        <caption class="govuk-table__caption govuk-table__caption--s govuk-visually-hidden">
+          All schedules
+        </caption>
+        <thead class="govuk-table__head">
+          <tr class="govuk-table__row">
+            <th scope="col" class="govuk-table__header" style="width:22%">Schedule ID</th>
+            <th scope="col" class="govuk-table__header" style="width:28%">Name</th>
+            <th scope="col" class="govuk-table__header" style="width:20%">Regime</th>
+            <th scope="col" class="govuk-table__header" style="width:8%">Order</th>
+            <th scope="col" class="govuk-table__header" style="width:8%">Sections</th>
+            <th scope="col" class="govuk-table__header" style="width:14%">
+              <span class="govuk-visually-hidden">Actions</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody class="govuk-table__body">
+          {% for sch in schedules %}
+          <tr class="govuk-table__row">
+            <td class="govuk-table__cell">
+              <code style="font-size:0.875rem">{{ sch.schedule_id }}</code>
+            </td>
+            <td class="govuk-table__cell">{{ sch.schedule_name }}</td>
+            <td class="govuk-table__cell govuk-hint" style="margin:0">{{ sch.regime.regime_id }}</td>
+            <td class="govuk-table__cell">{{ sch.display_order }}</td>
+            <td class="govuk-table__cell">{{ sch.section_count }}</td>
+            <td class="govuk-table__cell">
+              <a href="{% url 'core:tools_schedule_sections' sch.schedule_id %}"
+                 class="govuk-link">Manage sections</a>
+            </td>
+          </tr>
+          {% empty %}
+          <tr class="govuk-table__row">
+            <td class="govuk-table__cell" colspan="6">No schedules found.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <p class="govuk-body govuk-!-font-size-16 govuk-!-colour-secondary">
+        {{ schedules|length }} schedule{{ schedules|length|pluralize }} total.
+      </p>
+
+    </div>
+  </div>
+
+{% endblock %}

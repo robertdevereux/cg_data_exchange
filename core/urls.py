@@ -75,6 +75,30 @@ urlpatterns = [
          views_admin_tools.tools_set_member_remove,
          name='tools_set_member_remove'),
 
+    path('tools/schedules/',
+         views_admin_tools.tools_schedule_list,
+         name='tools_schedule_list'),
+
+    path('tools/schedules/create/',
+         views_admin_tools.tools_schedule_create,
+         name='tools_schedule_create'),
+
+    path('tools/schedules/<str:schedule_id>/sections/',
+         views_admin_tools.tools_schedule_sections,
+         name='tools_schedule_sections'),
+
+    path('tools/schedules/<str:schedule_id>/sections/add/',
+         views_admin_tools.tools_schedule_section_add,
+         name='tools_schedule_section_add'),
+
+    path('tools/schedules/<str:schedule_id>/sections/remove/',
+         views_admin_tools.tools_schedule_section_remove,
+         name='tools_schedule_section_remove'),
+
+    path('tools/schedules/<str:schedule_id>/sections/reorder/',
+         views_admin_tools.tools_schedule_section_reorder,
+         name='tools_schedule_section_reorder'),
+
     path('tools/sections/<str:section_id>/routing/',
          views_admin_tools.tools_section_routing,
          name='tools_section_routing'),

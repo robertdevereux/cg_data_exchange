@@ -1,0 +1,131 @@
+{% extends "core/base.html" %}
+
+{% block title %}Create schedule — Platform administration{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-two-thirds">
+
+      <a href="{% url 'core:tools_schedule_list' %}" class="govuk-back-link">Schedules</a>
+
+      <h1 class="govuk-heading-l govuk-!-margin-top-4">Create schedule</h1>
+
+      {% if errors %}
+      <div class="govuk-error-summary" data-module="govuk-error-summary">
+        <div role="alert">
+          <h2 class="govuk-error-summary__title">There is a problem</h2>
+          <div class="govuk-error-summary__body">
+            <ul class="govuk-list govuk-error-summary__list">
+              {% if errors.schedule_name %}
+              <li><a href="#schedule_name">{{ errors.schedule_name }}</a></li>
+              {% endif %}
+              {% if errors.regime %}
+              <li><a href="#regime">{{ errors.regime }}</a></li>
+              {% endif %}
+            </ul>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      <form method="post" novalidate>
+        {% csrf_token %}
+
+        {# ── Schedule name ────────────────────────────────────────────────────── #}
+        <div class="govuk-form-group {% if errors.schedule_name %}govuk-form-group--error{% endif %}">
+          <label class="govuk-label govuk-label--s" for="schedule_name">
+            Schedule name
+          </label>
+          <div class="govuk-hint">
+            Displayed to the user, e.g. 'Income and capital gains'.
+          </div>
+          {% if errors.schedule_name %}
+          <p id="schedule_name-error" class="govuk-error-message">
+            <span class="govuk-visually-hidden">Error:</span> {{ errors.schedule_name }}
+          </p>
+          {% endif %}
+          <input class="govuk-input
+                        {% if errors.schedule_name %}govuk-input--error{% endif %}"
+                 id="schedule_name" name="schedule_name" type="text"
+                 value="{{ post.schedule_name|default:'' }}"
+                 {% if errors.schedule_name %}aria-describedby="schedule_name-error"{% endif %}>
+        </div>
+
+        {# ── Display order ────────────────────────────────────────────────────── #}
+        <div class="govuk-form-group">
+          <label class="govuk-label govuk-label--s" for="display_order">
+            Display order
+          </label>
+          <div class="govuk-hint">
+            Controls order within its regime.
+          </div>
+          <input class="govuk-input govuk-input--width-5"
+                 id="display_order" name="display_order" type="number"
+                 value="{{ post.display_order|default:'0' }}">
+        </div>
+
+        {# ── Regime ───────────────────────────────────────────────────────────── #}
+        <div class="govuk-form-group {% if errors.regime %}govuk-form-group--error{% endif %}">
+          <label class="govuk-label govuk-label--s" for="regime">
+            Regime
+          </label>
+          <div class="govuk-hint">
+            The regime this schedule belongs to.
+          </div>
+          {% if errors.regime %}
+          <p id="regime-error" class="govuk-error-message">
+            <span class="govuk-visually-hidden">Error:</span> {{ errors.regime }}
+          </p>
+          {% endif %}
+          <select class="govuk-select
+                         {% if errors.regime %}govuk-select--error{% endif %}"
+                  id="regime" name="regime"
+                  {% if errors.regime %}aria-describedby="regime-error"{% endif %}>
+            <option value="">— select —</option>
+            {% for r in regimes %}
+            <option value="{{ r.regime_id }}"
+                    {% if post.regime == r.regime_id %}selected{% endif %}>
+              {{ r.regime_id }} — {{ r.regime_name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        {# ── Schedule ID preview ──────────────────────────────────────────────── #}
+        <div style="background:#f3f2f1; border-left:4px solid #b1b4b6;
+                    padding:12px 16px; margin-bottom:24px;">
+          <p class="govuk-body-s govuk-!-margin-bottom-0">
+            Schedule ID will be generated automatically as:
+            <strong id="schedule-id-preview">
+              <span id="regime-preview">{{ post.regime|default:'&lt;select a regime&gt;' }}</span>_SCH<span id="num-preview">N</span>
+            </strong>
+          </p>
+        </div>
+
+        <div class="govuk-button-group govuk-!-margin-top-6">
+          <button type="submit" class="govuk-button">Create schedule</button>
+          <a href="{% url 'core:tools_schedule_list' %}" class="govuk-link">Cancel</a>
+        </div>
+
+      </form>
+
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var regimeSelect  = document.getElementById('regime');
+      var regimePreview = document.getElementById('regime-preview');
+
+      function update() {
+        var val = regimeSelect.value;
+        regimePreview.textContent = val || '<select a regime>';
+      }
+
+      regimeSelect.addEventListener('change', update);
+      update();
+    })();
+  </script>
+
+{% endblock %}

@@ -100,6 +100,28 @@
 
       </div>
 
+      <div class="govuk-grid-row govuk-!-margin-top-4">
+
+        <div class="govuk-grid-column-one-third">
+          <div style="border: 1px solid #b1b4b6; background-color: #f3f2f1;
+                      padding: 20px;">
+            <h3 class="govuk-heading-s govuk-!-margin-bottom-2">Schedules</h3>
+            <p class="govuk-body-s govuk-hint govuk-!-margin-bottom-2">
+              Optional — group sections into named schedules for Pattern C navigation.
+            </p>
+            <ul class="govuk-list govuk-!-margin-bottom-0">
+              <li>
+                <a href="{% url 'core:tools_schedule_list' %}" class="govuk-link">Manage schedules</a>
+              </li>
+              <li>
+                <a href="{% url 'core:tools_schedule_create' %}" class="govuk-link">Create new schedule</a>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+      </div>
+
     </div>
   </div>
 
