@@ -15,9 +15,25 @@ urlpatterns = [
          views_admin_tools.tools_questions_list,
          name='tools_questions_list'),
 
+    path('tools/questions/add/',
+         views_admin_tools.tools_question_add,
+         name='tools_question_add'),
+
+    path('tools/questions/edit/',
+         views_admin_tools.tools_questions_edit_picker,
+         name='tools_questions_edit_picker'),
+
     path('tools/sets/',
          views_admin_tools.tools_sets_list,
          name='tools_sets_list'),
+
+    path('tools/sets/add/',
+         views_admin_tools.tools_set_add,
+         name='tools_set_add'),
+
+    path('tools/sets/edit/',
+         views_admin_tools.tools_sets_edit_picker,
+         name='tools_sets_edit_picker'),
 
     path('tools/viewer/',
          views_admin_tools.tools_viewer,
@@ -30,6 +46,14 @@ urlpatterns = [
     path('tools/set/<str:set_id>/edit/',
          views_admin_tools.tools_set_edit,
          name='tools_set_edit'),
+
+    path('tools/set/<str:set_id>/member/add/',
+         views_admin_tools.tools_set_member_add,
+         name='tools_set_member_add'),
+
+    path('tools/set/<str:set_id>/member/<str:question_id>/remove/',
+         views_admin_tools.tools_set_member_remove,
+         name='tools_set_member_remove'),
 
     path('tools/create/',
          views_admin_tools.tools_create,

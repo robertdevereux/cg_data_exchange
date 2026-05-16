@@ -1,0 +1,235 @@
+{% extends "core/base.html" %}
+
+{% block title %}Add set — Platform administration{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-two-thirds">
+
+      <a href="{% url 'core:tools_sets_list' %}" class="govuk-back-link">Question sets</a>
+
+      <h1 class="govuk-heading-l govuk-!-margin-top-4">Add question set</h1>
+
+      {% if errors %}
+      <div class="govuk-error-summary" data-module="govuk-error-summary">
+        <div role="alert">
+          <h2 class="govuk-error-summary__title">There is a problem</h2>
+          <div class="govuk-error-summary__body">
+            <ul class="govuk-list govuk-error-summary__list">
+              {% if errors.set_id %}
+              <li><a href="#set_id">{{ errors.set_id }}</a></li>
+              {% endif %}
+              {% if errors.set_title %}
+              <li><a href="#set_title">{{ errors.set_title }}</a></li>
+              {% endif %}
+              {% if errors.members %}
+              <li><a href="#members-0-question_id">{{ errors.members }}</a></li>
+              {% endif %}
+            </ul>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      <form method="post" novalidate>
+        {% csrf_token %}
+
+        {# ── Set ID ───────────────────────────────────────────────────────────── #}
+        <div class="govuk-form-group {% if errors.set_id %}govuk-form-group--error{% endif %}">
+          <label class="govuk-label govuk-label--s" for="set_id">
+            Set ID
+          </label>
+          <div class="govuk-hint">
+            Unique identifier, e.g. S10. Cannot be changed after creation.
+          </div>
+          {% if errors.set_id %}
+          <p id="set_id-error" class="govuk-error-message">
+            <span class="govuk-visually-hidden">Error:</span> {{ errors.set_id }}
+          </p>
+          {% endif %}
+          <input class="govuk-input govuk-input--width-10
+                        {% if errors.set_id %}govuk-input--error{% endif %}"
+                 id="set_id" name="set_id" type="text"
+                 value="{{ post.set_id|default:'' }}"
+                 {% if errors.set_id %}aria-describedby="set_id-error"{% endif %}>
+        </div>
+
+        {# ── Set title ────────────────────────────────────────────────────────── #}
+        <div class="govuk-form-group {% if errors.set_title %}govuk-form-group--error{% endif %}">
+          <label class="govuk-label govuk-label--s" for="set_title">
+            Title
+          </label>
+          {% if errors.set_title %}
+          <p id="set_title-error" class="govuk-error-message">
+            <span class="govuk-visually-hidden">Error:</span> {{ errors.set_title }}
+          </p>
+          {% endif %}
+          <input class="govuk-input
+                        {% if errors.set_title %}govuk-input--error{% endif %}"
+                 id="set_title" name="set_title" type="text"
+                 value="{{ post.set_title|default:'' }}"
+                 {% if errors.set_title %}aria-describedby="set_title-error"{% endif %}>
+        </div>
+
+        {# ── Set hint ─────────────────────────────────────────────────────────── #}
+        <div class="govuk-form-group">
+          <label class="govuk-label govuk-label--s" for="set_hint">
+            Hint <span class="govuk-hint" style="display:inline">(optional)</span>
+          </label>
+          <input class="govuk-input" id="set_hint" name="set_hint" type="text"
+                 value="{{ post.set_hint|default:'' }}">
+        </div>
+
+        <hr class="govuk-section-break govuk-section-break--m govuk-section-break--visible">
+
+        {# ── Member questions ─────────────────────────────────────────────────── #}
+        <h2 class="govuk-heading-m">Member questions</h2>
+        <p class="govuk-body govuk-!-colour-secondary govuk-!-font-size-16">
+          Add one or more questions. They will appear on screen in display order.
+        </p>
+
+        {% if errors.members %}
+        <p class="govuk-error-message">
+          <span class="govuk-visually-hidden">Error:</span> {{ errors.members }}
+        </p>
+        {% endif %}
+
+        <div id="members-container">
+          {# First member row (always shown) #}
+          <div class="member-row govuk-!-margin-bottom-4"
+               style="border-left: 4px solid #b1b4b6; padding-left: 1rem;"
+               id="member-row-0">
+            <p class="govuk-body-s govuk-!-font-weight-bold govuk-!-margin-bottom-2">
+              Member 1
+            </p>
+            <div class="govuk-grid-row">
+              <div class="govuk-grid-column-one-half">
+                <div class="govuk-form-group">
+                  <label class="govuk-label" for="members-0-question_id">Question</label>
+                  <select class="govuk-select" style="width:100%"
+                          id="members-0-question_id" name="members-0-question_id">
+                    <option value="">— select —</option>
+                    {% for q in all_questions %}
+                    <option value="{{ q.question_id }}">
+                      {{ q.question_id }} — {{ q.question_text|truncatechars:60 }}
+                    </option>
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+              <div class="govuk-grid-column-one-quarter">
+                <div class="govuk-form-group">
+                  <label class="govuk-label" for="members-0-display_order">Display order</label>
+                  <input class="govuk-input govuk-input--width-5"
+                         id="members-0-display_order" name="members-0-display_order"
+                         type="number" value="10">
+                </div>
+              </div>
+              <div class="govuk-grid-column-one-quarter">
+                <div class="govuk-form-group">
+                  <fieldset class="govuk-fieldset">
+                    <legend class="govuk-fieldset__legend">Required</legend>
+                    <div class="govuk-checkboxes govuk-checkboxes--small">
+                      <div class="govuk-checkboxes__item">
+                        <input class="govuk-checkboxes__input"
+                               id="members-0-required" name="members-0-required"
+                               type="checkbox" checked>
+                        <label class="govuk-label govuk-checkboxes__label"
+                               for="members-0-required">Required</label>
+                      </div>
+                    </div>
+                  </fieldset>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <button type="button" class="govuk-button govuk-button--secondary"
+                id="add-member-btn" style="margin-bottom: 2rem;">
+          Add another member
+        </button>
+
+        <hr class="govuk-section-break govuk-section-break--m govuk-section-break--visible">
+
+        <div class="govuk-button-group govuk-!-margin-top-6">
+          <button type="submit" class="govuk-button">Save set</button>
+          <a href="{% url 'core:tools_sets_list' %}" class="govuk-link">Cancel</a>
+        </div>
+
+      </form>
+
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var container  = document.getElementById('members-container');
+      var addBtn     = document.getElementById('add-member-btn');
+      var rowCount   = 1;  // one row already rendered
+
+      // Question options HTML — built once from server-rendered first row
+      var firstSelect = document.getElementById('members-0-question_id');
+      var optionsHTML = firstSelect.innerHTML;
+
+      addBtn.addEventListener('click', function () {
+        var n     = rowCount;
+        var order = (n + 1) * 10;
+
+        var row = document.createElement('div');
+        row.className = 'member-row govuk-!-margin-bottom-4';
+        row.style.cssText = 'border-left: 4px solid #b1b4b6; padding-left: 1rem;';
+        row.id = 'member-row-' + n;
+
+        row.innerHTML = [
+          '<p class="govuk-body-s govuk-!-font-weight-bold govuk-!-margin-bottom-2">',
+            'Member ' + (n + 1),
+          '</p>',
+          '<div class="govuk-grid-row">',
+            '<div class="govuk-grid-column-one-half">',
+              '<div class="govuk-form-group">',
+                '<label class="govuk-label" for="members-' + n + '-question_id">Question</label>',
+                '<select class="govuk-select" style="width:100%" ',
+                        'id="members-' + n + '-question_id" ',
+                        'name="members-' + n + '-question_id">',
+                  optionsHTML,
+                '</select>',
+              '</div>',
+            '</div>',
+            '<div class="govuk-grid-column-one-quarter">',
+              '<div class="govuk-form-group">',
+                '<label class="govuk-label" for="members-' + n + '-display_order">Display order</label>',
+                '<input class="govuk-input govuk-input--width-5" ',
+                       'id="members-' + n + '-display_order" ',
+                       'name="members-' + n + '-display_order" ',
+                       'type="number" value="' + order + '">',
+              '</div>',
+            '</div>',
+            '<div class="govuk-grid-column-one-quarter">',
+              '<div class="govuk-form-group">',
+                '<fieldset class="govuk-fieldset">',
+                  '<legend class="govuk-fieldset__legend">Required</legend>',
+                  '<div class="govuk-checkboxes govuk-checkboxes--small">',
+                    '<div class="govuk-checkboxes__item">',
+                      '<input class="govuk-checkboxes__input" ',
+                             'id="members-' + n + '-required" ',
+                             'name="members-' + n + '-required" ',
+                             'type="checkbox" checked>',
+                      '<label class="govuk-label govuk-checkboxes__label" ',
+                             'for="members-' + n + '-required">Required</label>',
+                    '</div>',
+                  '</div>',
+                '</fieldset>',
+              '</div>',
+            '</div>',
+          '</div>',
+        ].join('');
+
+        container.appendChild(row);
+        rowCount++;
+      });
+    })();
+  </script>
+
+{% endblock %}

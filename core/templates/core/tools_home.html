@@ -27,10 +27,10 @@
                 <a href="{% url 'core:tools_questions_list' %}" class="govuk-link">View questions</a>
               </li>
               <li>
-                <a href="/tools/questions/add/" class="govuk-link">Add questions</a>
+                <a href="{% url 'core:tools_question_add' %}" class="govuk-link">Add question</a>
               </li>
               <li>
-                <a href="/tools/questions/edit/" class="govuk-link">Edit questions</a>
+                <a href="{% url 'core:tools_questions_edit_picker' %}" class="govuk-link">Edit question</a>
               </li>
             </ul>
           </div>
@@ -46,10 +46,10 @@
                 <a href="{% url 'core:tools_sets_list' %}" class="govuk-link">View sets</a>
               </li>
               <li>
-                <a href="/tools/sets/add/" class="govuk-link">Add sets</a>
+                <a href="{% url 'core:tools_set_add' %}" class="govuk-link">Add set</a>
               </li>
               <li>
-                <a href="/tools/sets/edit/" class="govuk-link">Edit sets</a>
+                <a href="{% url 'core:tools_sets_edit_picker' %}" class="govuk-link">Edit set</a>
               </li>
             </ul>
           </div>

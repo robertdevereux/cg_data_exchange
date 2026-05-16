@@ -4,7 +4,7 @@
 
 {% block content %}
 
-  <a href="{{ back_url }}" class="govuk-back-link">Back to viewer</a>
+  <a href="{{ back_url }}" class="govuk-back-link">Back</a>
 
   <div class="govuk-grid-row">
     <div class="govuk-grid-column-two-thirds">
@@ -12,10 +12,12 @@
       <span class="govuk-caption-l">Question set <code>{{ qs.set_id }}</code></span>
       <h1 class="govuk-heading-l">Edit question set</h1>
 
+      {# ── Header fields ─────────────────────────────────────────────────────── #}
       <form method="post" action="">
         {% csrf_token %}
 
         {# Back-navigation params preserved through POST #}
+        <input type="hidden" name="back"          value="{{ back }}">
         <input type="hidden" name="back_regime"   value="{{ back_regime }}">
         <input type="hidden" name="back_schedule" value="{{ back_schedule }}">
         <input type="hidden" name="back_section"  value="{{ back_section }}">
@@ -38,39 +40,70 @@
         </div>
 
         <button class="govuk-button" data-module="govuk-button">Save changes</button>
-        <a href="{{ back_url }}" class="govuk-button govuk-button--secondary"
-           style="margin-left:1rem;">Cancel</a>
 
       </form>
 
     </div>
   </div>
 
+  <hr class="govuk-section-break govuk-section-break--m govuk-section-break--visible govuk-!-margin-top-2">
+
+  {# ── Members ──────────────────────────────────────────────────────────────── #}
   <div class="govuk-grid-row govuk-!-margin-top-6">
     <div class="govuk-grid-column-full">
 
-      <h2 class="govuk-heading-m">Members <span class="govuk-caption-m">(read-only)</span></h2>
+      <h2 class="govuk-heading-m">Member questions</h2>
 
       <table class="govuk-table">
         <thead class="govuk-table__head">
           <tr class="govuk-table__row">
-            <th scope="col" class="govuk-table__header">Order</th>
-            <th scope="col" class="govuk-table__header">Question ID</th>
-            <th scope="col" class="govuk-table__header">Question text</th>
-            <th scope="col" class="govuk-table__header">Type</th>
-            <th scope="col" class="govuk-table__header">Required</th>
+            <th scope="col" class="govuk-table__header" style="width:8%">Order</th>
+            <th scope="col" class="govuk-table__header" style="width:10%">ID</th>
+            <th scope="col" class="govuk-table__header" style="width:47%">Question text</th>
+            <th scope="col" class="govuk-table__header" style="width:10%">Type</th>
+            <th scope="col" class="govuk-table__header" style="width:10%">Required</th>
+            <th scope="col" class="govuk-table__header" style="width:15%">
+              <span class="govuk-visually-hidden">Actions</span>
+            </th>
           </tr>
         </thead>
         <tbody class="govuk-table__body">
           {% for member in qs.members.all %}
           <tr class="govuk-table__row">
             <td class="govuk-table__cell">{{ member.display_order }}</td>
-            <td class="govuk-table__cell"><code>{{ member.question_id }}</code></td>
-            <td class="govuk-table__cell">{{ member.question.question_text }}</td>
-            <td class="govuk-table__cell"><code>{{ member.question.question_type }}</code></td>
+            <td class="govuk-table__cell">
+              <code style="font-size:0.875rem">{{ member.question.question_id }}</code>
+            </td>
+            <td class="govuk-table__cell">
+              {% if member.question.question_text|length > 70 %}
+                {{ member.question.question_text|truncatechars:70 }}
+              {% else %}
+                {{ member.question.question_text }}
+              {% endif %}
+            </td>
+            <td class="govuk-table__cell">{{ member.question.question_type }}</td>
             <td class="govuk-table__cell">
               {% if member.required %}Yes{% else %}No{% endif %}
             </td>
+            <td class="govuk-table__cell">
+              <form method="post"
+                    action="{% url 'core:tools_set_member_remove' qs.set_id member.question.question_id %}"
+                    style="display:inline">
+                {% csrf_token %}
+                <input type="hidden" name="back"          value="{{ back }}">
+                <input type="hidden" name="back_regime"   value="{{ back_regime }}">
+                <input type="hidden" name="back_schedule" value="{{ back_schedule }}">
+                <input type="hidden" name="back_section"  value="{{ back_section }}">
+                <button type="submit" class="govuk-button govuk-button--warning govuk-!-margin-bottom-0"
+                        style="font-size:0.875rem; padding: 5px 10px;">
+                  Remove
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% empty %}
+          <tr class="govuk-table__row">
+            <td class="govuk-table__cell" colspan="6">No members yet.</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -78,5 +111,74 @@
 
     </div>
   </div>
+
+  {# ── Add member ───────────────────────────────────────────────────────────── #}
+  {% if available_questions %}
+  <div class="govuk-grid-row govuk-!-margin-top-2">
+    <div class="govuk-grid-column-two-thirds">
+
+      <h3 class="govuk-heading-s">Add a member</h3>
+
+      <form method="post"
+            action="{% url 'core:tools_set_member_add' qs.set_id %}">
+        {% csrf_token %}
+        <input type="hidden" name="back"          value="{{ back }}">
+        <input type="hidden" name="back_regime"   value="{{ back_regime }}">
+        <input type="hidden" name="back_schedule" value="{{ back_schedule }}">
+        <input type="hidden" name="back_section"  value="{{ back_section }}">
+
+        <div class="govuk-grid-row">
+          <div class="govuk-grid-column-one-half">
+            <div class="govuk-form-group">
+              <label class="govuk-label" for="question_id">Question</label>
+              <select class="govuk-select" style="width:100%"
+                      id="question_id" name="question_id">
+                <option value="">— select —</option>
+                {% for q in available_questions %}
+                <option value="{{ q.question_id }}">
+                  {{ q.question_id }} — {{ q.question_text|truncatechars:55 }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="govuk-grid-column-one-quarter">
+            <div class="govuk-form-group">
+              <label class="govuk-label" for="display_order">Display order</label>
+              <input class="govuk-input govuk-input--width-5"
+                     id="display_order" name="display_order"
+                     type="number" value="{{ next_order }}">
+            </div>
+          </div>
+          <div class="govuk-grid-column-one-quarter">
+            <div class="govuk-form-group">
+              <fieldset class="govuk-fieldset">
+                <legend class="govuk-fieldset__legend">Required</legend>
+                <div class="govuk-checkboxes govuk-checkboxes--small">
+                  <div class="govuk-checkboxes__item">
+                    <input class="govuk-checkboxes__input"
+                           id="required" name="required" type="checkbox" checked>
+                    <label class="govuk-label govuk-checkboxes__label"
+                           for="required">Required</label>
+                  </div>
+                </div>
+              </fieldset>
+            </div>
+          </div>
+        </div>
+
+        <button type="submit" class="govuk-button govuk-button--secondary">
+          Add member
+        </button>
+
+      </form>
+
+    </div>
+  </div>
+  {% else %}
+  <p class="govuk-body govuk-hint govuk-!-margin-top-2">
+    All questions in the bank are already members of this set.
+  </p>
+  {% endif %}
 
 {% endblock %}

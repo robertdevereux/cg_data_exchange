@@ -1,38 +1,18 @@
 {% extends "core/base.html" %}
 
-{% block title %}Question bank — Platform administration{% endblock %}
+{% block title %}Edit a question — Platform administration{% endblock %}
 
 {% block content %}
 
   <div class="govuk-grid-row">
     <div class="govuk-grid-column-full">
 
-      <a href="/tools/" class="govuk-back-link">Platform administration</a>
+      <a href="{% url 'core:tools_index' %}" class="govuk-back-link">Platform administration</a>
 
-      <h1 class="govuk-heading-l govuk-!-margin-top-4">Question bank</h1>
-
-      {% if request.GET.added %}
-      <div class="govuk-notification-banner govuk-notification-banner--success"
-           role="alert" aria-labelledby="govuk-notification-banner-title"
-           data-module="govuk-notification-banner">
-        <div class="govuk-notification-banner__header">
-          <h2 class="govuk-notification-banner__title" id="govuk-notification-banner-title">
-            Success
-          </h2>
-        </div>
-        <div class="govuk-notification-banner__content">
-          <p class="govuk-body">
-            Question <strong>{{ request.GET.added }}</strong> has been added.
-          </p>
-        </div>
-      </div>
-      {% endif %}
-
-      <div class="govuk-button-group govuk-!-margin-bottom-6">
-        <a href="{% url 'core:tools_question_add' %}" class="govuk-button govuk-button--secondary">
-          Add question
-        </a>
-      </div>
+      <h1 class="govuk-heading-l govuk-!-margin-top-4">Edit a question</h1>
+      <p class="govuk-body govuk-!-colour-secondary govuk-!-font-size-16">
+        Select which question to edit.
+      </p>
 
       <table class="govuk-table">
         <caption class="govuk-table__caption govuk-table__caption--s govuk-visually-hidden">
@@ -63,15 +43,13 @@
             </td>
             <td class="govuk-table__cell">{{ q.question_type }}</td>
             <td class="govuk-table__cell">
-              <a href="{% url 'core:tools_question_edit' q.question_id %}"
+              <a href="{% url 'core:tools_question_edit' q.question_id %}?back=picker"
                  class="govuk-link">Edit</a>
             </td>
           </tr>
           {% empty %}
           <tr class="govuk-table__row">
-            <td class="govuk-table__cell" colspan="4">
-              No questions found.
-            </td>
+            <td class="govuk-table__cell" colspan="4">No questions found.</td>
           </tr>
           {% endfor %}
         </tbody>

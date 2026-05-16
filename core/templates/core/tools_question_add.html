@@ -1,0 +1,135 @@
+{% extends "core/base.html" %}
+
+{% block title %}Add question — Platform administration{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-two-thirds">
+
+      <a href="{% url 'core:tools_questions_list' %}" class="govuk-back-link">Question bank</a>
+
+      <h1 class="govuk-heading-l govuk-!-margin-top-4">Add question</h1>
+
+      {% if errors %}
+      <div class="govuk-error-summary" data-module="govuk-error-summary">
+        <div role="alert">
+          <h2 class="govuk-error-summary__title">There is a problem</h2>
+          <div class="govuk-error-summary__body">
+            <ul class="govuk-list govuk-error-summary__list">
+              {% if errors.question_id %}
+              <li><a href="#question_id">{{ errors.question_id }}</a></li>
+              {% endif %}
+              {% if errors.question_text %}
+              <li><a href="#question_text">{{ errors.question_text }}</a></li>
+              {% endif %}
+              {% if errors.question_type %}
+              <li><a href="#question_type">{{ errors.question_type }}</a></li>
+              {% endif %}
+            </ul>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      <form method="post" novalidate>
+        {% csrf_token %}
+
+        {# ── Question ID ──────────────────────────────────────────────────────── #}
+        <div class="govuk-form-group {% if errors.question_id %}govuk-form-group--error{% endif %}">
+          <label class="govuk-label govuk-label--s" for="question_id">
+            Question ID
+          </label>
+          <div class="govuk-hint">
+            Unique identifier, e.g. Q42. Cannot be changed after creation.
+          </div>
+          {% if errors.question_id %}
+          <p id="question_id-error" class="govuk-error-message">
+            <span class="govuk-visually-hidden">Error:</span> {{ errors.question_id }}
+          </p>
+          {% endif %}
+          <input class="govuk-input govuk-input--width-10
+                        {% if errors.question_id %}govuk-input--error{% endif %}"
+                 id="question_id" name="question_id" type="text"
+                 value="{{ post.question_id|default:'' }}"
+                 {% if errors.question_id %}aria-describedby="question_id-error"{% endif %}>
+        </div>
+
+        {# ── Question text ─────────────────────────────────────────────────────── #}
+        <div class="govuk-form-group {% if errors.question_text %}govuk-form-group--error{% endif %}">
+          <label class="govuk-label govuk-label--s" for="question_text">
+            Question text
+          </label>
+          {% if errors.question_text %}
+          <p id="question_text-error" class="govuk-error-message">
+            <span class="govuk-visually-hidden">Error:</span> {{ errors.question_text }}
+          </p>
+          {% endif %}
+          <textarea class="govuk-textarea
+                           {% if errors.question_text %}govuk-textarea--error{% endif %}"
+                    id="question_text" name="question_text" rows="3"
+                    {% if errors.question_text %}aria-describedby="question_text-error"{% endif %}>{{ post.question_text|default:'' }}</textarea>
+        </div>
+
+        {# ── Question type ─────────────────────────────────────────────────────── #}
+        <div class="govuk-form-group {% if errors.question_type %}govuk-form-group--error{% endif %}">
+          <label class="govuk-label govuk-label--s" for="question_type">
+            Question type
+          </label>
+          {% if errors.question_type %}
+          <p id="question_type-error" class="govuk-error-message">
+            <span class="govuk-visually-hidden">Error:</span> {{ errors.question_type }}
+          </p>
+          {% endif %}
+          <select class="govuk-select
+                         {% if errors.question_type %}govuk-select--error{% endif %}"
+                  id="question_type" name="question_type"
+                  {% if errors.question_type %}aria-describedby="question_type-error"{% endif %}>
+            <option value="">— select —</option>
+            {% for value, label in question_type_choices %}
+            <option value="{{ value }}"
+                    {% if post.question_type == value %}selected{% endif %}>
+              {{ label }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        {# ── Hint ─────────────────────────────────────────────────────────────── #}
+        <div class="govuk-form-group">
+          <label class="govuk-label govuk-label--s" for="hint">
+            Hint <span class="govuk-hint" style="display:inline">(optional)</span>
+          </label>
+          <input class="govuk-input" id="hint" name="hint" type="text"
+                 value="{{ post.hint|default:'' }}">
+        </div>
+
+        {# ── Guidance ─────────────────────────────────────────────────────────── #}
+        <div class="govuk-form-group">
+          <label class="govuk-label govuk-label--s" for="guidance">
+            Guidance <span class="govuk-hint" style="display:inline">(optional)</span>
+          </label>
+          <textarea class="govuk-textarea" id="guidance" name="guidance"
+                    rows="3">{{ post.guidance|default:'' }}</textarea>
+        </div>
+
+        {# ── Options ──────────────────────────────────────────────────────────── #}
+        <div class="govuk-form-group">
+          <label class="govuk-label govuk-label--s" for="options">
+            Options <span class="govuk-hint" style="display:inline">(optional — semicolon-delimited, for radio and checkbox)</span>
+          </label>
+          <input class="govuk-input" id="options" name="options" type="text"
+                 value="{{ post.options|default:'' }}">
+        </div>
+
+        <div class="govuk-button-group govuk-!-margin-top-6">
+          <button type="submit" class="govuk-button">Save question</button>
+          <a href="{% url 'core:tools_questions_list' %}" class="govuk-link">Cancel</a>
+        </div>
+
+      </form>
+
+    </div>
+  </div>
+
+{% endblock %}

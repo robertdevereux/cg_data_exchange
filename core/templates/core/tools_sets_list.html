@@ -11,8 +11,25 @@
 
       <h1 class="govuk-heading-l govuk-!-margin-top-4">Question sets</h1>
 
+      {% if request.GET.added %}
+      <div class="govuk-notification-banner govuk-notification-banner--success"
+           role="alert" aria-labelledby="govuk-notification-banner-title"
+           data-module="govuk-notification-banner">
+        <div class="govuk-notification-banner__header">
+          <h2 class="govuk-notification-banner__title" id="govuk-notification-banner-title">
+            Success
+          </h2>
+        </div>
+        <div class="govuk-notification-banner__content">
+          <p class="govuk-body">
+            Set <strong>{{ request.GET.added }}</strong> has been added.
+          </p>
+        </div>
+      </div>
+      {% endif %}
+
       <div class="govuk-button-group govuk-!-margin-bottom-6">
-        <a href="/tools/sets/add/" class="govuk-button govuk-button--secondary">
+        <a href="{% url 'core:tools_set_add' %}" class="govuk-button govuk-button--secondary">
           Add set
         </a>
       </div>
