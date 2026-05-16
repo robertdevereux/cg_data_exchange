@@ -265,6 +265,37 @@
 
         </dl>
 
+        {# ── Routing validation ───────────────────────────────────────────────── #}
+        {% if any_invalid %}
+        <div class="govuk-error-summary" data-module="govuk-error-summary">
+          <div role="alert">
+            <h2 class="govuk-error-summary__title">Fix routing issues before saving</h2>
+            <div class="govuk-error-summary__body">
+              <p class="govuk-body-s govuk-!-margin-bottom-2">
+                The following sections have routing problems that must be resolved:
+              </p>
+              <ul class="govuk-list govuk-error-summary__list">
+                {% for section_id, v in section_validations.items %}
+                {% if not v.valid %}
+                <li>
+                  <a href="/tools/sections/{{ section_id }}/routing/">{{ section_id }}</a>
+                  <ul class="govuk-list govuk-list--bullet govuk-!-margin-top-1 govuk-!-margin-bottom-0">
+                    {% for issue in v.issues %}
+                    <li>{{ issue }}</li>
+                    {% endfor %}
+                  </ul>
+                </li>
+                {% endif %}
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <p class="govuk-body-s" style="color:#00703c">
+          ✓ All sections have valid routing.
+        </p>
+
         <form method="post">
           {% csrf_token %}
           <input type="hidden" name="action" value="save">
@@ -272,6 +303,7 @@
             <button type="submit" class="govuk-button">Save and finish</button>
           </div>
         </form>
+        {% endif %}
 
         <form method="post">
           {% csrf_token %}

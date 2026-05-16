@@ -14,6 +14,28 @@
       </h1>
       <p class="govuk-body-s" style="color:#505a5f">{{ section.section_name }}</p>
 
+      {% if not routing_validation.valid %}
+      <div class="govuk-notification-banner govuk-notification-banner--important"
+           role="region" aria-labelledby="routing-warning-title"
+           data-module="govuk-notification-banner">
+        <div class="govuk-notification-banner__header">
+          <h2 class="govuk-notification-banner__title" id="routing-warning-title">
+            Warning
+          </h2>
+        </div>
+        <div class="govuk-notification-banner__content">
+          <p class="govuk-body govuk-!-margin-bottom-1">
+            This section has routing issues and cannot be used in a regime until resolved:
+          </p>
+          <ul class="govuk-list govuk-list--bullet govuk-!-margin-bottom-0">
+            {% for issue in routing_validation.issues %}
+            <li>{{ issue }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+      {% endif %}
+
       {% if tree|length == 1 and tree.0.type == 'end' %}
         <p class="govuk-body">No routing defined yet.</p>
         <a href="{% url 'core:tools_routing_insert' section.section_id %}?mode=first"

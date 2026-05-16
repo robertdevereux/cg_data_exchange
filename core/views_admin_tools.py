@@ -51,6 +51,62 @@ staff_required = user_passes_test(lambda u: u.is_staff)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# ROUTING VALIDATOR
+# ─────────────────────────────────────────────────────────────────────────────
+
+def validate_section_routing(section):
+    """Return {'valid': bool, 'issues': [str]} for a section's routing table."""
+    from collections import defaultdict
+
+    # Table sections (type 1) need no routing
+    if section.section_type == 1:
+        return {'valid': True, 'issues': []}
+
+    rows = list(Routing.objects.filter(section=section).order_by('order_in_section'))
+
+    # Check 1: no routing rows at all
+    if not rows:
+        return {'valid': False, 'issues': ['No routing rows defined.']}
+
+    # Build node map: current_node → list of outgoing rows
+    node_map = defaultdict(list)
+    for row in rows:
+        node_map[row.current_node].append(row)
+
+    defined_nodes    = set(node_map.keys())
+    referenced_nodes = {row.next_node for row in rows if row.next_node}
+
+    issues = []
+
+    # Check 2: dangling next_node references
+    dangling = referenced_nodes - defined_nodes
+    for node_id in sorted(dangling):
+        issues.append(
+            f'Node {node_id} is referenced as a destination but has no routing rows defined.'
+        )
+
+    # Check 3: unreachable nodes
+    entry_node = rows[0].current_node
+    reachable  = {entry_node} | referenced_nodes
+    for node_id in sorted(defined_nodes - reachable):
+        issues.append(
+            f'Node {node_id} is defined but cannot be reached from the entry point.'
+        )
+
+    # Check 4: conditional-only branching nodes with no unconditional fallback
+    for node_id, node_rows in node_map.items():
+        has_conditional   = any(r.answer_value is not None for r in node_rows)
+        has_unconditional = any(r.answer_value is None     for r in node_rows)
+        if has_conditional and not has_unconditional:
+            issues.append(
+                f'Node {node_id} has conditional routes but no unconditional fallback — '
+                f'answers not matching any condition will have no route.'
+            )
+
+    return {'valid': len(issues) == 0, 'issues': issues}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 0. TOOLS HOME
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -439,11 +495,21 @@ def tools_schedule_sections(request, schedule_id):
     max_order = members.aggregate(m=Max('display_order'))['m'] or 0
     next_order = max_order + 10
 
+    routing_warning_id   = request.GET.get('routing_warning', '')
+    routing_warning_name = ''
+    if routing_warning_id:
+        try:
+            routing_warning_name = Section.objects.get(section_id=routing_warning_id).section_name
+        except Section.DoesNotExist:
+            pass
+
     context = {
-        'schedule':   schedule,
-        'members':    members,
-        'available':  available,
-        'next_order': next_order,
+        'schedule':             schedule,
+        'members':              members,
+        'available':            available,
+        'next_order':           next_order,
+        'routing_warning_id':   routing_warning_id,
+        'routing_warning_name': routing_warning_name,
     }
     return render(request, 'core/tools_schedule_sections.html', context)
 
@@ -468,6 +534,9 @@ def tools_schedule_section_add(request, schedule_id):
     section.regime        = None
     section.display_order = order_int
     section.save()
+    result = validate_section_routing(section)
+    if not result['valid']:
+        return redirect(f'/tools/schedules/{schedule_id}/sections/?routing_warning={section_id}')
     return redirect(f'/tools/schedules/{schedule_id}/sections/')
 
 
@@ -723,17 +792,33 @@ def tools_navigation_regime(request, regime_id):
             .order_by('display_order', 'section_id')
         )
 
+    # Step 3: validate routing across all sections in this regime
+    section_validations = {}
+    any_invalid = False
+    if step == 3:
+        from django.db.models import Q as DQ
+        all_sections = Section.objects.filter(
+            DQ(regime=regime) | DQ(schedule__regime=regime)
+        ).order_by('section_id')
+        for s in all_sections:
+            result = validate_section_routing(s)
+            section_validations[s.section_id] = result
+            if not result['valid']:
+                any_invalid = True
+
     context = {
-        'regime':          regime,
-        'step':            step,
-        'chosen_pattern':  chosen_pattern,
-        'direct_sections': direct_sections,
-        'schedules':       schedules,
-        'direct_count':    direct_count,
-        'schedule_count':  schedule_count,
-        'current_pattern': _infer_pattern(direct_count, schedule_count),
-        'order_items':     order_items,
-        'errors':          errors,
+        'regime':              regime,
+        'step':                step,
+        'chosen_pattern':      chosen_pattern,
+        'direct_sections':     direct_sections,
+        'schedules':           schedules,
+        'direct_count':        direct_count,
+        'schedule_count':      schedule_count,
+        'current_pattern':     _infer_pattern(direct_count, schedule_count),
+        'order_items':         order_items,
+        'errors':              errors,
+        'section_validations': section_validations,
+        'any_invalid':         any_invalid,
     }
     return render(request, 'core/tools_navigation_regime.html', context)
 
@@ -1354,9 +1439,10 @@ def tools_section_routing(request, section_id):
     )
 
     return render(request, 'core/tools_section_routing.html', {
-        'section':         section,
-        'tree':            tree,
-        'available_nodes': available_nodes,
+        'section':            section,
+        'tree':               tree,
+        'available_nodes':    available_nodes,
+        'routing_validation': validate_section_routing(section),
     })
 
 

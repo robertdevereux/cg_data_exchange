@@ -17,6 +17,27 @@
         Regime: {{ schedule.regime.regime_id }} — {{ schedule.regime.regime_name }}
       </p>
 
+      {% if routing_warning_id %}
+      <div class="govuk-notification-banner govuk-notification-banner--important"
+           role="region" aria-labelledby="routing-warn-title"
+           data-module="govuk-notification-banner">
+        <div class="govuk-notification-banner__header">
+          <h2 class="govuk-notification-banner__title" id="routing-warn-title">
+            Warning
+          </h2>
+        </div>
+        <div class="govuk-notification-banner__content">
+          <p class="govuk-body govuk-!-margin-bottom-0">
+            Section <strong>{{ routing_warning_name|default:routing_warning_id }}</strong>
+            was added but has incomplete routing.
+            <a href="/tools/sections/{{ routing_warning_id }}/routing/" class="govuk-link">
+              Edit routing →
+            </a>
+          </p>
+        </div>
+      </div>
+      {% endif %}
+
       {# ── Current members ──────────────────────────────────────────────────── #}
       <h2 class="govuk-heading-s">Sections in this schedule</h2>
 
