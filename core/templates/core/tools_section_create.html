@@ -29,8 +29,32 @@
       </div>
       {% endif %}
 
+      {# ── Copy-from notice / prompt ────────────────────────────────────────── #}
+      {% if copy_source %}
+      <div style="background:#e8f5e9; border-left:4px solid #00703c;
+                  padding:12px 16px; margin-bottom:24px;">
+        <p class="govuk-body-s govuk-!-margin-bottom-0">
+          <strong>Copying from:</strong> {{ copy_source.section_id }} — {{ copy_source.section_name }}.
+          Fields pre-filled below — choose a regime and save to create the copy.
+        </p>
+      </div>
+      {% else %}
+      <div style="background:#f3f2f1; border-left:4px solid #b1b4b6;
+                  padding:12px 16px; margin-bottom:24px;">
+        <p class="govuk-body-s govuk-!-margin-bottom-0">
+          Want to start from an existing section?
+          <a href="{% url 'core:tools_section_copy_picker' %}" class="govuk-link">
+            Choose a section to copy from →
+          </a>
+        </p>
+      </div>
+      {% endif %}
+
       <form method="post" novalidate>
         {% csrf_token %}
+        {% if copy_source %}
+        <input type="hidden" name="copy_from" value="{{ copy_source.section_id }}">
+        {% endif %}
 
         {# ── Section name ─────────────────────────────────────────────────────── #}
         <div class="govuk-form-group {% if errors.section_name %}govuk-form-group--error{% endif %}">

@@ -409,7 +409,12 @@ def tools_regime_create(request):
 
 @staff_required
 def tools_section_create(request):
-    """Create a new Section record (fields only; routing is Chunk 6)."""
+    """Create a new Section record (fields only; routing is Chunk 6).
+
+    Supports ?copy_from=<section_id> on GET to pre-fill fields from an
+    existing section.  The source section's Routing rows are copied verbatim
+    to the new section after creation.
+    """
     regimes = (
         Regime.objects
         .filter(dept_id=settings.ACTIVE_DEPT)
@@ -417,9 +422,11 @@ def tools_section_create(request):
     )
     errors = {}
     post = {}
+    copy_source = None
 
     if request.method == 'POST':
         post = request.POST
+        copy_from_id        = post.get('copy_from', '').strip()
         section_name        = post.get('section_name', '').strip()
         section_type        = post.get('section_type', '0').strip()
         display_order       = post.get('display_order', '0').strip()
@@ -465,7 +472,7 @@ def tools_section_create(request):
             except ValueError:
                 display_order_int = 0
 
-            Section.objects.create(
+            new_section = Section.objects.create(
                 section_id=section_id,
                 section_name=section_name,
                 section_type=section_type_int,
@@ -475,8 +482,46 @@ def tools_section_create(request):
                 section_guidance=section_guidance,
                 column_question_ids=column_question_ids,
                 totals_question_ids=totals_question_ids,
+                copied_from=copy_from_id or None,
             )
+
+            # Copy routing rows from the source section if requested
+            if copy_from_id:
+                source_rows = (
+                    Routing.objects
+                    .filter(section_id=copy_from_id)
+                    .order_by('order_in_section')
+                )
+                Routing.objects.bulk_create([
+                    Routing(
+                        section=new_section,
+                        current_node=r.current_node,
+                        answer_value=r.answer_value,
+                        next_node=r.next_node,
+                        order_in_section=r.order_in_section,
+                    )
+                    for r in source_rows
+                ])
+
             return redirect(f'/tools/sections/{section_id}/routing/')
+
+    else:
+        # GET — check for copy_from param
+        copy_from_id = request.GET.get('copy_from', '').strip()
+        if copy_from_id:
+            try:
+                copy_source = Section.objects.get(section_id=copy_from_id)
+                post = {
+                    'section_name':        copy_source.section_name,
+                    'section_type':        str(copy_source.section_type),
+                    'display_order':       str(copy_source.display_order),
+                    'section_guidance':    copy_source.section_guidance or '',
+                    'column_question_ids': copy_source.column_question_ids or '',
+                    'totals_question_ids': copy_source.totals_question_ids or '',
+                    'copy_from':           copy_from_id,
+                }
+            except Section.DoesNotExist:
+                copy_from_id = ''
 
     context = {
         'regimes':               regimes,
@@ -484,8 +529,27 @@ def tools_section_create(request):
         'errors':                errors,
         'post':                  post,
         'active_dept':           settings.ACTIVE_DEPT,
+        'copy_source':           copy_source,
     }
     return render(request, 'core/tools_section_create.html', context)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 0n. SECTION COPY PICKER
+# ─────────────────────────────────────────────────────────────────────────────
+
+@staff_required
+def tools_section_copy_picker(request):
+    """List all sections so the admin can pick one to copy."""
+    sections = (
+        Section.objects
+        .annotate(routing_count=Count('routing_rules'))
+        .select_related('regime', 'schedule')
+        .order_by('section_id')
+    )
+    return render(request, 'core/tools_section_copy_picker.html', {
+        'sections': sections,
+    })
 
 
 # ─────────────────────────────────────────────────────────────────────────────

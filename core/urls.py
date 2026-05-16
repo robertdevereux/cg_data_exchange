@@ -43,6 +43,10 @@ urlpatterns = [
          views_admin_tools.tools_section_create,
          name='tools_section_create'),
 
+    path('tools/sections/copy/',
+         views_admin_tools.tools_section_copy_picker,
+         name='tools_section_copy_picker'),
+
     path('tools/regimes/',
          views_admin_tools.tools_regime_list,
          name='tools_regime_list'),

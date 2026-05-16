@@ -116,6 +116,12 @@ class Section(models.Model):
         null=True,
         help_text='Semicolon-delimited question IDs whose numeric values are totalled',
     )
+    copied_from = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text='Audit: section_id this section was copied from, if any',
+    )
 
     class Meta:
         ordering = ['display_order', 'section_name']
