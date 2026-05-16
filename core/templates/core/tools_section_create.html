@@ -78,10 +78,10 @@
 
         {# ── Section type ─────────────────────────────────────────────────────── #}
         <div class="govuk-form-group">
-          <label class="govuk-label govuk-label--s" for="section_type">
+          <label class="govuk-label govuk-label--s" for="id_section_type">
             Section type
           </label>
-          <select class="govuk-select" id="section_type" name="section_type">
+          <select class="govuk-select" id="id_section_type" name="section_type">
             {% for value, label in section_type_choices %}
             <option value="{{ value }}"
                     {% if post.section_type == value|stringformat:"s" %}selected
@@ -130,6 +130,12 @@
             </option>
             {% endfor %}
           </select>
+          {% if not has_regimes %}
+          <p class="govuk-body-s govuk-!-margin-top-2 govuk-!-margin-bottom-0">
+            No regimes shown?
+            <a href="{% url 'core:tools_regime_create' %}" class="govuk-link">Create a regime first →</a>
+          </p>
+          {% endif %}
         </div>
 
         {# ── Section ID preview ───────────────────────────────────────────────── #}
@@ -143,48 +149,50 @@
           </p>
         </div>
 
-        <hr class="govuk-section-break govuk-section-break--m govuk-section-break--visible">
-        <p class="govuk-body-s govuk-!-colour-secondary">
-          The following fields apply to table sections only. Leave blank for standard sections.
-        </p>
+        <div id="table-fields">
+          <hr class="govuk-section-break govuk-section-break--m govuk-section-break--visible">
+          <p class="govuk-body-s govuk-!-colour-secondary">
+            The following fields apply to table sections only. Leave blank for standard sections.
+          </p>
 
-        {# ── Section guidance ─────────────────────────────────────────────────── #}
-        <div class="govuk-form-group">
-          <label class="govuk-label govuk-label--s" for="section_guidance">
-            Section guidance
-            <span class="govuk-hint" style="display:inline">(optional)</span>
-          </label>
-          <div class="govuk-hint">
-            Shown at the top of table sections.
+          {# ── Section guidance ───────────────────────────────────────────────── #}
+          <div class="govuk-form-group">
+            <label class="govuk-label govuk-label--s" for="section_guidance">
+              Section guidance
+              <span class="govuk-hint" style="display:inline">(optional)</span>
+            </label>
+            <div class="govuk-hint">
+              Shown at the top of table sections.
+            </div>
+            <textarea class="govuk-textarea" id="section_guidance" name="section_guidance"
+                      rows="3">{{ post.section_guidance|default:'' }}</textarea>
           </div>
-          <textarea class="govuk-textarea" id="section_guidance" name="section_guidance"
-                    rows="3">{{ post.section_guidance|default:'' }}</textarea>
-        </div>
 
-        {# ── Column question IDs ──────────────────────────────────────────────── #}
-        <div class="govuk-form-group">
-          <label class="govuk-label govuk-label--s" for="column_question_ids">
-            Column question IDs
-            <span class="govuk-hint" style="display:inline">(optional)</span>
-          </label>
-          <div class="govuk-hint">
-            Table sections only. Semicolon-delimited question IDs defining column order, e.g. Q1;Q2;Q3.
+          {# ── Column question IDs ────────────────────────────────────────────── #}
+          <div class="govuk-form-group">
+            <label class="govuk-label govuk-label--s" for="column_question_ids">
+              Column question IDs
+              <span class="govuk-hint" style="display:inline">(optional)</span>
+            </label>
+            <div class="govuk-hint">
+              Table sections only. Semicolon-delimited question IDs defining column order, e.g. Q1;Q2;Q3.
+            </div>
+            <input class="govuk-input" id="column_question_ids" name="column_question_ids"
+                   type="text" value="{{ post.column_question_ids|default:'' }}">
           </div>
-          <input class="govuk-input" id="column_question_ids" name="column_question_ids"
-                 type="text" value="{{ post.column_question_ids|default:'' }}">
-        </div>
 
-        {# ── Totals question IDs ──────────────────────────────────────────────── #}
-        <div class="govuk-form-group">
-          <label class="govuk-label govuk-label--s" for="totals_question_ids">
-            Totals question IDs
-            <span class="govuk-hint" style="display:inline">(optional)</span>
-          </label>
-          <div class="govuk-hint">
-            Table sections only. Semicolon-delimited IDs of numeric questions to total.
+          {# ── Totals question IDs ────────────────────────────────────────────── #}
+          <div class="govuk-form-group">
+            <label class="govuk-label govuk-label--s" for="totals_question_ids">
+              Totals question IDs
+              <span class="govuk-hint" style="display:inline">(optional)</span>
+            </label>
+            <div class="govuk-hint">
+              Table sections only. Semicolon-delimited IDs of numeric questions to total.
+            </div>
+            <input class="govuk-input" id="totals_question_ids" name="totals_question_ids"
+                   type="text" value="{{ post.totals_question_ids|default:'' }}">
           </div>
-          <input class="govuk-input" id="totals_question_ids" name="totals_question_ids"
-                 type="text" value="{{ post.totals_question_ids|default:'' }}">
         </div>
 
         <div class="govuk-button-group govuk-!-margin-top-6">
@@ -209,6 +217,19 @@
 
       regimeSelect.addEventListener('change', update);
       update();
+    })();
+
+    (function () {
+      var typeSelect  = document.getElementById('id_section_type');
+      var tableFields = document.getElementById('table-fields');
+
+      function toggleTableFields() {
+        tableFields.style.display =
+          ['1', '2'].includes(typeSelect.value) ? 'block' : 'none';
+      }
+
+      typeSelect.addEventListener('change', toggleTableFields);
+      toggleTableFields();
     })();
   </script>
 

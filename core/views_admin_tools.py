@@ -698,7 +698,12 @@ def tools_section_create(request):
                     for r in source_rows
                 ])
 
-            return redirect(f'/tools/sections/{section_id}/routing/')
+            if section_type_int == 1:
+                # Table (no routing) → back to list with success banner
+                return redirect(f'/tools/sections/?added={section_id}')
+            else:
+                # Standard (0) or Table with routing (2) → routing editor
+                return redirect(f'/tools/sections/{section_id}/routing/')
 
     else:
         # GET — check for copy_from param
@@ -720,6 +725,7 @@ def tools_section_create(request):
 
     context = {
         'regimes':               regimes,
+        'has_regimes':           regimes.exists(),
         'section_type_choices':  Section.SECTION_TYPE_CHOICES,
         'errors':                errors,
         'post':                  post,
