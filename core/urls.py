@@ -75,6 +75,18 @@ urlpatterns = [
          views_admin_tools.tools_set_member_remove,
          name='tools_set_member_remove'),
 
+    path('tools/actors/',
+         views_admin_tools.tools_actors,
+         name='tools_actors'),
+
+    path('tools/actors/create/',
+         views_admin_tools.tools_actor_create,
+         name='tools_actor_create'),
+
+    path('tools/actors/revoke/',
+         views_admin_tools.tools_actor_revoke,
+         name='tools_actor_revoke'),
+
     path('tools/navigation/',
          views_admin_tools.tools_navigation,
          name='tools_navigation'),

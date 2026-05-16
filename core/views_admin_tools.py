@@ -27,7 +27,8 @@ import uuid
 
 from django.conf import settings
 from django.contrib.auth.decorators import user_passes_test
-from django.db.models import Count, Max
+from django.db import models
+from django.db.models import Count, F, Max
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
@@ -36,6 +37,7 @@ from .models import (
     Answer,
     AnswerTable,
     Case,
+    Permission,
     Question,
     QuestionSet,
     QuestionSetMember,
@@ -44,6 +46,7 @@ from .models import (
     Schedule,
     Section,
     SectionStatus,
+    User,
 )
 from .session import update_session
 
@@ -875,12 +878,24 @@ def tools_regime_create(request):
             errors['regime_name'] = 'Enter a regime name'
 
         if not errors:
-            Regime.objects.create(
+            regime = Regime.objects.create(
                 regime_id=generated_id,
                 regime_name=regime_name,
                 dept_id=settings.ACTIVE_DEPT,
                 display_order=0,
             )
+            # Auto-grant to all non-actor users
+            actor_ids = (
+                Permission.objects
+                .exclude(actor_id=F('user_id'))
+                .values_list('actor_id', flat=True)
+                .distinct()
+            )
+            for u in User.objects.exclude(pk__in=actor_ids):
+                Permission.objects.get_or_create(
+                    actor=u, user=u, regime=regime, section=None,
+                    defaults={'can_delegate': False, 'granted_by': None},
+                )
             return redirect(f'/tools/regimes/?added={generated_id}')
 
     context = {
@@ -1802,6 +1817,213 @@ def tools_routing_add_condition(request, section_id):
 
     _renumber_routing(section)
     return redirect(routing_url)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ACTOR MANAGEMENT VIEWS
+# ─────────────────────────────────────────────────────────────────────────────
+
+@staff_required
+def tools_actors(request):
+    """List all actor arrangements and offer a create button."""
+    # Rows where actor acts FOR someone else
+    arrangements = (
+        Permission.objects
+        .exclude(actor_id=F('user_id'))
+        .select_related('actor', 'user', 'regime', 'section')
+        .order_by('actor__username', 'user__username')
+    )
+    added = request.GET.get('added', '')
+    return render(request, 'core/tools_actors.html', {
+        'arrangements': arrangements,
+        'added':        added,
+    })
+
+
+@staff_required
+def tools_actor_create(request):
+    """Multi-step session wizard for setting up an actor arrangement."""
+    SK_STEP     = 'actor_create_step'
+    SK_ACTOR    = 'actor_create_actor_id'
+    SK_USERS    = 'actor_create_user_ids'
+    SK_GRANTS   = 'actor_create_grants'    # {user_id: 'full' | [section_id, ...]}
+
+    def _clear_session():
+        for k in (SK_STEP, SK_ACTOR, SK_USERS, SK_GRANTS):
+            request.session.pop(k, None)
+
+    errors = {}
+
+    if request.method == 'POST':
+        action = request.POST.get('action', '')
+
+        # ── Step 1: choose / create actor ────────────────────────────────────
+        if action == 'set_actor':
+            actor_source = request.POST.get('actor_source', 'existing')
+            if actor_source == 'existing':
+                actor_id = request.POST.get('actor_user_id', '').strip()
+                if not actor_id:
+                    errors['actor'] = 'Select a user'
+                else:
+                    try:
+                        User.objects.get(pk=actor_id)
+                    except (User.DoesNotExist, ValueError):
+                        errors['actor'] = 'Select a valid user'
+                if not errors:
+                    request.session[SK_ACTOR] = int(actor_id)
+                    request.session[SK_STEP]  = 2
+                    return redirect('core:tools_actor_create')
+            else:
+                username = request.POST.get('new_username', '').strip()
+                password = request.POST.get('new_password', '').strip()
+                if not username:
+                    errors['actor'] = 'Enter a username'
+                elif User.objects.filter(username=username).exists():
+                    errors['actor'] = f'Username "{username}" is already taken'
+                if not errors and not password:
+                    errors['actor'] = 'Enter a password'
+                if not errors:
+                    new_user = User.objects.create_user(username=username, password=password)
+                    request.session[SK_ACTOR] = new_user.pk
+                    request.session[SK_STEP]  = 2
+                    return redirect('core:tools_actor_create')
+
+        # ── Step 2: choose users actor acts for ──────────────────────────────
+        elif action == 'set_users':
+            user_ids = request.POST.getlist('user_ids')
+            if not user_ids:
+                errors['users'] = 'Select at least one user'
+            if not errors:
+                request.session[SK_USERS] = [int(uid) for uid in user_ids]
+                request.session[SK_STEP]  = 3
+                return redirect('core:tools_actor_create')
+
+        # ── Step 3: grant scope per user ─────────────────────────────────────
+        elif action == 'set_grants':
+            user_ids = request.session.get(SK_USERS, [])
+            grants = {}
+            for uid in user_ids:
+                scope = request.POST.get(f'scope_{uid}', 'full')
+                if scope == 'full':
+                    grants[str(uid)] = 'full'
+                else:
+                    selected = request.POST.getlist(f'sections_{uid}')
+                    grants[str(uid)] = selected
+            request.session[SK_GRANTS] = grants
+            request.session[SK_STEP]   = 4
+            return redirect('core:tools_actor_create')
+
+        # ── Step 4: save ─────────────────────────────────────────────────────
+        elif action == 'save':
+            actor_id = request.session.get(SK_ACTOR)
+            user_ids = request.session.get(SK_USERS, [])
+            grants   = request.session.get(SK_GRANTS, {})
+            try:
+                actor = User.objects.get(pk=actor_id)
+            except (User.DoesNotExist, TypeError):
+                _clear_session()
+                return redirect('core:tools_actor_create')
+
+            all_regimes = Regime.objects.exclude(dept_id='PLATFORM')
+            for uid in user_ids:
+                try:
+                    target_user = User.objects.get(pk=uid)
+                except User.DoesNotExist:
+                    continue
+                scope = grants.get(str(uid), 'full')
+                if scope == 'full':
+                    for regime in all_regimes:
+                        Permission.objects.get_or_create(
+                            actor=actor, user=target_user,
+                            regime=regime, section=None,
+                            defaults={'can_delegate': False, 'granted_by': None},
+                        )
+                else:
+                    for section_id in scope:
+                        try:
+                            section = Section.objects.get(section_id=section_id)
+                        except Section.DoesNotExist:
+                            continue
+                        Permission.objects.get_or_create(
+                            actor=actor, user=target_user,
+                            regime=None, section=section,
+                            defaults={'can_delegate': False, 'granted_by': None},
+                        )
+
+            actor_username = actor.username
+            _clear_session()
+            return redirect(f'/tools/actors/?added={actor_username}')
+
+        elif action == 'cancel':
+            _clear_session()
+            return redirect('core:tools_actors')
+
+    # ── GET: render current step ──────────────────────────────────────────────
+    step     = request.session.get(SK_STEP, 1)
+    actor_id = request.session.get(SK_ACTOR)
+    user_ids = request.session.get(SK_USERS, [])
+    grants   = request.session.get(SK_GRANTS, {})
+
+    actor = None
+    if actor_id:
+        try:
+            actor = User.objects.get(pk=actor_id)
+        except User.DoesNotExist:
+            pass
+
+    # Users available to act for (exclude the actor themselves)
+    actor_pk_set = {actor_id} if actor_id else set()
+    candidate_users = User.objects.exclude(pk__in=actor_pk_set).order_by('username')
+
+    # Users selected in step 2
+    selected_users = list(User.objects.filter(pk__in=user_ids).order_by('username'))
+
+    # All sections grouped by regime for step 3 partial scope
+    regimes_with_sections = []
+    for regime in Regime.objects.exclude(dept_id='PLATFORM').order_by('regime_id'):
+        secs = list(Section.objects.filter(
+            models.Q(regime=regime) | models.Q(schedule__regime=regime)
+        ).order_by('section_id'))
+        if secs:
+            regimes_with_sections.append({'regime': regime, 'sections': secs})
+
+    # Resolve grants for step 4 summary
+    grant_summary = []
+    for uid in user_ids:
+        try:
+            u = User.objects.get(pk=uid)
+        except User.DoesNotExist:
+            continue
+        scope = grants.get(str(uid), 'full')
+        if scope == 'full':
+            grant_summary.append({'user': u, 'scope': 'Full access (all regimes)', 'sections': []})
+        else:
+            secs = list(Section.objects.filter(section_id__in=scope).order_by('section_id'))
+            grant_summary.append({'user': u, 'scope': 'Partial', 'sections': secs})
+
+    context = {
+        'step':                  step,
+        'actor':                 actor,
+        'candidate_users':       candidate_users,
+        'selected_users':        selected_users,
+        'regimes_with_sections': regimes_with_sections,
+        'grant_summary':         grant_summary,
+        'errors':                errors,
+    }
+    return render(request, 'core/tools_actor_create.html', context)
+
+
+@staff_required
+def tools_actor_revoke(request):
+    """POST only. Delete one Permission row."""
+    if request.method != 'POST':
+        return redirect('core:tools_actors')
+    perm_id = request.POST.get('permission_id', '').strip()
+    try:
+        Permission.objects.get(pk=perm_id).delete()
+    except (Permission.DoesNotExist, ValueError):
+        pass
+    return redirect('core:tools_actors')
 
 
 # ── Back-URL helper ───────────────────────────────────────────────────────────

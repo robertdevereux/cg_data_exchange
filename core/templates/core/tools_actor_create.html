@@ -1,0 +1,303 @@
+{% extends "core/base.html" %}
+
+{% block title %}Set up actor — Platform administration{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-two-thirds">
+
+      <a href="{% url 'core:tools_actors' %}" class="govuk-back-link">Actor arrangements</a>
+
+      <h1 class="govuk-heading-l govuk-!-margin-top-4">Set up a new actor</h1>
+      <p class="govuk-body-s govuk-hint">Step {{ step }} of 4</p>
+
+      {# ═══════════════════════════════════════════════════════════════════════ #}
+      {# STEP 1 — Choose or create actor                                        #}
+      {# ═══════════════════════════════════════════════════════════════════════ #}
+      {% if step == 1 %}
+
+        {% if errors.actor %}
+        <div class="govuk-error-summary" data-module="govuk-error-summary">
+          <div role="alert">
+            <h2 class="govuk-error-summary__title">There is a problem</h2>
+            <div class="govuk-error-summary__body">
+              <ul class="govuk-list govuk-error-summary__list">
+                <li><a href="#actor-source">{{ errors.actor }}</a></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+
+        <form method="post" novalidate>
+          {% csrf_token %}
+          <input type="hidden" name="action" value="set_actor">
+
+          <div class="govuk-form-group {% if errors.actor %}govuk-form-group--error{% endif %}">
+            <fieldset class="govuk-fieldset" id="actor-source">
+              <legend class="govuk-fieldset__legend govuk-fieldset__legend--s">
+                Who will be the actor?
+              </legend>
+              {% if errors.actor %}
+              <p id="actor-error" class="govuk-error-message">
+                <span class="govuk-visually-hidden">Error:</span> {{ errors.actor }}
+              </p>
+              {% endif %}
+              <div class="govuk-radios" data-module="govuk-radios">
+
+                <div class="govuk-radios__item">
+                  <input class="govuk-radios__input" id="actor-existing" name="actor_source"
+                         type="radio" value="existing" checked
+                         data-aria-controls="existing-conditional">
+                  <label class="govuk-label govuk-radios__label" for="actor-existing">
+                    Existing user
+                  </label>
+                </div>
+
+                <div class="govuk-radios__conditional" id="existing-conditional">
+                  <div class="govuk-form-group">
+                    <label class="govuk-label" for="actor-user-id">Select user</label>
+                    <select class="govuk-select" id="actor-user-id" name="actor_user_id">
+                      <option value="">— select —</option>
+                      {% for u in candidate_users %}
+                      <option value="{{ u.pk }}">{{ u.username }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                </div>
+
+                <div class="govuk-radios__item">
+                  <input class="govuk-radios__input" id="actor-new" name="actor_source"
+                         type="radio" value="new"
+                         data-aria-controls="new-conditional">
+                  <label class="govuk-label govuk-radios__label" for="actor-new">
+                    Create new user
+                  </label>
+                </div>
+
+                <div class="govuk-radios__conditional govuk-radios__conditional--hidden"
+                     id="new-conditional">
+                  <div class="govuk-form-group">
+                    <label class="govuk-label" for="new-username">Username</label>
+                    <input class="govuk-input govuk-input--width-20"
+                           id="new-username" name="new_username" type="text" autocomplete="off">
+                  </div>
+                  <div class="govuk-form-group">
+                    <label class="govuk-label" for="new-password">Password</label>
+                    <input class="govuk-input govuk-input--width-20"
+                           id="new-password" name="new_password" type="password" autocomplete="new-password">
+                  </div>
+                </div>
+
+              </div>
+            </fieldset>
+          </div>
+
+          <div class="govuk-button-group">
+            <button type="submit" class="govuk-button">Continue</button>
+          </div>
+
+        </form>
+
+        <form method="post">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="cancel">
+          <button type="submit" class="govuk-link"
+                  style="background:none;border:none;padding:0;cursor:pointer;font-size:1rem">
+            Cancel
+          </button>
+        </form>
+
+      {# ═══════════════════════════════════════════════════════════════════════ #}
+      {# STEP 2 — Who they act for                                              #}
+      {# ═══════════════════════════════════════════════════════════════════════ #}
+      {% elif step == 2 %}
+
+        <p class="govuk-body">
+          Actor: <strong>{{ actor.username }}</strong>
+        </p>
+
+        {% if errors.users %}
+        <div class="govuk-error-summary" data-module="govuk-error-summary">
+          <div role="alert">
+            <h2 class="govuk-error-summary__title">There is a problem</h2>
+            <div class="govuk-error-summary__body">
+              <ul class="govuk-list govuk-error-summary__list">
+                <li><a href="#user-ids">{{ errors.users }}</a></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+
+        <form method="post" novalidate>
+          {% csrf_token %}
+          <input type="hidden" name="action" value="set_users">
+
+          <div class="govuk-form-group {% if errors.users %}govuk-form-group--error{% endif %}">
+            <fieldset class="govuk-fieldset" id="user-ids">
+              <legend class="govuk-fieldset__legend govuk-fieldset__legend--s">
+                Who does this actor act for?
+              </legend>
+              {% if errors.users %}
+              <p class="govuk-error-message">
+                <span class="govuk-visually-hidden">Error:</span> {{ errors.users }}
+              </p>
+              {% endif %}
+              <div class="govuk-checkboxes">
+                {% for u in candidate_users %}
+                <div class="govuk-checkboxes__item">
+                  <input class="govuk-checkboxes__input" id="user-{{ u.pk }}"
+                         name="user_ids" type="checkbox" value="{{ u.pk }}">
+                  <label class="govuk-label govuk-checkboxes__label" for="user-{{ u.pk }}">
+                    {{ u.username }}
+                  </label>
+                </div>
+                {% empty %}
+                <p class="govuk-hint">No other users available.</p>
+                {% endfor %}
+              </div>
+            </fieldset>
+          </div>
+
+          <div class="govuk-button-group">
+            <button type="submit" class="govuk-button">Continue</button>
+          </div>
+
+        </form>
+
+      {# ═══════════════════════════════════════════════════════════════════════ #}
+      {# STEP 3 — Grant scope per user                                          #}
+      {# ═══════════════════════════════════════════════════════════════════════ #}
+      {% elif step == 3 %}
+
+        <p class="govuk-body">
+          Actor: <strong>{{ actor.username }}</strong>
+        </p>
+        <p class="govuk-body-s govuk-hint">
+          Choose the access scope for each user this actor will act for.
+        </p>
+
+        <form method="post" novalidate>
+          {% csrf_token %}
+          <input type="hidden" name="action" value="set_grants">
+
+          {% for u in selected_users %}
+          <div style="border-left:4px solid #b1b4b6; padding:12px 16px; margin-bottom:24px;">
+            <h3 class="govuk-heading-s govuk-!-margin-bottom-2">Acting for: {{ u.username }}</h3>
+
+            <div class="govuk-form-group">
+              <fieldset class="govuk-fieldset">
+                <legend class="govuk-fieldset__legend">Scope</legend>
+                <div class="govuk-radios" data-module="govuk-radios">
+
+                  <div class="govuk-radios__item">
+                    <input class="govuk-radios__input"
+                           id="scope-full-{{ u.pk }}" name="scope_{{ u.pk }}"
+                           type="radio" value="full" checked>
+                    <label class="govuk-label govuk-radios__label" for="scope-full-{{ u.pk }}">
+                      Full access (all regimes)
+                    </label>
+                  </div>
+
+                  <div class="govuk-radios__item">
+                    <input class="govuk-radios__input"
+                           id="scope-partial-{{ u.pk }}" name="scope_{{ u.pk }}"
+                           type="radio" value="partial"
+                           data-aria-controls="partial-sections-{{ u.pk }}">
+                    <label class="govuk-label govuk-radios__label" for="scope-partial-{{ u.pk }}">
+                      Partial — select sections
+                    </label>
+                  </div>
+
+                  <div class="govuk-radios__conditional govuk-radios__conditional--hidden"
+                       id="partial-sections-{{ u.pk }}">
+                    {% for rws in regimes_with_sections %}
+                    <p class="govuk-body-s govuk-!-margin-bottom-1">
+                      <strong>{{ rws.regime.regime_id }} — {{ rws.regime.regime_name }}</strong>
+                    </p>
+                    <div class="govuk-checkboxes govuk-!-margin-bottom-3">
+                      {% for s in rws.sections %}
+                      <div class="govuk-checkboxes__item">
+                        <input class="govuk-checkboxes__input"
+                               id="sec-{{ u.pk }}-{{ s.section_id }}"
+                               name="sections_{{ u.pk }}"
+                               type="checkbox" value="{{ s.section_id }}">
+                        <label class="govuk-label govuk-checkboxes__label"
+                               for="sec-{{ u.pk }}-{{ s.section_id }}">
+                          {{ s.section_id }} — {{ s.section_name }}
+                        </label>
+                      </div>
+                      {% endfor %}
+                    </div>
+                    {% empty %}
+                    <p class="govuk-hint">No sections available.</p>
+                    {% endfor %}
+                  </div>
+
+                </div>
+              </fieldset>
+            </div>
+          </div>
+          {% endfor %}
+
+          <div class="govuk-button-group">
+            <button type="submit" class="govuk-button">Continue</button>
+          </div>
+
+        </form>
+
+      {# ═══════════════════════════════════════════════════════════════════════ #}
+      {# STEP 4 — Confirm and save                                              #}
+      {# ═══════════════════════════════════════════════════════════════════════ #}
+      {% elif step == 4 %}
+
+        <dl class="govuk-summary-list govuk-!-margin-bottom-6">
+
+          <div class="govuk-summary-list__row">
+            <dt class="govuk-summary-list__key">Actor</dt>
+            <dd class="govuk-summary-list__value">{{ actor.username }}</dd>
+          </div>
+
+          {% for gs in grant_summary %}
+          <div class="govuk-summary-list__row">
+            <dt class="govuk-summary-list__key">Acts for {{ gs.user.username }}</dt>
+            <dd class="govuk-summary-list__value">
+              {{ gs.scope }}
+              {% if gs.sections %}
+              <ul class="govuk-list govuk-list--bullet govuk-!-margin-top-1 govuk-!-margin-bottom-0">
+                {% for s in gs.sections %}
+                <li>{{ s.section_id }} — {{ s.section_name }}</li>
+                {% endfor %}
+              </ul>
+              {% endif %}
+            </dd>
+          </div>
+          {% endfor %}
+
+        </dl>
+
+        <form method="post">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="save">
+          <div class="govuk-button-group">
+            <button type="submit" class="govuk-button">Save</button>
+          </div>
+        </form>
+
+        <form method="post">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="cancel">
+          <button type="submit" class="govuk-link"
+                  style="background:none;border:none;padding:0;cursor:pointer;font-size:1rem">
+            Cancel
+          </button>
+        </form>
+
+      {% endif %}
+
+    </div>
+  </div>
+
+{% endblock %}

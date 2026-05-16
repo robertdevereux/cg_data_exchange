@@ -1,0 +1,86 @@
+{% extends "core/base.html" %}
+
+{% block title %}Actor arrangements — Platform administration{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-full">
+
+      <a href="{% url 'core:tools_index' %}" class="govuk-back-link">Platform administration</a>
+
+      <h1 class="govuk-heading-l govuk-!-margin-top-4">Actor arrangements</h1>
+
+      {% if added %}
+      <div class="govuk-notification-banner govuk-notification-banner--success"
+           role="alert" aria-labelledby="govuk-notification-banner-title"
+           data-module="govuk-notification-banner">
+        <div class="govuk-notification-banner__header">
+          <h2 class="govuk-notification-banner__title" id="govuk-notification-banner-title">
+            Success
+          </h2>
+        </div>
+        <div class="govuk-notification-banner__content">
+          <p class="govuk-body">
+            Actor arrangement for <strong>{{ added }}</strong> has been created.
+          </p>
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="govuk-button-group govuk-!-margin-bottom-6">
+        <a href="{% url 'core:tools_actor_create' %}" class="govuk-button govuk-button--secondary">
+          Set up a new actor
+        </a>
+      </div>
+
+      <h2 class="govuk-heading-s">Existing actor arrangements</h2>
+
+      {% if arrangements %}
+      <table class="govuk-table">
+        <thead class="govuk-table__head">
+          <tr class="govuk-table__row">
+            <th scope="col" class="govuk-table__header" style="width:20%">Actor</th>
+            <th scope="col" class="govuk-table__header" style="width:20%">Acts for</th>
+            <th scope="col" class="govuk-table__header" style="width:40%">Scope</th>
+            <th scope="col" class="govuk-table__header" style="width:20%">
+              <span class="govuk-visually-hidden">Actions</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody class="govuk-table__body">
+          {% for perm in arrangements %}
+          <tr class="govuk-table__row">
+            <td class="govuk-table__cell">{{ perm.actor.username }}</td>
+            <td class="govuk-table__cell">{{ perm.user.username }}</td>
+            <td class="govuk-table__cell govuk-hint" style="margin:0">
+              {% if perm.section %}
+                Section: {{ perm.section.section_id }} — {{ perm.section.section_name }}
+              {% elif perm.regime %}
+                Regime: {{ perm.regime.regime_id }}
+              {% else %}
+                All regimes
+              {% endif %}
+            </td>
+            <td class="govuk-table__cell">
+              <form method="post" action="{% url 'core:tools_actor_revoke' %}">
+                {% csrf_token %}
+                <input type="hidden" name="permission_id" value="{{ perm.pk }}">
+                <button type="submit" class="govuk-link"
+                        style="background:none;border:none;padding:0;cursor:pointer;font-size:1rem;color:#d4351c">
+                  Revoke
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="govuk-body govuk-hint">No actor arrangements configured.</p>
+      {% endif %}
+
+    </div>
+  </div>
+
+{% endblock %}
