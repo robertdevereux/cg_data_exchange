@@ -75,6 +75,14 @@ urlpatterns = [
          views_admin_tools.tools_set_member_remove,
          name='tools_set_member_remove'),
 
+    path('tools/navigation/',
+         views_admin_tools.tools_navigation,
+         name='tools_navigation'),
+
+    path('tools/navigation/<str:regime_id>/',
+         views_admin_tools.tools_navigation_regime,
+         name='tools_navigation_regime'),
+
     path('tools/schedules/',
          views_admin_tools.tools_schedule_list,
          name='tools_schedule_list'),

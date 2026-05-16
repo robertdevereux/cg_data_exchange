@@ -1,0 +1,72 @@
+{% extends "core/base.html" %}
+
+{% block title %}Navigation patterns — Platform administration{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-full">
+
+      <a href="{% url 'core:tools_index' %}" class="govuk-back-link">Platform administration</a>
+
+      <h1 class="govuk-heading-l govuk-!-margin-top-4">Navigation patterns</h1>
+
+      {% if confirmed_id %}
+      <div class="govuk-notification-banner govuk-notification-banner--success"
+           role="alert" aria-labelledby="govuk-notification-banner-title"
+           data-module="govuk-notification-banner">
+        <div class="govuk-notification-banner__header">
+          <h2 class="govuk-notification-banner__title" id="govuk-notification-banner-title">
+            Success
+          </h2>
+        </div>
+        <div class="govuk-notification-banner__content">
+          <p class="govuk-body">
+            Navigation pattern for <strong>{{ confirmed_name|default:confirmed_id }}</strong> saved successfully.
+          </p>
+        </div>
+      </div>
+      {% endif %}
+
+      <table class="govuk-table">
+        <caption class="govuk-table__caption govuk-table__caption--s govuk-visually-hidden">
+          Regimes and navigation patterns
+        </caption>
+        <thead class="govuk-table__head">
+          <tr class="govuk-table__row">
+            <th scope="col" class="govuk-table__header" style="width:25%">Regime ID</th>
+            <th scope="col" class="govuk-table__header" style="width:30%">Name</th>
+            <th scope="col" class="govuk-table__header" style="width:30%">Current pattern</th>
+            <th scope="col" class="govuk-table__header" style="width:15%">
+              <span class="govuk-visually-hidden">Actions</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody class="govuk-table__body">
+          {% for row in rows %}
+          <tr class="govuk-table__row">
+            <td class="govuk-table__cell">
+              <code style="font-size:0.875rem">{{ row.regime.regime_id }}</code>
+            </td>
+            <td class="govuk-table__cell">{{ row.regime.regime_name }}</td>
+            <td class="govuk-table__cell govuk-hint" style="margin:0">{{ row.pattern }}</td>
+            <td class="govuk-table__cell">
+              <a href="{% url 'core:tools_navigation_regime' row.regime.regime_id %}"
+                 class="govuk-link">Set navigation</a>
+            </td>
+          </tr>
+          {% empty %}
+          <tr class="govuk-table__row">
+            <td class="govuk-table__cell" colspan="4">
+              No regimes found.
+              <a href="{% url 'core:tools_regime_create' %}" class="govuk-link">Create a regime first →</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+    </div>
+  </div>
+
+{% endblock %}

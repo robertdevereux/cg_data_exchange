@@ -1,0 +1,290 @@
+{% extends "core/base.html" %}
+
+{% block title %}Set navigation — {{ regime.regime_id }} — Platform administration{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-two-thirds">
+
+      <a href="{% url 'core:tools_navigation' %}" class="govuk-back-link">Navigation patterns</a>
+
+      <h1 class="govuk-heading-l govuk-!-margin-top-4">
+        Set navigation
+        <span class="govuk-caption-l">{{ regime.regime_id }} — {{ regime.regime_name }}</span>
+      </h1>
+
+      {# ── Step indicator ──────────────────────────────────────────────────── #}
+      <p class="govuk-body-s govuk-hint">
+        Step {{ step }} of 3
+        {% if step == 1 %}&mdash; Choose pattern
+        {% elif step == 2 %}&mdash; Order
+        {% elif step == 3 %}&mdash; Confirm
+        {% endif %}
+      </p>
+
+      {# ═══════════════════════════════════════════════════════════════════════ #}
+      {# STEP 1 — Choose pattern                                                #}
+      {# ═══════════════════════════════════════════════════════════════════════ #}
+      {% if step == 1 %}
+
+        {# Structure summary #}
+        <div style="background:#f3f2f1; border-left:4px solid #b1b4b6;
+                    padding:12px 16px; margin-bottom:24px;">
+          <p class="govuk-body-s govuk-!-margin-bottom-1">
+            <strong>Current structure:</strong> {{ current_pattern }}
+          </p>
+          <p class="govuk-body-s govuk-!-margin-bottom-1">
+            Direct sections: {{ direct_count }}
+            {% if direct_sections %}
+            —
+            {% for s in direct_sections %}{{ s.section_name }}{% if not forloop.last %}, {% endif %}{% endfor %}
+            {% endif %}
+          </p>
+          <p class="govuk-body-s govuk-!-margin-bottom-0">
+            Schedules: {{ schedule_count }}
+            {% if schedules %}
+            —
+            {% for sch in schedules %}{{ sch.schedule_name }}{% if not forloop.last %}, {% endif %}{% endfor %}
+            {% endif %}
+          </p>
+        </div>
+
+        {% if errors.pattern %}
+        <div class="govuk-error-summary" data-module="govuk-error-summary">
+          <div role="alert">
+            <h2 class="govuk-error-summary__title">There is a problem</h2>
+            <div class="govuk-error-summary__body">
+              <ul class="govuk-list govuk-error-summary__list">
+                <li><a href="#pattern">{{ errors.pattern }}</a></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+
+        <form method="post" novalidate>
+          {% csrf_token %}
+          <input type="hidden" name="action" value="choose_pattern">
+
+          <div class="govuk-form-group {% if errors.pattern %}govuk-form-group--error{% endif %}">
+            <fieldset class="govuk-fieldset" aria-describedby="{% if errors.pattern %}pattern-error{% endif %}">
+              <legend class="govuk-fieldset__legend govuk-fieldset__legend--s">
+                Choose a navigation pattern
+              </legend>
+              {% if errors.pattern %}
+              <p id="pattern-error" class="govuk-error-message">
+                <span class="govuk-visually-hidden">Error:</span> {{ errors.pattern }}
+              </p>
+              {% endif %}
+              <div class="govuk-radios">
+
+                <div class="govuk-radios__item">
+                  <input class="govuk-radios__input" id="pattern-a" name="pattern" type="radio" value="A">
+                  <label class="govuk-label govuk-radios__label" for="pattern-a">
+                    Pattern A — Single section
+                  </label>
+                  <div class="govuk-hint govuk-radios__hint">
+                    One section only. The citizen goes straight in — no menu shown.
+                  </div>
+                </div>
+
+                <div class="govuk-radios__item">
+                  <input class="govuk-radios__input" id="pattern-b" name="pattern" type="radio" value="B">
+                  <label class="govuk-label govuk-radios__label" for="pattern-b">
+                    Pattern B — Section menu
+                  </label>
+                  <div class="govuk-hint govuk-radios__hint">
+                    Multiple direct sections. The citizen chooses from a list of sections.
+                  </div>
+                </div>
+
+                <div class="govuk-radios__item">
+                  <input class="govuk-radios__input" id="pattern-c" name="pattern" type="radio" value="C">
+                  <label class="govuk-label govuk-radios__label" for="pattern-c">
+                    Pattern C — Schedule menu
+                  </label>
+                  <div class="govuk-hint govuk-radios__hint">
+                    Sections grouped into named schedules. The citizen chooses a schedule, then a section.
+                  </div>
+                </div>
+
+              </div>
+            </fieldset>
+          </div>
+
+          <div class="govuk-button-group">
+            <button type="submit" class="govuk-button">Continue</button>
+            <a href="{% url 'core:tools_navigation' %}" class="govuk-link">Cancel</a>
+          </div>
+
+        </form>
+
+      {# ═══════════════════════════════════════════════════════════════════════ #}
+      {# STEP 2 — Order                                                         #}
+      {# ═══════════════════════════════════════════════════════════════════════ #}
+      {% elif step == 2 %}
+
+        {% if chosen_pattern == 'A' %}
+
+          {# Pattern A — nothing to order, advance automatically #}
+          <div style="background:#f3f2f1; border-left:4px solid #b1b4b6;
+                      padding:12px 16px; margin-bottom:24px;">
+            <p class="govuk-body-s govuk-!-margin-bottom-0">
+              One section — <strong>{{ order_items.0.section_name }}</strong>. No ordering needed.
+            </p>
+          </div>
+
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="confirm_order">
+            <div class="govuk-button-group">
+              <button type="submit" class="govuk-button">Continue</button>
+            </div>
+          </form>
+
+        {% else %}
+
+          <p class="govuk-body">
+            Use the up and down buttons to set the display order.
+            {% if chosen_pattern == 'C' %}Schedules{% else %}Sections{% endif %}
+            will appear to the citizen in this order.
+          </p>
+
+          <table class="govuk-table govuk-!-margin-bottom-6">
+            <thead class="govuk-table__head">
+              <tr class="govuk-table__row">
+                <th scope="col" class="govuk-table__header" style="width:25%">ID</th>
+                <th scope="col" class="govuk-table__header" style="width:45%">Name</th>
+                <th scope="col" class="govuk-table__header" style="width:30%">
+                  <span class="govuk-visually-hidden">Reorder</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody class="govuk-table__body">
+              {% for item in order_items %}
+              <tr class="govuk-table__row">
+                <td class="govuk-table__cell">
+                  <code style="font-size:0.875rem">
+                    {% if chosen_pattern == 'C' %}{{ item.schedule_id }}{% else %}{{ item.section_id }}{% endif %}
+                  </code>
+                </td>
+                <td class="govuk-table__cell">
+                  {% if chosen_pattern == 'C' %}{{ item.schedule_name }}{% else %}{{ item.section_name }}{% endif %}
+                </td>
+                <td class="govuk-table__cell">
+                  <form method="post" style="display:inline">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="reorder">
+                    <input type="hidden" name="obj_id"
+                           value="{% if chosen_pattern == 'C' %}{{ item.schedule_id }}{% else %}{{ item.section_id }}{% endif %}">
+                    <input type="hidden" name="direction" value="up">
+                    <button type="submit" class="govuk-link"
+                            style="background:none;border:none;padding:0;cursor:pointer;font-size:1rem"
+                            {% if forloop.first %}disabled{% endif %}>↑</button>
+                  </form>
+                  &nbsp;
+                  <form method="post" style="display:inline">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="reorder">
+                    <input type="hidden" name="obj_id"
+                           value="{% if chosen_pattern == 'C' %}{{ item.schedule_id }}{% else %}{{ item.section_id }}{% endif %}">
+                    <input type="hidden" name="direction" value="down">
+                    <button type="submit" class="govuk-link"
+                            style="background:none;border:none;padding:0;cursor:pointer;font-size:1rem"
+                            {% if forloop.last %}disabled{% endif %}>↓</button>
+                  </form>
+                </td>
+              </tr>
+              {% empty %}
+              <tr class="govuk-table__row">
+                <td class="govuk-table__cell" colspan="3">No items found.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="confirm_order">
+            <div class="govuk-button-group">
+              <button type="submit" class="govuk-button">Confirm order</button>
+            </div>
+          </form>
+
+        {% endif %}
+
+      {# ═══════════════════════════════════════════════════════════════════════ #}
+      {# STEP 3 — Confirm                                                       #}
+      {# ═══════════════════════════════════════════════════════════════════════ #}
+      {% elif step == 3 %}
+
+        <dl class="govuk-summary-list govuk-!-margin-bottom-6">
+
+          <div class="govuk-summary-list__row">
+            <dt class="govuk-summary-list__key">Regime</dt>
+            <dd class="govuk-summary-list__value">
+              {{ regime.regime_id }} — {{ regime.regime_name }}
+            </dd>
+          </div>
+
+          <div class="govuk-summary-list__row">
+            <dt class="govuk-summary-list__key">Pattern</dt>
+            <dd class="govuk-summary-list__value">
+              {% if chosen_pattern == 'A' %}
+                Pattern A — Single section. The citizen enters directly with no menu.
+              {% elif chosen_pattern == 'B' %}
+                Pattern B — Section menu. The citizen chooses from a list of sections.
+              {% elif chosen_pattern == 'C' %}
+                Pattern C — Schedule menu. The citizen chooses a schedule, then a section.
+              {% endif %}
+            </dd>
+          </div>
+
+          <div class="govuk-summary-list__row">
+            <dt class="govuk-summary-list__key">
+              {% if chosen_pattern == 'C' %}Schedules{% else %}Sections{% endif %}
+              (in order)
+            </dt>
+            <dd class="govuk-summary-list__value">
+              <ol class="govuk-list govuk-list--number govuk-!-margin-bottom-0">
+                {% for item in order_items %}
+                <li>
+                  {% if chosen_pattern == 'C' %}
+                    {{ item.schedule_id }} — {{ item.schedule_name }}
+                  {% else %}
+                    {{ item.section_id }} — {{ item.section_name }}
+                  {% endif %}
+                </li>
+                {% empty %}
+                <li>None</li>
+                {% endfor %}
+              </ol>
+            </dd>
+          </div>
+
+        </dl>
+
+        <form method="post">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="save">
+          <div class="govuk-button-group">
+            <button type="submit" class="govuk-button">Save and finish</button>
+          </div>
+        </form>
+
+        <form method="post">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="back_to_step2">
+          <button type="submit" class="govuk-link"
+                  style="background:none;border:none;padding:0;cursor:pointer;font-size:1rem">
+            Back to ordering
+          </button>
+        </form>
+
+      {% endif %}
+
+    </div>
+  </div>
+
+{% endblock %}

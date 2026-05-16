@@ -531,6 +531,214 @@ def tools_schedule_section_reorder(request, schedule_id):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 0p. NAVIGATION PATTERN WIZARD
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _infer_pattern(direct_count, schedule_count):
+    """Return a short label describing the current navigation structure."""
+    if direct_count == 0 and schedule_count == 0:
+        return 'Not configured'
+    if schedule_count > 0:
+        return 'Pattern C (schedule menu)'
+    if direct_count == 1:
+        return 'Pattern A (single section)'
+    return 'Pattern B (section menu)'
+
+
+@staff_required
+def tools_navigation(request):
+    """Landing page: list regimes with their inferred navigation pattern."""
+    regimes = (
+        Regime.objects
+        .filter(dept_id=settings.ACTIVE_DEPT)
+        .annotate(
+            direct_count=Count('direct_sections', distinct=True),
+            schedule_count=Count('schedules', distinct=True),
+        )
+        .order_by('regime_id')
+    )
+    rows = []
+    for r in regimes:
+        rows.append({
+            'regime':   r,
+            'pattern':  _infer_pattern(r.direct_count, r.schedule_count),
+        })
+    confirmed_id = request.GET.get('confirmed', '')
+    confirmed_name = ''
+    if confirmed_id:
+        try:
+            confirmed_name = Regime.objects.get(regime_id=confirmed_id).regime_name
+        except Regime.DoesNotExist:
+            pass
+    return render(request, 'core/tools_navigation.html', {
+        'rows':           rows,
+        'confirmed_id':   confirmed_id,
+        'confirmed_name': confirmed_name,
+    })
+
+
+@staff_required
+def tools_navigation_regime(request, regime_id):
+    """Three-step wizard (session-backed) for choosing and confirming a navigation pattern."""
+    regime = get_object_or_404(Regime, regime_id=regime_id, dept_id=settings.ACTIVE_DEPT)
+
+    # Session keys namespaced per regime so multiple regimes don't collide
+    sk_step    = f'nav_{regime_id}_step'
+    sk_pattern = f'nav_{regime_id}_pattern'
+
+    # ── Helper: gather structure counts ──────────────────────────────────────
+    direct_sections = list(
+        Section.objects
+        .filter(regime=regime, schedule__isnull=True)
+        .order_by('display_order', 'section_id')
+    )
+    schedules = list(
+        Schedule.objects
+        .filter(regime=regime)
+        .order_by('display_order', 'schedule_id')
+    )
+    direct_count   = len(direct_sections)
+    schedule_count = len(schedules)
+
+    errors = {}
+
+    if request.method == 'POST':
+        action = request.POST.get('action', '')
+
+        # ── Step 1 POST — choose pattern ─────────────────────────────────────
+        if action == 'choose_pattern':
+            chosen = request.POST.get('pattern', '').strip()
+            if not chosen:
+                errors['pattern'] = 'Select a pattern'
+            elif chosen == 'A':
+                if direct_count != 1 or schedule_count != 0:
+                    errors['pattern'] = (
+                        f'Pattern A requires exactly one section and no schedules. '
+                        f'This regime has {direct_count} direct section'
+                        f'{"s" if direct_count != 1 else ""} and '
+                        f'{schedule_count} schedule{"s" if schedule_count != 1 else ""}.'
+                    )
+            elif chosen == 'B':
+                if schedule_count > 0:
+                    errors['pattern'] = (
+                        'Pattern B requires no schedules. '
+                        'Remove schedules first or choose Pattern C.'
+                    )
+            elif chosen == 'C':
+                orphaned = Section.objects.filter(regime=regime, schedule__isnull=True).count()
+                if orphaned > 0:
+                    errors['pattern'] = (
+                        f'Pattern C requires all sections to be in a schedule. '
+                        f'{orphaned} section{"s are" if orphaned != 1 else " is"} '
+                        f'not assigned to any schedule.'
+                    )
+            else:
+                errors['pattern'] = 'Select a valid pattern'
+
+            if not errors:
+                request.session[sk_pattern] = chosen
+                # Pattern A has nothing to order — skip straight to step 3
+                request.session[sk_step] = 3 if chosen == 'A' else 2
+                return redirect('core:tools_navigation_regime', regime_id=regime_id)
+
+        # ── Step 2 POST — reorder ─────────────────────────────────────────────
+        elif action == 'reorder':
+            chosen  = request.session.get(sk_pattern, '')
+            obj_id  = request.POST.get('obj_id', '').strip()
+            direction = request.POST.get('direction', '').strip()
+
+            if chosen == 'C':
+                objs = list(
+                    Schedule.objects
+                    .filter(regime=regime)
+                    .order_by('display_order', 'schedule_id')
+                )
+                try:
+                    target = Schedule.objects.get(schedule_id=obj_id, regime=regime)
+                except Schedule.DoesNotExist:
+                    target = None
+            else:
+                objs = list(
+                    Section.objects
+                    .filter(regime=regime, schedule__isnull=True)
+                    .order_by('display_order', 'section_id')
+                )
+                try:
+                    target = Section.objects.get(section_id=obj_id, regime=regime, schedule__isnull=True)
+                except Section.DoesNotExist:
+                    target = None
+
+            if target is not None:
+                idx = next((i for i, o in enumerate(objs)
+                            if (o.schedule_id if chosen == 'C' else o.section_id) == obj_id), None)
+                if idx is not None:
+                    if direction == 'up' and idx > 0:
+                        neighbour = objs[idx - 1]
+                    elif direction == 'down' and idx < len(objs) - 1:
+                        neighbour = objs[idx + 1]
+                    else:
+                        neighbour = None
+                    if neighbour is not None:
+                        target.display_order, neighbour.display_order = (
+                            neighbour.display_order, target.display_order
+                        )
+                        if target.display_order == neighbour.display_order:
+                            if direction == 'up':
+                                target.display_order -= 1
+                            else:
+                                target.display_order += 1
+                        target.save()
+                        neighbour.save()
+            return redirect('core:tools_navigation_regime', regime_id=regime_id)
+
+        elif action == 'confirm_order':
+            request.session[sk_step] = 3
+            return redirect('core:tools_navigation_regime', regime_id=regime_id)
+
+        elif action == 'save':
+            # Clear wizard session keys and redirect to landing with success banner
+            request.session.pop(sk_step, None)
+            request.session.pop(sk_pattern, None)
+            return redirect(f'/tools/navigation/?confirmed={regime_id}')
+
+        elif action == 'back_to_step2':
+            request.session[sk_step] = 2
+            return redirect('core:tools_navigation_regime', regime_id=regime_id)
+
+    # ── GET: determine which step to render ───────────────────────────────────
+    step           = request.session.get(sk_step, 1)
+    chosen_pattern = request.session.get(sk_pattern, '')
+
+    # Refresh lists after any reorder
+    if chosen_pattern == 'C':
+        order_items = list(
+            Schedule.objects
+            .filter(regime=regime)
+            .order_by('display_order', 'schedule_id')
+        )
+    else:
+        order_items = list(
+            Section.objects
+            .filter(regime=regime, schedule__isnull=True)
+            .order_by('display_order', 'section_id')
+        )
+
+    context = {
+        'regime':          regime,
+        'step':            step,
+        'chosen_pattern':  chosen_pattern,
+        'direct_sections': direct_sections,
+        'schedules':       schedules,
+        'direct_count':    direct_count,
+        'schedule_count':  schedule_count,
+        'current_pattern': _infer_pattern(direct_count, schedule_count),
+        'order_items':     order_items,
+        'errors':          errors,
+    }
+    return render(request, 'core/tools_navigation_regime.html', context)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 0l. REGIME LIST
 # ─────────────────────────────────────────────────────────────────────────────
 
