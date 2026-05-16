@@ -5,19 +5,98 @@
 {% block content %}
 
   <div class="govuk-grid-row">
-    <div class="govuk-grid-column-two-thirds">
+    <div class="govuk-grid-column-full">
 
       <h1 class="govuk-heading-l">Platform administration</h1>
 
-      <div class="govuk-button-group">
+      {# ── Section 1: Government configuration ──────────────────────────────── #}
+      <h2 class="govuk-heading-m">Government configuration</h2>
+      <p class="govuk-body govuk-!-colour-secondary govuk-!-font-size-16">
+        Manages the shared question and set bank — platform-wide, not department-specific.
+      </p>
 
-        <a href="/tools/viewer/" class="govuk-button" data-module="govuk-button">
-          View and edit regime configuration
-        </a>
+      <div class="govuk-grid-row govuk-!-margin-bottom-6">
 
-        <a href="/tools/create/" class="govuk-button govuk-button--secondary">
-          Create new regime
-        </a>
+        {# Left column — Questions #}
+        <div class="govuk-grid-column-one-half">
+          <div style="border: 1px solid #b1b4b6; background-color: #f3f2f1;
+                      padding: 20px; height: 100%;">
+            <h3 class="govuk-heading-s govuk-!-margin-bottom-3">Questions</h3>
+            <ul class="govuk-list">
+              <li>
+                <a href="/tools/questions/" class="govuk-link">View questions</a>
+              </li>
+              <li>
+                <a href="/tools/questions/add/" class="govuk-link">Add questions</a>
+              </li>
+              <li>
+                <a href="/tools/questions/edit/" class="govuk-link">Edit questions</a>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        {# Right column — Sets of questions #}
+        <div class="govuk-grid-column-one-half">
+          <div style="border: 1px solid #b1b4b6; background-color: #f3f2f1;
+                      padding: 20px; height: 100%;">
+            <h3 class="govuk-heading-s govuk-!-margin-bottom-3">Sets of questions</h3>
+            <ul class="govuk-list">
+              <li>
+                <a href="/tools/sets/" class="govuk-link">View sets</a>
+              </li>
+              <li>
+                <a href="/tools/sets/add/" class="govuk-link">Add sets</a>
+              </li>
+              <li>
+                <a href="/tools/sets/edit/" class="govuk-link">Edit sets</a>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+      </div>
+
+      <hr class="govuk-section-break govuk-section-break--m govuk-section-break--visible">
+
+      {# ── Section 2: Departmental configuration ────────────────────────────── #}
+      <h2 class="govuk-heading-m govuk-!-margin-top-6">Departmental configuration</h2>
+      <p class="govuk-body govuk-!-colour-secondary govuk-!-font-size-16">
+        Manages regimes, sections, routing, and permissions for this department.
+      </p>
+
+      <div class="govuk-grid-row">
+
+        <div class="govuk-grid-column-one-third">
+          <div style="border: 1px solid #b1b4b6; background-color: #f3f2f1;
+                      padding: 20px;">
+            <h3 class="govuk-heading-s govuk-!-margin-bottom-2">Sections</h3>
+            <a href="/tools/sections/" class="govuk-link">Manage sections</a>
+          </div>
+        </div>
+
+        <div class="govuk-grid-column-one-third">
+          <div style="border: 1px solid #b1b4b6; background-color: #f3f2f1;
+                      padding: 20px;">
+            <h3 class="govuk-heading-s govuk-!-margin-bottom-2">Regimes</h3>
+            <ul class="govuk-list govuk-!-margin-bottom-0">
+              <li>
+                <a href="/tools/regimes/" class="govuk-link">Manage regimes</a>
+              </li>
+              <li>
+                <a href="/tools/create/" class="govuk-link">Create new regime</a>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="govuk-grid-column-one-third">
+          <div style="border: 1px solid #b1b4b6; background-color: #f3f2f1;
+                      padding: 20px;">
+            <h3 class="govuk-heading-s govuk-!-margin-bottom-2">View existing configuration</h3>
+            <a href="/tools/viewer/" class="govuk-link">Regime configuration viewer</a>
+          </div>
+        </div>
 
       </div>
 
