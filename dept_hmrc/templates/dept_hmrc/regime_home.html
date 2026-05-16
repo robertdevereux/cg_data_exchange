@@ -1,0 +1,64 @@
+{% extends "core/base.html" %}
+
+{% block title %}{{ regime.regime_name }} — HMRC{% endblock %}
+
+{% block content %}
+<div class="govuk-grid-row">
+  <div class="govuk-grid-column-two-thirds">
+
+    <h1 class="govuk-heading-xl">{{ regime.regime_name }}</h1>
+
+    {# ======================================================= #}
+    {# EDITABLE BLOCK: Regime introduction                      #}
+    {# Edit the text below to customise this regime's page      #}
+    {# ======================================================= #}
+    <p class="govuk-body-l">
+      Use this service to submit your {{ regime.regime_name }} return.
+    </p>
+    <p class="govuk-body">
+      Before you start, make sure you have:
+    </p>
+    <ul class="govuk-list govuk-list--bullet">
+      <li>your National Insurance number</li>
+      <li>relevant financial records for the period</li>
+    </ul>
+    {# ======================================================= #}
+    {# END EDITABLE BLOCK                                       #}
+    {# ======================================================= #}
+
+    {# Completion status — auto-populated #}
+    {% if total > 0 %}
+      <p class="govuk-body">
+        You have completed {{ complete }} of {{ total }} section{{ total|pluralize }}.
+      </p>
+    {% endif %}
+
+    {# Start/Continue button — do not edit #}
+    {% if all_complete %}
+      <p class="govuk-body govuk-!-colour-secondary">
+        You have completed all sections of this service.
+      </p>
+      <a href="{{ entry_url }}" role="button" draggable="false"
+         class="govuk-button govuk-button--secondary">
+        Review your answers
+      </a>
+    {% else %}
+      <a href="{{ entry_url }}" role="button" draggable="false"
+         class="govuk-button govuk-button--start">
+        {% if complete > 0 %}Continue{% else %}Start now{% endif %}
+        <svg class="govuk-button__start-icon" xmlns="http://www.w3.org/2000/svg"
+             width="17.5" height="19" viewBox="0 0 33 40" aria-hidden="true" focusable="false">
+          <path fill="currentColor" d="M0 0h13l20 20-20 20H0l20-20z"/>
+        </svg>
+      </a>
+    {% endif %}
+
+    <p class="govuk-body">
+      <a class="govuk-link" href="{% url 'dept_hmrc:dept_home' %}">
+        Back to HMRC services
+      </a>
+    </p>
+
+  </div>
+</div>
+{% endblock %}

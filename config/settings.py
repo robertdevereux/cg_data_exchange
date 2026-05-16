@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'core',
     'dept_demo',
     'dept_dwp',
+    'dept_hmrc',
 ]
 
 ACTIVE_DEPT = os.environ.get('ACTIVE_DEPT', 'HMRC')
