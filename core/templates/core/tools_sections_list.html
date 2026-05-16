@@ -1,0 +1,96 @@
+{% extends "core/base.html" %}
+
+{% block title %}Sections — Platform administration{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-full">
+
+      <a href="{% url 'core:tools_index' %}" class="govuk-back-link">Platform administration</a>
+
+      <h1 class="govuk-heading-l govuk-!-margin-top-4">Sections</h1>
+
+      {% if added %}
+      <div class="govuk-notification-banner govuk-notification-banner--success"
+           role="alert" aria-labelledby="govuk-notification-banner-title"
+           data-module="govuk-notification-banner">
+        <div class="govuk-notification-banner__header">
+          <h2 class="govuk-notification-banner__title" id="govuk-notification-banner-title">
+            Success
+          </h2>
+        </div>
+        <div class="govuk-notification-banner__content">
+          <p class="govuk-body">
+            Section <strong>{{ added }}</strong> has been created.
+          </p>
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="govuk-button-group govuk-!-margin-bottom-6">
+        <a href="{% url 'core:tools_section_create' %}" class="govuk-button govuk-button--secondary">
+          Create new section
+        </a>
+      </div>
+
+      <table class="govuk-table">
+        <caption class="govuk-table__caption govuk-table__caption--s govuk-visually-hidden">
+          All sections
+        </caption>
+        <thead class="govuk-table__head">
+          <tr class="govuk-table__row">
+            <th scope="col" class="govuk-table__header" style="width:18%">Section ID</th>
+            <th scope="col" class="govuk-table__header" style="width:22%">Name</th>
+            <th scope="col" class="govuk-table__header" style="width:12%">Type</th>
+            <th scope="col" class="govuk-table__header" style="width:18%">Regime / Schedule</th>
+            <th scope="col" class="govuk-table__header" style="width:8%">Order</th>
+            <th scope="col" class="govuk-table__header" style="width:8%">Routing rows</th>
+            <th scope="col" class="govuk-table__header" style="width:14%">
+              <span class="govuk-visually-hidden">Actions</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody class="govuk-table__body">
+          {% for s in sections %}
+          <tr class="govuk-table__row">
+            <td class="govuk-table__cell">
+              <code style="font-size:0.875rem">{{ s.section_id }}</code>
+            </td>
+            <td class="govuk-table__cell">{{ s.section_name }}</td>
+            <td class="govuk-table__cell">{{ s.get_section_type_display }}</td>
+            <td class="govuk-table__cell govuk-hint" style="margin:0">
+              {% if s.schedule %}
+                {{ s.schedule.schedule_id }}
+              {% elif s.regime %}
+                {{ s.regime.regime_id }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td class="govuk-table__cell">{{ s.display_order }}</td>
+            <td class="govuk-table__cell">{{ s.routing_count }}</td>
+            <td class="govuk-table__cell">
+              <a href="{% url 'core:tools_section_routing' s.section_id %}"
+                 class="govuk-link">Edit routing</a>
+              &nbsp;
+              <a href="/tools/sections/{{ s.section_id }}/edit/"
+                 class="govuk-link">Edit details</a>
+            </td>
+          </tr>
+          {% empty %}
+          <tr class="govuk-table__row">
+            <td class="govuk-table__cell" colspan="7">No sections found.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <p class="govuk-body govuk-!-font-size-16 govuk-!-colour-secondary">
+        {{ sections|length }} section{{ sections|length|pluralize }} total.
+      </p>
+
+    </div>
+  </div>
+
+{% endblock %}

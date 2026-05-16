@@ -35,6 +35,14 @@ urlpatterns = [
          views_admin_tools.tools_sets_edit_picker,
          name='tools_sets_edit_picker'),
 
+    path('tools/sections/',
+         views_admin_tools.tools_sections_list,
+         name='tools_sections_list'),
+
+    path('tools/sections/create/',
+         views_admin_tools.tools_section_create,
+         name='tools_section_create'),
+
     path('tools/viewer/',
          views_admin_tools.tools_viewer,
          name='tools_viewer'),
@@ -54,6 +62,26 @@ urlpatterns = [
     path('tools/set/<str:set_id>/member/<str:question_id>/remove/',
          views_admin_tools.tools_set_member_remove,
          name='tools_set_member_remove'),
+
+    path('tools/sections/<str:section_id>/routing/',
+         views_admin_tools.tools_section_routing,
+         name='tools_section_routing'),
+
+    path('tools/sections/<str:section_id>/routing/insert/',
+         views_admin_tools.tools_routing_insert,
+         name='tools_routing_insert'),
+
+    path('tools/sections/<str:section_id>/routing/delete/',
+         views_admin_tools.tools_routing_delete,
+         name='tools_routing_delete'),
+
+    path('tools/sections/<str:section_id>/routing/delete-condition/',
+         views_admin_tools.tools_routing_delete_condition,
+         name='tools_routing_delete_condition'),
+
+    path('tools/sections/<str:section_id>/routing/add-condition/',
+         views_admin_tools.tools_routing_add_condition,
+         name='tools_routing_add_condition'),
 
     path('tools/create/',
          views_admin_tools.tools_create,

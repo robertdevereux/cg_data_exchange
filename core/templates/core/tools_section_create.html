@@ -1,0 +1,188 @@
+{% extends "core/base.html" %}
+
+{% block title %}Create section — Platform administration{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-two-thirds">
+
+      <a href="{% url 'core:tools_sections_list' %}" class="govuk-back-link">Sections</a>
+
+      <h1 class="govuk-heading-l govuk-!-margin-top-4">Create section</h1>
+
+      {% if errors %}
+      <div class="govuk-error-summary" data-module="govuk-error-summary">
+        <div role="alert">
+          <h2 class="govuk-error-summary__title">There is a problem</h2>
+          <div class="govuk-error-summary__body">
+            <ul class="govuk-list govuk-error-summary__list">
+              {% if errors.section_id %}
+              <li><a href="#section_id">{{ errors.section_id }}</a></li>
+              {% endif %}
+              {% if errors.section_name %}
+              <li><a href="#section_name">{{ errors.section_name }}</a></li>
+              {% endif %}
+              {% if errors.regime %}
+              <li><a href="#regime">{{ errors.regime }}</a></li>
+              {% endif %}
+            </ul>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      <form method="post" novalidate>
+        {% csrf_token %}
+
+        {# ── Section ID ───────────────────────────────────────────────────────── #}
+        <div class="govuk-form-group {% if errors.section_id %}govuk-form-group--error{% endif %}">
+          <label class="govuk-label govuk-label--s" for="section_id">
+            Section ID
+          </label>
+          <div class="govuk-hint">
+            Unique identifier, e.g. DWP_NINO or HMRC_EMPLOYMENT. Uppercase, underscores only.
+          </div>
+          {% if errors.section_id %}
+          <p id="section_id-error" class="govuk-error-message">
+            <span class="govuk-visually-hidden">Error:</span> {{ errors.section_id }}
+          </p>
+          {% endif %}
+          <input class="govuk-input govuk-input--width-20
+                        {% if errors.section_id %}govuk-input--error{% endif %}"
+                 id="section_id" name="section_id" type="text"
+                 value="{{ post.section_id|default:'' }}"
+                 {% if errors.section_id %}aria-describedby="section_id-error"{% endif %}>
+        </div>
+
+        {# ── Section name ─────────────────────────────────────────────────────── #}
+        <div class="govuk-form-group {% if errors.section_name %}govuk-form-group--error{% endif %}">
+          <label class="govuk-label govuk-label--s" for="section_name">
+            Section name
+          </label>
+          <div class="govuk-hint">
+            Displayed to the user, e.g. 'National Insurance number'.
+          </div>
+          {% if errors.section_name %}
+          <p id="section_name-error" class="govuk-error-message">
+            <span class="govuk-visually-hidden">Error:</span> {{ errors.section_name }}
+          </p>
+          {% endif %}
+          <input class="govuk-input
+                        {% if errors.section_name %}govuk-input--error{% endif %}"
+                 id="section_name" name="section_name" type="text"
+                 value="{{ post.section_name|default:'' }}"
+                 {% if errors.section_name %}aria-describedby="section_name-error"{% endif %}>
+        </div>
+
+        {# ── Section type ─────────────────────────────────────────────────────── #}
+        <div class="govuk-form-group">
+          <label class="govuk-label govuk-label--s" for="section_type">
+            Section type
+          </label>
+          <select class="govuk-select" id="section_type" name="section_type">
+            {% for value, label in section_type_choices %}
+            <option value="{{ value }}"
+                    {% if post.section_type == value|stringformat:"s" %}selected
+                    {% elif not post and value == 0 %}selected{% endif %}>
+              {{ label }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        {# ── Display order ────────────────────────────────────────────────────── #}
+        <div class="govuk-form-group">
+          <label class="govuk-label govuk-label--s" for="display_order">
+            Display order
+          </label>
+          <div class="govuk-hint">
+            Controls order within its regime or schedule.
+          </div>
+          <input class="govuk-input govuk-input--width-5"
+                 id="display_order" name="display_order" type="number"
+                 value="{{ post.display_order|default:'0' }}">
+        </div>
+
+        {# ── Regime ───────────────────────────────────────────────────────────── #}
+        <div class="govuk-form-group {% if errors.regime %}govuk-form-group--error{% endif %}">
+          <label class="govuk-label govuk-label--s" for="regime">
+            Regime
+          </label>
+          <div class="govuk-hint">
+            The regime this section belongs to directly. Leave for Schedule-based sections — but for now, all sections must belong to a regime.
+          </div>
+          {% if errors.regime %}
+          <p id="regime-error" class="govuk-error-message">
+            <span class="govuk-visually-hidden">Error:</span> {{ errors.regime }}
+          </p>
+          {% endif %}
+          <select class="govuk-select
+                         {% if errors.regime %}govuk-select--error{% endif %}"
+                  id="regime" name="regime"
+                  {% if errors.regime %}aria-describedby="regime-error"{% endif %}>
+            <option value="">— select —</option>
+            {% for r in regimes %}
+            <option value="{{ r.regime_id }}"
+                    {% if post.regime == r.regime_id %}selected{% endif %}>
+              {{ r.regime_id }} — {{ r.regime_name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <hr class="govuk-section-break govuk-section-break--m govuk-section-break--visible">
+        <p class="govuk-body-s govuk-!-colour-secondary">
+          The following fields apply to table sections only. Leave blank for standard sections.
+        </p>
+
+        {# ── Section guidance ─────────────────────────────────────────────────── #}
+        <div class="govuk-form-group">
+          <label class="govuk-label govuk-label--s" for="section_guidance">
+            Section guidance
+            <span class="govuk-hint" style="display:inline">(optional)</span>
+          </label>
+          <div class="govuk-hint">
+            Shown at the top of table sections.
+          </div>
+          <textarea class="govuk-textarea" id="section_guidance" name="section_guidance"
+                    rows="3">{{ post.section_guidance|default:'' }}</textarea>
+        </div>
+
+        {# ── Column question IDs ──────────────────────────────────────────────── #}
+        <div class="govuk-form-group">
+          <label class="govuk-label govuk-label--s" for="column_question_ids">
+            Column question IDs
+            <span class="govuk-hint" style="display:inline">(optional)</span>
+          </label>
+          <div class="govuk-hint">
+            Table sections only. Semicolon-delimited question IDs defining column order, e.g. Q1;Q2;Q3.
+          </div>
+          <input class="govuk-input" id="column_question_ids" name="column_question_ids"
+                 type="text" value="{{ post.column_question_ids|default:'' }}">
+        </div>
+
+        {# ── Totals question IDs ──────────────────────────────────────────────── #}
+        <div class="govuk-form-group">
+          <label class="govuk-label govuk-label--s" for="totals_question_ids">
+            Totals question IDs
+            <span class="govuk-hint" style="display:inline">(optional)</span>
+          </label>
+          <div class="govuk-hint">
+            Table sections only. Semicolon-delimited IDs of numeric questions to total.
+          </div>
+          <input class="govuk-input" id="totals_question_ids" name="totals_question_ids"
+                 type="text" value="{{ post.totals_question_ids|default:'' }}">
+        </div>
+
+        <div class="govuk-button-group govuk-!-margin-top-6">
+          <button type="submit" class="govuk-button">Create section</button>
+          <a href="{% url 'core:tools_sections_list' %}" class="govuk-link">Cancel</a>
+        </div>
+
+      </form>
+
+    </div>
+  </div>
+
+{% endblock %}

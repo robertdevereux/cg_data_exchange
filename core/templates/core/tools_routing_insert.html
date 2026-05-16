@@ -1,0 +1,63 @@
+{% extends "core/base.html" %}
+
+{% block title %}Insert node — {{ section.section_id }} — Platform administration{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-two-thirds">
+
+      <a href="{{ routing_url }}" class="govuk-back-link">Back to routing</a>
+
+      <span class="govuk-caption-l">{{ section.section_id }} — {{ section.section_name }}</span>
+      <h1 class="govuk-heading-l">
+        Insert node
+        {% if mode == 'first' %}
+          — at start
+        {% elif mode == 'before' %}
+          — before {{ ref_node }}
+        {% elif mode == 'after' %}
+          — after {{ ref_node }}
+        {% elif mode == 'branch' %}
+          — branch {{ answer_value }} of {{ ref_node }}
+        {% endif %}
+      </h1>
+
+      <form method="post" action="">
+        {% csrf_token %}
+
+        <input type="hidden" name="mode"         value="{{ mode }}">
+        <input type="hidden" name="ref_node"     value="{{ ref_node }}">
+        <input type="hidden" name="answer_value" value="{{ answer_value }}">
+
+        <div class="govuk-form-group">
+          <label class="govuk-label govuk-label--s" for="new_node_id">
+            Select node to insert
+          </label>
+          {% if available_nodes %}
+          <select class="govuk-select" id="new_node_id" name="new_node_id">
+            <option value="">-- select --</option>
+            {% for n in available_nodes %}
+            <option value="{{ n.id }}">{{ n.label }}</option>
+            {% endfor %}
+          </select>
+          {% else %}
+          <p class="govuk-body govuk-hint">
+            No available nodes — all Questions and QuestionSets are already used in
+            this section's routing.
+          </p>
+          {% endif %}
+        </div>
+
+        {% if available_nodes %}
+        <button class="govuk-button" data-module="govuk-button">Add node</button>
+        {% endif %}
+        <a href="{{ routing_url }}" class="govuk-button govuk-button--secondary"
+           style="margin-left:1rem;">Cancel</a>
+
+      </form>
+
+    </div>
+  </div>
+
+{% endblock %}

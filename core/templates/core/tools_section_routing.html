@@ -1,0 +1,214 @@
+{% extends "core/base.html" %}
+
+{% block title %}Routing — {{ section.section_id }} — Platform administration{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-full">
+
+      <a href="{% url 'core:tools_sections_list' %}" class="govuk-back-link">Sections</a>
+
+      <h1 class="govuk-heading-l govuk-!-margin-top-4">
+        Routing — <code>{{ section.section_id }}</code>
+      </h1>
+      <p class="govuk-body-s" style="color:#505a5f">{{ section.section_name }}</p>
+
+      {% if tree|length == 1 and tree.0.type == 'end' %}
+        <p class="govuk-body">No routing defined yet.</p>
+        <a href="{% url 'core:tools_routing_insert' section.section_id %}?mode=first"
+           class="govuk-button govuk-button--secondary">Add first node</a>
+      {% else %}
+
+      <style>
+        .routing-tree { font-family: monospace; font-size: 0.875rem; border: 1px solid #b1b4b6; border-radius: 4px; overflow: hidden; }
+        .routing-row {
+          display: flex;
+          align-items: center;
+          padding: 7px 10px;
+          border-bottom: 1px solid #e0e0e0;
+          position: relative;
+        }
+        .routing-row:last-child { border-bottom: none; }
+        .rt-end      { background: #f5f5f5; color: #505a5f; }
+        .rt-cond     { background: #e8f5e9; font-style: italic; }
+        .rt-q-i0     { background: #ffffff; }
+        .rt-q-i2     { background: #e3f2fd; }
+        .rt-q-i4plus { background: #fffde7; }
+        .routing-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .dots-btn {
+          background: none;
+          border: 1px solid #b1b4b6;
+          border-radius: 3px;
+          cursor: pointer;
+          padding: 0 8px;
+          font-size: 1.1rem;
+          line-height: 1.6;
+          margin-left: 8px;
+          flex-shrink: 0;
+        }
+        .dots-btn:hover { background: #f0f0f0; }
+        .action-menu {
+          display: none;
+          position: absolute;
+          right: 10px;
+          top: 34px;
+          background: #fff;
+          border: 1px solid #b1b4b6;
+          border-radius: 3px;
+          padding: 6px 0;
+          z-index: 100;
+          min-width: 260px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        .action-menu a,
+        .action-menu button.am-link {
+          display: block;
+          width: 100%;
+          text-align: left;
+          padding: 6px 16px;
+          background: none;
+          border: none;
+          cursor: pointer;
+          font-size: 0.875rem;
+          font-family: monospace;
+          color: #1d70b8;
+          text-decoration: underline;
+          white-space: nowrap;
+          box-sizing: border-box;
+        }
+        .action-menu a:hover,
+        .action-menu button.am-link:hover { background: #f3f2f1; }
+        .action-menu hr.am-sep {
+          border: none;
+          border-top: 1px solid #e0e0e0;
+          margin: 4px 0;
+        }
+        .add-cond-row {
+          display: flex;
+          gap: 6px;
+          align-items: center;
+          padding: 6px 16px;
+        }
+        .add-cond-row input {
+          border: 1px solid #b1b4b6;
+          padding: 3px 6px;
+          font-size: 0.875rem;
+          font-family: monospace;
+          width: 110px;
+        }
+        .add-cond-row button {
+          padding: 4px 10px;
+          font-size: 0.875rem;
+          background: #00703c;
+          color: #fff;
+          border: none;
+          cursor: pointer;
+          border-radius: 2px;
+        }
+      </style>
+
+      <div class="routing-tree">
+        {% for node in tree %}
+
+          {% if node.type == 'end' and node.indent == 0 %}
+          <div class="routing-row rt-end">
+            <span class="routing-label">END</span>
+          </div>
+
+          {% elif node.type == 'condition' %}
+          <div class="routing-row rt-cond"
+               style="padding-left: calc(10px + {{ node.indent }}rem);">
+            <span class="routing-label">
+              {{ node.answer_value }}{% if node.condition_empty %}&nbsp;&rarr;&nbsp;(goes to convergence){% endif %}
+            </span>
+            <button class="dots-btn" onclick="toggleMenu(this); event.stopPropagation();">&#8942;</button>
+            <div class="action-menu">
+              {% if node.condition_empty %}
+              <a href="{% url 'core:tools_routing_insert' section.section_id %}?mode=branch&node={{ node.node_id }}&answer_value={{ node.answer_value|urlencode }}">
+                Add first question to this branch
+              </a>
+              <hr class="am-sep">
+              {% endif %}
+              <form method="post"
+                    action="{% url 'core:tools_routing_delete_condition' section.section_id %}">
+                {% csrf_token %}
+                <input type="hidden" name="node_id"      value="{{ node.node_id }}">
+                <input type="hidden" name="answer_value" value="{{ node.answer_value }}">
+                <button type="submit" class="am-link">Delete this condition</button>
+              </form>
+            </div>
+          </div>
+
+          {% elif node.type == 'question' %}
+          <div class="routing-row {% if node.indent == 0 %}rt-q-i0{% elif node.indent == 2 %}rt-q-i2{% else %}rt-q-i4plus{% endif %}"
+               style="padding-left: calc(10px + {{ node.indent }}rem);">
+            <span class="routing-label">
+              <strong>{{ node.node_id }}</strong>
+              {% if node.is_branching %}
+                &nbsp;<span style="color:#d4351c; font-size:0.8em;">[{{ node.conditions|join:", " }}]</span>
+              {% endif %}
+              &nbsp;&mdash;&nbsp;{{ node.label }}
+            </span>
+            <button class="dots-btn" onclick="toggleMenu(this); event.stopPropagation();">&#8942;</button>
+            <div class="action-menu">
+              <a href="{% url 'core:tools_routing_insert' section.section_id %}?mode=before&node={{ node.node_id }}">
+                Insert before
+              </a>
+              {% if not node.is_branching %}
+              <a href="{% url 'core:tools_routing_insert' section.section_id %}?mode=after&node={{ node.node_id }}">
+                Insert after
+              </a>
+              {% endif %}
+              <hr class="am-sep">
+              <form method="post" action="{% url 'core:tools_routing_delete' section.section_id %}">
+                {% csrf_token %}
+                <input type="hidden" name="node_id"     value="{{ node.node_id }}">
+                <input type="hidden" name="delete_mode" value="delete_all">
+                <button type="submit" class="am-link">Delete — remove and cut below</button>
+              </form>
+              <form method="post" action="{% url 'core:tools_routing_delete' section.section_id %}">
+                {% csrf_token %}
+                <input type="hidden" name="node_id"     value="{{ node.node_id }}">
+                <input type="hidden" name="delete_mode" value="promote">
+                <button type="submit" class="am-link">Delete — remove and promote below</button>
+              </form>
+              {% if node.is_branching %}
+              <hr class="am-sep">
+              <form method="post" action="{% url 'core:tools_routing_add_condition' section.section_id %}">
+                {% csrf_token %}
+                <input type="hidden" name="node_id" value="{{ node.node_id }}">
+                <div class="add-cond-row">
+                  <input type="text" name="answer_value" placeholder="e.g. Maybe">
+                  <button type="submit">Add condition</button>
+                </div>
+              </form>
+              {% endif %}
+            </div>
+          </div>
+
+          {% endif %}
+
+        {% endfor %}
+      </div>
+
+      {% endif %}
+
+    </div>
+  </div>
+
+  <script>
+    function toggleMenu(btn) {
+      var menu = btn.nextElementSibling;
+      menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+    }
+    document.addEventListener('click', function(e) {
+      if (!e.target.classList.contains('dots-btn')) {
+        document.querySelectorAll('.action-menu').forEach(function(m) {
+          m.style.display = 'none';
+        });
+      }
+    });
+  </script>
+
+{% endblock %}
