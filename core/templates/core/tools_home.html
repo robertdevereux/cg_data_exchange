@@ -81,10 +81,10 @@
             <h3 class="govuk-heading-s govuk-!-margin-bottom-2">Regimes</h3>
             <ul class="govuk-list govuk-!-margin-bottom-0">
               <li>
-                <a href="/tools/regimes/" class="govuk-link">Manage regimes</a>
+                <a href="{% url 'core:tools_regime_list' %}" class="govuk-link">Manage regimes</a>
               </li>
               <li>
-                <a href="/tools/create/" class="govuk-link">Create new regime</a>
+                <a href="{% url 'core:tools_regime_create' %}" class="govuk-link">Create new regime</a>
               </li>
             </ul>
           </div>

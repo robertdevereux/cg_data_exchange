@@ -1,0 +1,111 @@
+{% extends "core/base.html" %}
+
+{% block title %}Create regime — Platform administration{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-two-thirds">
+
+      <a href="{% url 'core:tools_regime_list' %}" class="govuk-back-link">Regimes</a>
+
+      <h1 class="govuk-heading-l govuk-!-margin-top-4">Create regime</h1>
+
+      {% if errors %}
+      <div class="govuk-error-summary" data-module="govuk-error-summary">
+        <div role="alert">
+          <h2 class="govuk-error-summary__title">There is a problem</h2>
+          <div class="govuk-error-summary__body">
+            <ul class="govuk-list govuk-error-summary__list">
+              {% if errors.regime_code %}
+              <li><a href="#regime_code">{{ errors.regime_code }}</a></li>
+              {% endif %}
+              {% if errors.regime_name %}
+              <li><a href="#regime_name">{{ errors.regime_name }}</a></li>
+              {% endif %}
+            </ul>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      <form method="post" novalidate>
+        {% csrf_token %}
+
+        {# ── Regime code ──────────────────────────────────────────────────────── #}
+        <div class="govuk-form-group {% if errors.regime_code %}govuk-form-group--error{% endif %}">
+          <label class="govuk-label govuk-label--s" for="regime_code">
+            Regime code
+          </label>
+          <div class="govuk-hint">
+            Short uppercase code, e.g. IHT or UC. The system will generate the full ID
+            as {{ active_dept }}_&lt;CODE&gt;.
+          </div>
+          {% if errors.regime_code %}
+          <p id="regime_code-error" class="govuk-error-message">
+            <span class="govuk-visually-hidden">Error:</span> {{ errors.regime_code }}
+          </p>
+          {% endif %}
+          <input class="govuk-input govuk-input--width-10
+                        {% if errors.regime_code %}govuk-input--error{% endif %}"
+                 id="regime_code" name="regime_code" type="text"
+                 value="{{ post.regime_code|default:'' }}"
+                 autocomplete="off"
+                 {% if errors.regime_code %}aria-describedby="regime_code-error"{% endif %}>
+        </div>
+
+        {# ── Generated ID preview ─────────────────────────────────────────────── #}
+        <div style="background:#f3f2f1; border-left:4px solid #b1b4b6;
+                    padding:12px 16px; margin-bottom:24px;">
+          <p class="govuk-body-s govuk-!-margin-bottom-0">
+            Regime ID will be generated as:
+            <strong id="regime-id-preview">{{ active_dept }}_<span id="code-preview">…</span></strong>
+          </p>
+        </div>
+
+        {# ── Regime name ──────────────────────────────────────────────────────── #}
+        <div class="govuk-form-group {% if errors.regime_name %}govuk-form-group--error{% endif %}">
+          <label class="govuk-label govuk-label--s" for="regime_name">
+            Regime name
+          </label>
+          <div class="govuk-hint">
+            Full descriptive name shown to users, e.g. 'Inheritance Tax return'.
+          </div>
+          {% if errors.regime_name %}
+          <p id="regime_name-error" class="govuk-error-message">
+            <span class="govuk-visually-hidden">Error:</span> {{ errors.regime_name }}
+          </p>
+          {% endif %}
+          <input class="govuk-input
+                        {% if errors.regime_name %}govuk-input--error{% endif %}"
+                 id="regime_name" name="regime_name" type="text"
+                 value="{{ post.regime_name|default:'' }}"
+                 {% if errors.regime_name %}aria-describedby="regime_name-error"{% endif %}>
+        </div>
+
+        <div class="govuk-button-group govuk-!-margin-top-6">
+          <button type="submit" class="govuk-button">Create regime</button>
+          <a href="{% url 'core:tools_regime_list' %}" class="govuk-link">Cancel</a>
+        </div>
+
+      </form>
+
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var codeInput   = document.getElementById('regime_code');
+      var codePreview = document.getElementById('code-preview');
+
+      function update() {
+        var val = codeInput.value.trim().toUpperCase();
+        codePreview.textContent = val || '…';
+      }
+
+      codeInput.addEventListener('input', update);
+      update();  // initialise on page load (handles validation-repopulated value)
+    })();
+  </script>
+
+{% endblock %}

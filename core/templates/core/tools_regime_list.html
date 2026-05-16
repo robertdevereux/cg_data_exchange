@@ -1,0 +1,81 @@
+{% extends "core/base.html" %}
+
+{% block title %}Regimes — Platform administration{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-full">
+
+      <a href="{% url 'core:tools_index' %}" class="govuk-back-link">Platform administration</a>
+
+      <h1 class="govuk-heading-l govuk-!-margin-top-4">Regimes</h1>
+
+      {% if added %}
+      <div class="govuk-notification-banner govuk-notification-banner--success"
+           role="alert" aria-labelledby="govuk-notification-banner-title"
+           data-module="govuk-notification-banner">
+        <div class="govuk-notification-banner__header">
+          <h2 class="govuk-notification-banner__title" id="govuk-notification-banner-title">
+            Success
+          </h2>
+        </div>
+        <div class="govuk-notification-banner__content">
+          <p class="govuk-body">
+            Regime <strong>{{ added }}</strong> has been created.
+          </p>
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="govuk-button-group govuk-!-margin-bottom-6">
+        <a href="{% url 'core:tools_regime_create' %}" class="govuk-button govuk-button--secondary">
+          Create new regime
+        </a>
+      </div>
+
+      <table class="govuk-table">
+        <caption class="govuk-table__caption govuk-table__caption--s govuk-visually-hidden">
+          All regimes
+        </caption>
+        <thead class="govuk-table__head">
+          <tr class="govuk-table__row">
+            <th scope="col" class="govuk-table__header" style="width:25%">Regime ID</th>
+            <th scope="col" class="govuk-table__header" style="width:35%">Name</th>
+            <th scope="col" class="govuk-table__header" style="width:15%">Sections</th>
+            <th scope="col" class="govuk-table__header" style="width:15%">Schedules</th>
+            <th scope="col" class="govuk-table__header" style="width:10%">
+              <span class="govuk-visually-hidden">Actions</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody class="govuk-table__body">
+          {% for r in regimes %}
+          <tr class="govuk-table__row">
+            <td class="govuk-table__cell">
+              <code style="font-size:0.875rem">{{ r.regime_id }}</code>
+            </td>
+            <td class="govuk-table__cell">{{ r.regime_name }}</td>
+            <td class="govuk-table__cell">{{ r.section_count }}</td>
+            <td class="govuk-table__cell">{{ r.schedule_count }}</td>
+            <td class="govuk-table__cell">
+              <a href="/tools/regimes/{{ r.regime_id }}/edit/"
+                 class="govuk-link">Edit</a>
+            </td>
+          </tr>
+          {% empty %}
+          <tr class="govuk-table__row">
+            <td class="govuk-table__cell" colspan="5">No regimes found.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <p class="govuk-body govuk-!-font-size-16 govuk-!-colour-secondary">
+        {{ regimes|length }} regime{{ regimes|length|pluralize }} total.
+      </p>
+
+    </div>
+  </div>
+
+{% endblock %}

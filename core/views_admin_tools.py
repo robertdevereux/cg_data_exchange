@@ -336,19 +336,90 @@ def tools_sections_list(request):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 0l. REGIME LIST
+# ─────────────────────────────────────────────────────────────────────────────
+
+@staff_required
+def tools_regime_list(request):
+    """List regimes for the active department."""
+    regimes = (
+        Regime.objects
+        .filter(dept_id=settings.ACTIVE_DEPT)
+        .annotate(
+            section_count=Count('direct_sections', distinct=True),
+            schedule_count=Count('schedules', distinct=True),
+        )
+        .order_by('regime_id')
+    )
+    return render(request, 'core/tools_regime_list.html', {
+        'regimes': regimes,
+        'added':   request.GET.get('added', ''),
+    })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 0m. REGIME CREATE
+# ─────────────────────────────────────────────────────────────────────────────
+
+@staff_required
+def tools_regime_create(request):
+    """Create a new regime shell for the active department."""
+    errors = {}
+    post = {}
+
+    if request.method == 'POST':
+        post = request.POST
+        regime_code = post.get('regime_code', '').strip().upper()
+        regime_name = post.get('regime_name', '').strip()
+
+        if not regime_code:
+            errors['regime_code'] = 'Enter a regime code'
+        elif not regime_code.isalpha():
+            errors['regime_code'] = 'Regime code must be uppercase letters only, e.g. IHT'
+
+        generated_id = f'{settings.ACTIVE_DEPT}_{regime_code}' if regime_code else ''
+
+        if not errors.get('regime_code') and generated_id:
+            if Regime.objects.filter(regime_id=generated_id).exists():
+                errors['regime_code'] = f'Regime ID {generated_id} already exists'
+
+        if not regime_name:
+            errors['regime_name'] = 'Enter a regime name'
+
+        if not errors:
+            Regime.objects.create(
+                regime_id=generated_id,
+                regime_name=regime_name,
+                dept_id=settings.ACTIVE_DEPT,
+                display_order=0,
+            )
+            return redirect(f'/tools/regimes/?added={generated_id}')
+
+    context = {
+        'errors':      errors,
+        'post':        post,
+        'active_dept': settings.ACTIVE_DEPT,
+    }
+    return render(request, 'core/tools_regime_create.html', context)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 0k. SECTION CREATE (step 1 — fields form)
 # ─────────────────────────────────────────────────────────────────────────────
 
 @staff_required
 def tools_section_create(request):
     """Create a new Section record (fields only; routing is Chunk 6)."""
-    regimes = Regime.objects.exclude(dept_id='PLATFORM').order_by('regime_id')
+    regimes = (
+        Regime.objects
+        .filter(dept_id=settings.ACTIVE_DEPT)
+        .order_by('regime_id')
+    )
     errors = {}
     post = {}
 
     if request.method == 'POST':
         post = request.POST
-        section_id          = post.get('section_id', '').strip()
         section_name        = post.get('section_name', '').strip()
         section_type        = post.get('section_type', '0').strip()
         display_order       = post.get('display_order', '0').strip()
@@ -356,11 +427,6 @@ def tools_section_create(request):
         section_guidance    = post.get('section_guidance', '').strip() or None
         column_question_ids = post.get('column_question_ids', '').strip() or None
         totals_question_ids = post.get('totals_question_ids', '').strip() or None
-
-        if not section_id:
-            errors['section_id'] = 'Enter a section ID'
-        elif Section.objects.filter(section_id=section_id).exists():
-            errors['section_id'] = f'Section ID "{section_id}" already exists'
 
         if not section_name:
             errors['section_name'] = 'Enter a section name'
@@ -375,6 +441,21 @@ def tools_section_create(request):
                 errors['regime'] = 'Select a valid regime'
 
         if not errors:
+            # Auto-generate section_id: <regime_id>_S<N>
+            prefix = f'{regime_id}_S'
+            existing = (
+                Section.objects
+                .filter(section_id__istartswith=prefix)
+                .values_list('section_id', flat=True)
+            )
+            nums = []
+            for sid in existing:
+                suffix = sid[len(prefix):]
+                if suffix.isdigit():
+                    nums.append(int(suffix))
+            next_num = (max(nums) + 1) if nums else 1
+            section_id = f'{prefix}{next_num}'
+
             try:
                 section_type_int  = int(section_type)
             except ValueError:
@@ -402,6 +483,7 @@ def tools_section_create(request):
         'section_type_choices':  Section.SECTION_TYPE_CHOICES,
         'errors':                errors,
         'post':                  post,
+        'active_dept':           settings.ACTIVE_DEPT,
     }
     return render(request, 'core/tools_section_create.html', context)
 
