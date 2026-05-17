@@ -68,21 +68,14 @@
               {% elif s.regime %}
                 {{ s.regime.regime_id }}
               {% else %}
-                —
+                <strong class="govuk-tag govuk-tag--grey">Unassigned</strong>
               {% endif %}
             </td>
             <td class="govuk-table__cell">{{ s.display_order }}</td>
             <td class="govuk-table__cell">{{ s.routing_count }}</td>
             <td class="govuk-table__cell">
-              {% if s.section_type == 1 %}
-              <strong class="govuk-tag govuk-tag--grey">No routing</strong>
-              {% else %}
-              <a href="{% url 'core:tools_section_routing' s.section_id %}"
-                 class="govuk-link">Edit routing</a>
-              {% endif %}
-              &nbsp;
-              <a href="/tools/sections/{{ s.section_id }}/edit/"
-                 class="govuk-link">Edit details</a>
+              <a href="{% url 'core:tools_section_edit' s.section_id %}"
+                 class="govuk-link">Edit</a>
             </td>
           </tr>
           {% empty %}

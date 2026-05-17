@@ -68,7 +68,7 @@
           </tr>
         </thead>
         <tbody class="govuk-table__body">
-          {% for member in qs.members.all %}
+          {% for member in members_ordered %}
           <tr class="govuk-table__row">
             <td class="govuk-table__cell">{{ member.display_order }}</td>
             <td class="govuk-table__cell">
@@ -85,7 +85,31 @@
             <td class="govuk-table__cell">
               {% if member.required %}Yes{% else %}No{% endif %}
             </td>
-            <td class="govuk-table__cell">
+            <td class="govuk-table__cell" style="white-space:nowrap">
+              {% if not forloop.first %}
+              <form method="post"
+                    action="{% url 'core:tools_set_member_reorder' qs.set_id %}"
+                    style="display:inline">
+                {% csrf_token %}
+                <input type="hidden" name="question_id" value="{{ member.question.question_id }}">
+                <input type="hidden" name="direction" value="up">
+                <input type="hidden" name="back" value="{{ back }}">
+                <button type="submit" class="govuk-button govuk-button--secondary govuk-!-margin-bottom-0"
+                        style="padding: 2px 8px;">↑</button>
+              </form>
+              {% endif %}
+              {% if not forloop.last %}
+              <form method="post"
+                    action="{% url 'core:tools_set_member_reorder' qs.set_id %}"
+                    style="display:inline">
+                {% csrf_token %}
+                <input type="hidden" name="question_id" value="{{ member.question.question_id }}">
+                <input type="hidden" name="direction" value="down">
+                <input type="hidden" name="back" value="{{ back }}">
+                <button type="submit" class="govuk-button govuk-button--secondary govuk-!-margin-bottom-0"
+                        style="padding: 2px 8px;">↓</button>
+              </form>
+              {% endif %}
               <form method="post"
                     action="{% url 'core:tools_set_member_remove' qs.set_id member.question.question_id %}"
                     style="display:inline">

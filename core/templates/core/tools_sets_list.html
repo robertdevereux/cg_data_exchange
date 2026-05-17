@@ -1,6 +1,6 @@
 {% extends "core/base.html" %}
 
-{% block title %}Question sets — Platform administration{% endblock %}
+{% block title %}View / Edit sets — Platform administration{% endblock %}
 
 {% block content %}
 
@@ -9,7 +9,7 @@
 
       <a href="/tools/" class="govuk-back-link">Platform administration</a>
 
-      <h1 class="govuk-heading-l govuk-!-margin-top-4">Question sets</h1>
+      <h1 class="govuk-heading-l govuk-!-margin-top-4">View / Edit sets</h1>
 
       {% if request.GET.added %}
       <div class="govuk-notification-banner govuk-notification-banner--success"
@@ -66,7 +66,7 @@
               {{ qs.members.count }} question{{ qs.members.count|pluralize }}
             </td>
             <td class="govuk-table__cell">
-              <a href="{% url 'core:tools_set_edit' qs.set_id %}"
+              <a href="{% url 'core:tools_set_edit' qs.set_id %}?back=picker"
                  class="govuk-link">Edit</a>
             </td>
           </tr>

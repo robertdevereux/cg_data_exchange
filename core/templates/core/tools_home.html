@@ -1,137 +1,110 @@
 {% extends "core/base.html" %}
 
-{% block title %}Platform administration — PSS Demo{% endblock %}
+{% block title %}Configuration tools — Platform administration{% endblock %}
 
 {% block content %}
+<style>
+  .config-layer {
+    background: #f3f2f1;
+    border-top: 4px solid #1d70b8;
+    margin-top: 2rem;
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+  }
+  .config-layer__heading {
+    color: #1d70b8;
+    margin-top: 0;
+  }
+  .config-card {
+    background: #ffffff;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1rem;
+    border-left: 4px solid #1d70b8;
+    height: 100%;
+  }
+  .config-card h3 {
+    margin-top: 0;
+  }
+</style>
 
   <div class="govuk-grid-row">
     <div class="govuk-grid-column-full">
 
-      <h1 class="govuk-heading-l">Platform administration</h1>
+      <h1 class="govuk-heading-xl">Configuration tools</h1>
 
-      {# ── Section 1: Government configuration ──────────────────────────────── #}
-      <h2 class="govuk-heading-m">Government configuration</h2>
-      <p class="govuk-body govuk-!-colour-secondary govuk-!-font-size-16">
-        Manages the shared question and set bank — platform-wide, not department-specific.
-      </p>
-
-      <div class="govuk-grid-row govuk-!-margin-bottom-6">
-
-        {# Left column — Questions #}
-        <div class="govuk-grid-column-one-half">
-          <div style="border: 1px solid #b1b4b6; background-color: #f3f2f1;
-                      padding: 20px; height: 100%;">
-            <h3 class="govuk-heading-s govuk-!-margin-bottom-3">Questions</h3>
-            <ul class="govuk-list">
-              <li>
-                <a href="{% url 'core:tools_questions_list' %}" class="govuk-link">View questions</a>
-              </li>
-              <li>
-                <a href="{% url 'core:tools_question_add' %}" class="govuk-link">Add question</a>
-              </li>
-              <li>
-                <a href="{% url 'core:tools_questions_edit_picker' %}" class="govuk-link">Edit question</a>
-              </li>
-            </ul>
+      {# ── LAYER 1 — Questions and their collections ───────────────────────── #}
+      <section class="config-layer">
+        <h2 class="govuk-heading-m config-layer__heading">
+          Questions and sets of questions
+        </h2>
+        <p class="govuk-body-s">
+          Shared across all departments and regimes.
+        </p>
+        <div class="govuk-grid-row">
+          <div class="govuk-grid-column-one-half">
+            <div class="config-card">
+              <h3 class="govuk-heading-s">Questions</h3>
+              <p class="govuk-body-s">The shared question bank.</p>
+              <a class="govuk-link" href="{% url 'core:tools_questions_list' %}">Manage questions</a>
+            </div>
+          </div>
+          <div class="govuk-grid-column-one-half">
+            <div class="config-card">
+              <h3 class="govuk-heading-s">Sets of questions</h3>
+              <p class="govuk-body-s">Named groups of questions presented together.</p>
+              <a class="govuk-link" href="{% url 'core:tools_sets_list' %}">Manage sets</a>
+            </div>
           </div>
         </div>
+      </section>
 
-        {# Right column — Sets of questions #}
-        <div class="govuk-grid-column-one-half">
-          <div style="border: 1px solid #b1b4b6; background-color: #f3f2f1;
-                      padding: 20px; height: 100%;">
-            <h3 class="govuk-heading-s govuk-!-margin-bottom-3">Sets of questions</h3>
-            <ul class="govuk-list">
-              <li>
-                <a href="{% url 'core:tools_sets_list' %}" class="govuk-link">View sets</a>
-              </li>
-              <li>
-                <a href="{% url 'core:tools_set_add' %}" class="govuk-link">Add set</a>
-              </li>
-              <li>
-                <a href="{% url 'core:tools_sets_edit_picker' %}" class="govuk-link">Edit set</a>
-              </li>
-            </ul>
+      {# ── LAYER 2 — Sections and their collections ────────────────────────── #}
+      <section class="config-layer">
+        <h2 class="govuk-heading-m config-layer__heading">
+          Sections and schedules
+        </h2>
+        <p class="govuk-body-s">
+          Departmental building blocks. Create independently, wire together in Layer 3.
+        </p>
+        <div class="govuk-grid-row">
+          <div class="govuk-grid-column-one-half">
+            <div class="config-card">
+              <h3 class="govuk-heading-s">Sections</h3>
+              <p class="govuk-body-s">Units of citizen interaction, each with their own routing.</p>
+              <a class="govuk-link" href="{% url 'core:tools_sections_list' %}">Manage sections</a>
+            </div>
+          </div>
+          <div class="govuk-grid-column-one-half">
+            <div class="config-card">
+              <h3 class="govuk-heading-s">Schedules</h3>
+              <p class="govuk-body-s">Named groups of sections (optional — Pattern C only).</p>
+              <a class="govuk-link" href="{% url 'core:tools_schedule_list' %}">Manage schedules</a>
+            </div>
           </div>
         </div>
+      </section>
 
-      </div>
-
-      <hr class="govuk-section-break govuk-section-break--m govuk-section-break--visible">
-
-      {# ── Section 2: Departmental configuration ────────────────────────────── #}
-      <h2 class="govuk-heading-m govuk-!-margin-top-6">Departmental configuration</h2>
-      <p class="govuk-body govuk-!-colour-secondary govuk-!-font-size-16">
-        Manages regimes, sections, routing, and permissions for this department.
-      </p>
-
-      <div class="govuk-grid-row">
-
-        <div class="govuk-grid-column-one-third">
-          <div style="border: 1px solid #b1b4b6; background-color: #f3f2f1;
-                      padding: 20px;">
-            <h3 class="govuk-heading-s govuk-!-margin-bottom-2">Sections</h3>
-            <a href="{% url 'core:tools_sections_list' %}" class="govuk-link">Manage sections</a>
+      {# ── LAYER 3 — Regimes ───────────────────────────────────────────────── #}
+      <section class="config-layer">
+        <h2 class="govuk-heading-m config-layer__heading">
+          Regimes
+        </h2>
+        <p class="govuk-body-s">
+          Assemble sections and schedules into navigable public services.
+        </p>
+        <div class="govuk-grid-row">
+          <div class="govuk-grid-column-full">
+            <div class="config-card">
+              <h3 class="govuk-heading-s">Manage regimes</h3>
+              <p class="govuk-body-s">
+                Create regime shells, set navigation patterns, review configuration.
+                Everything about a regime in one place.
+              </p>
+              <a class="govuk-link" href="{% url 'core:tools_regime_list' %}">Manage regimes</a>
+            </div>
           </div>
         </div>
-
-        <div class="govuk-grid-column-one-third">
-          <div style="border: 1px solid #b1b4b6; background-color: #f3f2f1;
-                      padding: 20px;">
-            <h3 class="govuk-heading-s govuk-!-margin-bottom-2">Regimes</h3>
-            <ul class="govuk-list govuk-!-margin-bottom-0">
-              <li>
-                <a href="{% url 'core:tools_regime_list' %}" class="govuk-link">Manage regimes</a>
-              </li>
-              <li>
-                <a href="{% url 'core:tools_regime_create' %}" class="govuk-link">Create new regime</a>
-              </li>
-            </ul>
-          </div>
-        </div>
-
-        <div class="govuk-grid-column-one-third">
-          <div style="border: 1px solid #b1b4b6; background-color: #f3f2f1;
-                      padding: 20px;">
-            <h3 class="govuk-heading-s govuk-!-margin-bottom-2">View existing configuration</h3>
-            <a href="/tools/viewer/" class="govuk-link">Regime configuration viewer</a>
-          </div>
-        </div>
-
-      </div>
-
-      <div class="govuk-grid-row govuk-!-margin-top-4">
-
-        <div class="govuk-grid-column-one-third">
-          <div style="border: 1px solid #b1b4b6; background-color: #f3f2f1;
-                      padding: 20px;">
-            <h3 class="govuk-heading-s govuk-!-margin-bottom-2">Schedules</h3>
-            <p class="govuk-body-s govuk-hint govuk-!-margin-bottom-2">
-              Optional — group sections into named schedules for Pattern C navigation.
-            </p>
-            <ul class="govuk-list govuk-!-margin-bottom-0">
-              <li>
-                <a href="{% url 'core:tools_schedule_list' %}" class="govuk-link">Manage schedules</a>
-              </li>
-              <li>
-                <a href="{% url 'core:tools_schedule_create' %}" class="govuk-link">Create new schedule</a>
-              </li>
-            </ul>
-          </div>
-        </div>
-
-        <div class="govuk-grid-column-one-third">
-          <div style="border: 1px solid #b1b4b6; background-color: #f3f2f1;
-                      padding: 20px;">
-            <h3 class="govuk-heading-s govuk-!-margin-bottom-2">Navigation</h3>
-            <p class="govuk-body-s govuk-hint govuk-!-margin-bottom-2">
-              Set Pattern A, B, or C navigation for each regime.
-            </p>
-            <a href="{% url 'core:tools_navigation' %}" class="govuk-link">Set navigation patterns</a>
-          </div>
-        </div>
-
-      </div>
+      </section>
 
     </div>
   </div>

@@ -11,15 +11,18 @@
 
       <h1 class="govuk-heading-l govuk-!-margin-top-4">Add question set</h1>
 
+      <p class="govuk-body govuk-!-colour-secondary govuk-!-font-size-16"
+         style="background:#f3f2f1; padding: 0.75rem 1rem; border-left: 4px solid #b1b4b6;">
+        Set ID will be assigned automatically as
+        <strong>{{ next_set_id }}</strong>
+      </p>
+
       {% if errors %}
       <div class="govuk-error-summary" data-module="govuk-error-summary">
         <div role="alert">
           <h2 class="govuk-error-summary__title">There is a problem</h2>
           <div class="govuk-error-summary__body">
             <ul class="govuk-list govuk-error-summary__list">
-              {% if errors.set_id %}
-              <li><a href="#set_id">{{ errors.set_id }}</a></li>
-              {% endif %}
               {% if errors.set_title %}
               <li><a href="#set_title">{{ errors.set_title }}</a></li>
               {% endif %}
@@ -34,26 +37,6 @@
 
       <form method="post" novalidate>
         {% csrf_token %}
-
-        {# ── Set ID ───────────────────────────────────────────────────────────── #}
-        <div class="govuk-form-group {% if errors.set_id %}govuk-form-group--error{% endif %}">
-          <label class="govuk-label govuk-label--s" for="set_id">
-            Set ID
-          </label>
-          <div class="govuk-hint">
-            Unique identifier, e.g. S10. Cannot be changed after creation.
-          </div>
-          {% if errors.set_id %}
-          <p id="set_id-error" class="govuk-error-message">
-            <span class="govuk-visually-hidden">Error:</span> {{ errors.set_id }}
-          </p>
-          {% endif %}
-          <input class="govuk-input govuk-input--width-10
-                        {% if errors.set_id %}govuk-input--error{% endif %}"
-                 id="set_id" name="set_id" type="text"
-                 value="{{ post.set_id|default:'' }}"
-                 {% if errors.set_id %}aria-describedby="set_id-error"{% endif %}>
-        </div>
 
         {# ── Set title ────────────────────────────────────────────────────────── #}
         <div class="govuk-form-group {% if errors.set_title %}govuk-form-group--error{% endif %}">

@@ -23,13 +23,15 @@ Staff-only views for inspecting, editing, and creating regime configuration.
 """
 
 import os
+import re
 import uuid
 
 from django.conf import settings
 from django.contrib.auth.decorators import user_passes_test
 from django.db import models
-from django.db.models import Count, F, Max
+from django.db.models import Count, F, Max, Q
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from .interfaces import bootstrap_section_statuses, get_or_create_case
@@ -126,7 +128,8 @@ def tools_home(request):
 @staff_required
 def tools_questions_list(request):
     """Read-only listing of all Question records ordered by question_id."""
-    questions = Question.objects.all().order_by('question_id')
+    questions = list(Question.objects.filter(is_platform=False))
+    questions.sort(key=lambda q: int(re.search(r'\d+', q.question_id).group()) if re.search(r'\d+', q.question_id) else 0)
     return render(request, 'core/tools_questions_list.html', {
         'questions': questions,
     })
@@ -139,12 +142,8 @@ def tools_questions_list(request):
 @staff_required
 def tools_sets_list(request):
     """Read-only listing of all QuestionSet records with their members."""
-    sets = (
-        QuestionSet.objects
-        .all()
-        .prefetch_related('members__question')
-        .order_by('set_id')
-    )
+    sets = list(QuestionSet.objects.prefetch_related('members__question').all())
+    sets.sort(key=lambda s: int(re.search(r'\d+', s.set_id).group()) if re.search(r'\d+', s.set_id) else 0)
     return render(request, 'core/tools_sets_list.html', {
         'sets': sets,
     })
@@ -154,6 +153,14 @@ def tools_sets_list(request):
 # 0d. ADD QUESTION
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _next_question_id():
+    existing = Question.objects.filter(
+        question_id__regex=r'^Q\d+$'
+    ).values_list('question_id', flat=True)
+    nums = [int(re.search(r'\d+', q).group()) for q in existing]
+    return f'Q{max(nums) + 1 if nums else 1}'
+
+
 @staff_required
 def tools_question_add(request):
     """Form to create a new Question record."""
@@ -162,17 +169,12 @@ def tools_question_add(request):
 
     if request.method == 'POST':
         post = request.POST
-        question_id   = post.get('question_id', '').strip()
+        question_id   = _next_question_id()
         question_text = post.get('question_text', '').strip()
         question_type = post.get('question_type', '').strip()
         hint          = post.get('hint', '').strip() or None
         guidance      = post.get('guidance', '').strip() or None
         options       = post.get('options', '').strip() or None
-
-        if not question_id:
-            errors['question_id'] = 'Enter a question ID'
-        elif Question.objects.filter(question_id=question_id).exists():
-            errors['question_id'] = f'Question ID "{question_id}" already exists'
 
         if not question_text:
             errors['question_text'] = 'Enter the question text'
@@ -194,6 +196,7 @@ def tools_question_add(request):
     context = {
         'errors':                errors,
         'post':                  post,
+        'next_question_id':      _next_question_id(),
         'question_type_choices': Question.QUESTION_TYPE_CHOICES,
     }
     return render(request, 'core/tools_question_add.html', context)
@@ -202,6 +205,14 @@ def tools_question_add(request):
 # ─────────────────────────────────────────────────────────────────────────────
 # 0e. ADD QUESTION SET
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _next_set_id():
+    existing = QuestionSet.objects.filter(
+        set_id__regex=r'^S\d+$'
+    ).values_list('set_id', flat=True)
+    nums = [int(re.search(r'\d+', s).group()) for s in existing]
+    return f'S{max(nums) + 1 if nums else 1}'
+
 
 @staff_required
 def tools_set_add(request):
@@ -212,14 +223,9 @@ def tools_set_add(request):
 
     if request.method == 'POST':
         post = request.POST
-        set_id    = post.get('set_id', '').strip()
+        set_id    = _next_set_id()
         set_title = post.get('set_title', '').strip()
         set_hint  = post.get('set_hint', '').strip() or None
-
-        if not set_id:
-            errors['set_id'] = 'Enter a set ID'
-        elif QuestionSet.objects.filter(set_id=set_id).exists():
-            errors['set_id'] = f'Set ID "{set_id}" already exists'
 
         if not set_title:
             errors['set_title'] = 'Enter a title for this set'
@@ -271,45 +277,26 @@ def tools_set_add(request):
     context = {
         'errors':        errors,
         'post':          post,
+        'next_set_id':   _next_set_id(),
         'all_questions': all_questions,
     }
     return render(request, 'core/tools_set_add.html', context)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 0f. EDIT QUESTION PICKER
+# 0f. SET MEMBER HELPERS / REORDER
 # ─────────────────────────────────────────────────────────────────────────────
 
-@staff_required
-def tools_questions_edit_picker(request):
-    """List all questions so the user can pick one to edit."""
-    questions = Question.objects.all().order_by('question_id')
-    return render(request, 'core/tools_questions_edit_picker.html', {
-        'questions': questions,
-    })
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 0g. EDIT SET PICKER
-# ─────────────────────────────────────────────────────────────────────────────
-
-@staff_required
-def tools_sets_edit_picker(request):
-    """List all question sets so the user can pick one to edit."""
-    sets = (
-        QuestionSet.objects
-        .all()
-        .prefetch_related('members__question')
-        .order_by('set_id')
+def _renumber_set_members(question_set):
+    """Renumber display_order for all members of this set: 10, 20, 30..."""
+    members = list(
+        QuestionSetMember.objects
+        .filter(question_set=question_set)
+        .order_by('display_order')
     )
-    return render(request, 'core/tools_sets_edit_picker.html', {
-        'sets': sets,
-    })
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 0h. ADD MEMBER TO SET
-# ─────────────────────────────────────────────────────────────────────────────
+    for i, member in enumerate(members):
+        member.display_order = (i + 1) * 10
+        member.save(update_fields=['display_order'])
 
 @staff_required
 def tools_set_member_add(request, set_id):
@@ -350,6 +337,7 @@ def tools_set_member_add(request, set_id):
         display_order=order_int,
         required=required,
     )
+    _renumber_set_members(qs)
     return redirect(edit_url)
 
 
@@ -372,11 +360,57 @@ def tools_set_member_remove(request, set_id, question_id):
     edit_url      = f'/tools/set/{set_id}/edit/?back={back}&back_regime={back_regime}&back_schedule={back_schedule}&back_section={back_section}'
 
     QuestionSetMember.objects.filter(question_set=qs, question_id=question_id).delete()
+    _renumber_set_members(qs)
     return redirect(edit_url)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 0j. SECTIONS LIST
+# 0j. REORDER MEMBER IN SET
+# ─────────────────────────────────────────────────────────────────────────────
+
+@staff_required
+def tools_set_member_reorder(request, set_id):
+    if request.method != 'POST':
+        return redirect('core:tools_sets_list')
+
+    question_set = get_object_or_404(QuestionSet, set_id=set_id)
+    question_id  = request.POST.get('question_id')
+    direction    = request.POST.get('direction')  # 'up' or 'down'
+    back         = request.POST.get('back', '')
+
+    members = list(
+        QuestionSetMember.objects
+        .filter(question_set=question_set)
+        .order_by('display_order')
+    )
+    ids = [m.question_id for m in members]
+
+    if question_id not in ids:
+        return redirect('core:tools_set_edit', set_id=set_id)
+
+    idx = ids.index(question_id)
+
+    if direction == 'up' and idx > 0:
+        members[idx].display_order, members[idx - 1].display_order = \
+            members[idx - 1].display_order, members[idx].display_order
+        members[idx].save(update_fields=['display_order'])
+        members[idx - 1].save(update_fields=['display_order'])
+    elif direction == 'down' and idx < len(members) - 1:
+        members[idx].display_order, members[idx + 1].display_order = \
+            members[idx + 1].display_order, members[idx].display_order
+        members[idx].save(update_fields=['display_order'])
+        members[idx + 1].save(update_fields=['display_order'])
+
+    _renumber_set_members(question_set)
+
+    edit_url = reverse('core:tools_set_edit', kwargs={'set_id': set_id})
+    if back:
+        edit_url += f'?back={back}'
+    return redirect(edit_url)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 0k. SECTIONS LIST
 # ─────────────────────────────────────────────────────────────────────────────
 
 @staff_required
@@ -521,14 +555,14 @@ def tools_schedule_sections(request, schedule_id):
 def tools_schedule_section_add(request, schedule_id):
     """POST: assign a section to this schedule."""
     if request.method != 'POST':
-        return redirect(f'/tools/schedules/{schedule_id}/sections/')
+        return redirect(reverse('core:tools_schedule_edit', kwargs={'schedule_id': schedule_id}))
     schedule = get_object_or_404(Schedule.objects.select_related('regime'), schedule_id=schedule_id)
     section_id    = request.POST.get('section_id', '').strip()
     display_order = request.POST.get('display_order', '0').strip()
     try:
         section = Section.objects.get(section_id=section_id)
     except Section.DoesNotExist:
-        return redirect(f'/tools/schedules/{schedule_id}/sections/')
+        return redirect(reverse('core:tools_schedule_edit', kwargs={'schedule_id': schedule_id}))
     try:
         order_int = int(display_order)
     except ValueError:
@@ -539,39 +573,43 @@ def tools_schedule_section_add(request, schedule_id):
     section.save()
     result = validate_section_routing(section)
     if not result['valid']:
-        return redirect(f'/tools/schedules/{schedule_id}/sections/?routing_warning={section_id}')
-    return redirect(f'/tools/schedules/{schedule_id}/sections/')
+        return redirect(
+            reverse('core:tools_schedule_edit', kwargs={'schedule_id': schedule_id})
+            + f'?routing_warning={section_id}'
+        )
+    return redirect(reverse('core:tools_schedule_edit', kwargs={'schedule_id': schedule_id}))
 
 
 @staff_required
 def tools_schedule_section_remove(request, schedule_id):
     """POST: return a section to direct regime ownership."""
     if request.method != 'POST':
-        return redirect(f'/tools/schedules/{schedule_id}/sections/')
+        return redirect(reverse('core:tools_schedule_edit', kwargs={'schedule_id': schedule_id}))
     schedule = get_object_or_404(Schedule.objects.select_related('regime'), schedule_id=schedule_id)
     section_id = request.POST.get('section_id', '').strip()
     try:
         section = Section.objects.get(section_id=section_id, schedule=schedule)
     except Section.DoesNotExist:
-        return redirect(f'/tools/schedules/{schedule_id}/sections/')
+        return redirect(reverse('core:tools_schedule_edit', kwargs={'schedule_id': schedule_id}))
     section.schedule = None
     section.regime   = schedule.regime
     section.save()
-    return redirect(f'/tools/schedules/{schedule_id}/sections/')
+    return redirect(reverse('core:tools_schedule_edit', kwargs={'schedule_id': schedule_id}))
 
 
 @staff_required
 def tools_schedule_section_reorder(request, schedule_id):
     """POST: swap display_order with adjacent section (up or down)."""
+    edit_url = reverse('core:tools_schedule_edit', kwargs={'schedule_id': schedule_id})
     if request.method != 'POST':
-        return redirect(f'/tools/schedules/{schedule_id}/sections/')
+        return redirect(edit_url)
     schedule  = get_object_or_404(Schedule, schedule_id=schedule_id)
     section_id = request.POST.get('section_id', '').strip()
     direction  = request.POST.get('direction', '').strip()
     try:
         section = Section.objects.get(section_id=section_id, schedule=schedule)
     except Section.DoesNotExist:
-        return redirect(f'/tools/schedules/{schedule_id}/sections/')
+        return redirect(edit_url)
 
     members = list(
         Section.objects
@@ -587,7 +625,7 @@ def tools_schedule_section_reorder(request, schedule_id):
     elif direction == 'down' and idx < len(members) - 1:
         neighbour = members[idx + 1]
     else:
-        return redirect(f'/tools/schedules/{schedule_id}/sections/')
+        return redirect(edit_url)
 
     # Swap display_order values
     section.display_order, neighbour.display_order = neighbour.display_order, section.display_order
@@ -599,7 +637,7 @@ def tools_schedule_section_reorder(request, schedule_id):
             section.display_order += 1
     section.save()
     neighbour.save()
-    return redirect(f'/tools/schedules/{schedule_id}/sections/')
+    return redirect(edit_url)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -661,7 +699,10 @@ def tools_navigation_regime(request, regime_id):
     # ── Helper: gather structure counts ──────────────────────────────────────
     direct_sections = list(
         Section.objects
-        .filter(regime=regime, schedule__isnull=True)
+        .filter(
+            Q(regime=regime, schedule__isnull=True) |
+            Q(regime__isnull=True, schedule__isnull=True)
+        )
         .order_by('display_order', 'section_id')
     )
     schedules = list(
@@ -732,11 +773,18 @@ def tools_navigation_regime(request, regime_id):
             else:
                 objs = list(
                     Section.objects
-                    .filter(regime=regime, schedule__isnull=True)
+                    .filter(
+                        Q(regime=regime, schedule__isnull=True) |
+                        Q(regime__isnull=True, schedule__isnull=True)
+                    )
                     .order_by('display_order', 'section_id')
                 )
                 try:
-                    target = Section.objects.get(section_id=obj_id, regime=regime, schedule__isnull=True)
+                    target = Section.objects.get(
+                        Q(section_id=obj_id) &
+                        (Q(regime=regime, schedule__isnull=True) |
+                         Q(regime__isnull=True, schedule__isnull=True))
+                    )
                 except Section.DoesNotExist:
                     target = None
 
@@ -768,10 +816,21 @@ def tools_navigation_regime(request, regime_id):
             return redirect('core:tools_navigation_regime', regime_id=regime_id)
 
         elif action == 'save':
-            # Clear wizard session keys and redirect to landing with success banner
+            # Assign regime to any unassigned direct sections
+            for s in Section.objects.filter(
+                Q(regime=regime, schedule__isnull=True) |
+                Q(regime__isnull=True, schedule__isnull=True)
+            ):
+                if s.regime is None and s.schedule is None:
+                    s.regime = regime
+                    s.save()
             request.session.pop(sk_step, None)
             request.session.pop(sk_pattern, None)
-            return redirect(f'/tools/navigation/?confirmed={regime_id}')
+            return redirect(
+                reverse('core:tools_regime_edit_composite',
+                        kwargs={'regime_id': regime_id})
+                + '?updated=navigation'
+            )
 
         elif action == 'back_to_step2':
             request.session[sk_step] = 2
@@ -791,7 +850,10 @@ def tools_navigation_regime(request, regime_id):
     else:
         order_items = list(
             Section.objects
-            .filter(regime=regime, schedule__isnull=True)
+            .filter(
+                Q(regime=regime, schedule__isnull=True) |
+                Q(regime__isnull=True, schedule__isnull=True)
+            )
             .order_by('display_order', 'section_id')
         )
 
@@ -799,9 +861,8 @@ def tools_navigation_regime(request, regime_id):
     section_validations = {}
     any_invalid = False
     if step == 3:
-        from django.db.models import Q as DQ
         all_sections = Section.objects.filter(
-            DQ(regime=regime) | DQ(schedule__regime=regime)
+            Q(regime=regime) | Q(schedule__regime=regime)
         ).order_by('section_id')
         for s in all_sections:
             result = validate_section_routing(s)
@@ -845,11 +906,150 @@ def tools_regime_list(request):
     return render(request, 'core/tools_regime_list.html', {
         'regimes': regimes,
         'added':   request.GET.get('added', ''),
+        'updated': request.GET.get('updated', ''),
     })
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 0m. REGIME CREATE
+# 0m. REGIME EDIT
+# ─────────────────────────────────────────────────────────────────────────────
+
+@staff_required
+def tools_regime_edit(request, regime_id):
+    """Edit regime_name and display_order for an existing regime."""
+    regime = get_object_or_404(Regime, regime_id=regime_id)
+    errors = {}
+
+    if request.method == 'POST':
+        regime_name   = request.POST.get('regime_name', '').strip()
+        display_order = request.POST.get('display_order', '').strip()
+
+        if not regime_name:
+            errors['regime_name'] = 'Enter a regime name'
+
+        try:
+            display_order_int = int(display_order)
+        except (ValueError, TypeError):
+            display_order_int = regime.display_order
+
+        if not errors:
+            regime.regime_name   = regime_name
+            regime.display_order = display_order_int
+            regime.save()
+            return redirect(f'/tools/regimes/?updated={regime_id}')
+
+    context = {
+        'regime': regime,
+        'errors': errors,
+        'post':   request.POST if request.method == 'POST' else {},
+    }
+    return render(request, 'core/tools_regime_edit.html', context)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 0m2. REGIME EDIT COMPOSITE
+# ─────────────────────────────────────────────────────────────────────────────
+
+@staff_required
+def tools_regime_edit_composite(request, regime_id):
+    """Composite regime page: details + navigation wizard + review."""
+    regime = get_object_or_404(
+        Regime, regime_id=regime_id, dept_id=settings.ACTIVE_DEPT
+    )
+
+    if request.method == 'POST':
+        regime_name = request.POST.get('regime_name', '').strip()
+        errors = {}
+        if not regime_name:
+            errors['regime_name'] = 'Regime name is required.'
+        if not errors:
+            regime.regime_name = regime_name
+            regime.display_order = int(request.POST.get('display_order', 0) or 0)
+            regime.save()
+            return redirect(
+                reverse('core:tools_regime_edit_composite',
+                        kwargs={'regime_id': regime_id})
+                + '?updated=details'
+            )
+    else:
+        errors = {}
+
+    # Navigation structure
+    direct_sections = Section.objects.filter(
+        regime=regime, schedule__isnull=True
+    ).order_by('display_order')
+    unassigned_sections = Section.objects.filter(
+        regime__isnull=True, schedule__isnull=True
+    ).order_by('section_id')
+    schedules = Schedule.objects.filter(regime=regime).order_by('display_order')
+
+    if schedules.exists():
+        inferred_pattern = 'C'
+    elif direct_sections.count() == 1:
+        inferred_pattern = 'A'
+    elif direct_sections.count() > 1:
+        inferred_pattern = 'B'
+    else:
+        inferred_pattern = None
+
+    # Session state for nav wizard (reuses tools_navigation_regime keys)
+    session_key_pattern = f'nav_{regime_id}_pattern'
+    session_key_step    = f'nav_{regime_id}_step'
+    chosen_pattern = request.session.get(session_key_pattern)
+    nav_step       = request.session.get(session_key_step, 1)
+
+    # Routing validation for all sections in this regime
+    all_sections = Section.objects.filter(
+        Q(regime=regime) | Q(schedule__regime=regime)
+    )
+    section_validations = {}
+    any_invalid = False
+    for s in all_sections:
+        result = validate_section_routing(s)
+        section_validations[s.section_id] = result
+        if not result['valid']:
+            any_invalid = True
+
+    # Review panel: schedules with (section, routing_count) rows
+    schedules_with_sections = []
+    for sch in schedules:
+        sch_sections = Section.objects.filter(
+            schedule=sch
+        ).order_by('display_order')
+        section_rows = [
+            (s, Routing.objects.filter(section=s).count())
+            for s in sch_sections
+        ]
+        schedules_with_sections.append({
+            'schedule': sch,
+            'section_rows': section_rows,
+        })
+    direct_section_rows = [
+        (s, Routing.objects.filter(section=s).count())
+        for s in direct_sections
+    ]
+
+    updated = request.GET.get('updated')
+
+    return render(request, 'core/tools_regime_edit_composite.html', {
+        'regime':                  regime,
+        'errors':                  errors,
+        'updated':                 updated,
+        'direct_sections':         direct_sections,
+        'unassigned_sections':     unassigned_sections,
+        'schedules':               schedules,
+        'inferred_pattern':        inferred_pattern,
+        'chosen_pattern':          chosen_pattern,
+        'nav_step':                nav_step,
+        'section_validations':     section_validations,
+        'any_invalid':             any_invalid,
+        'schedules_with_sections': schedules_with_sections,
+        'direct_section_rows':     direct_section_rows,
+    })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 0n. REGIME CREATE
 # ─────────────────────────────────────────────────────────────────────────────
 
 @staff_required
@@ -942,29 +1142,21 @@ def tools_section_create(request):
             errors['section_name'] = 'Enter a section name'
 
         regime = None
-        if not regime_id:
-            errors['regime'] = 'Select a regime'
-        else:
+        if regime_id:
             try:
                 regime = Regime.objects.get(regime_id=regime_id)
             except Regime.DoesNotExist:
                 errors['regime'] = 'Select a valid regime'
 
         if not errors:
-            # Auto-generate section_id: <regime_id>_S<N>
-            prefix = f'{regime_id}_S'
-            existing = (
-                Section.objects
-                .filter(section_id__istartswith=prefix)
-                .values_list('section_id', flat=True)
-            )
-            nums = []
-            for sid in existing:
-                suffix = sid[len(prefix):]
-                if suffix.isdigit():
-                    nums.append(int(suffix))
+            # Auto-generate section_id: <regime_id>_S<N> or <ACTIVE_DEPT>_S<N>
+            id_prefix = regime_id if regime_id else settings.ACTIVE_DEPT
+            existing = Section.objects.filter(
+                section_id__regex=rf'^{re.escape(id_prefix)}_S\d+$'
+            ).values_list('section_id', flat=True)
+            nums = [int(re.search(r'\d+', s).group()) for s in existing if re.search(r'\d+', s)]
             next_num = (max(nums) + 1) if nums else 1
-            section_id = f'{prefix}{next_num}'
+            section_id = f'{id_prefix}_S{next_num}'
 
             try:
                 section_type_int  = int(section_type)
@@ -1010,8 +1202,10 @@ def tools_section_create(request):
                 # Table (no routing) → back to list with success banner
                 return redirect(f'/tools/sections/?added={section_id}')
             else:
-                # Standard (0) or Table with routing (2) → routing editor
-                return redirect(f'/tools/sections/{section_id}/routing/')
+                # Standard (0) or Table with routing (2) → section edit page
+                return redirect(
+                    reverse('core:tools_section_edit', kwargs={'section_id': section_id})
+                )
 
     else:
         # GET — check for copy_from param
@@ -1033,7 +1227,6 @@ def tools_section_create(request):
 
     context = {
         'regimes':               regimes,
-        'has_regimes':           regimes.exists(),
         'section_type_choices':  Section.SECTION_TYPE_CHOICES,
         'errors':                errors,
         'post':                  post,
@@ -1464,8 +1657,10 @@ def tools_section_routing(request, section_id):
 # ── Routing redirect helper ───────────────────────────────────────────────────
 
 def _routing_redirect(section_id):
-    """Redirect to the routing editor for the given section."""
-    return redirect(f'/tools/sections/{section_id}/routing/')
+    """Redirect to the composite section edit page (routing panel)."""
+    return redirect(
+        reverse('core:tools_section_edit', kwargs={'section_id': section_id})
+    )
 
 
 # ── View: insert node ─────────────────────────────────────────────────────────
@@ -2026,6 +2221,97 @@ def tools_actor_revoke(request):
     return redirect('core:tools_actors')
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# COMPOSITE SECTION EDIT
+# ─────────────────────────────────────────────────────────────────────────────
+
+@staff_required
+def tools_section_edit(request, section_id):
+    """Composite edit page: section details (Panel 1) + routing tree (Panel 2)."""
+    section = get_object_or_404(Section, section_id=section_id)
+
+    errors = {}
+    if request.method == 'POST':
+        section_name = request.POST.get('section_name', '').strip()
+        if not section_name:
+            errors['section_name'] = 'Section name is required.'
+        if not errors:
+            section.section_name      = section_name
+            section.section_type      = int(request.POST.get('section_type', 0))
+            section.display_order     = int(request.POST.get('display_order', 0))
+            section.section_guidance  = request.POST.get('section_guidance', '').strip() or None
+            section.column_question_ids = request.POST.get('column_question_ids', '').strip() or None
+            section.totals_question_ids = request.POST.get('totals_question_ids', '').strip() or None
+            section.save()
+            return redirect(
+                reverse('core:tools_section_edit', kwargs={'section_id': section_id})
+                + '?updated=details'
+            )
+
+    tree               = build_routing_tree(section)
+    routing_validation = validate_section_routing(section)
+    updated            = request.GET.get('updated')
+
+    return render(request, 'core/tools_section_edit.html', {
+        'section':              section,
+        'tree':                 tree,
+        'routing_validation':   routing_validation,
+        'errors':               errors,
+        'updated':              updated,
+        'section_type_choices': Section.SECTION_TYPE_CHOICES,
+    })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# COMPOSITE SCHEDULE EDIT
+# ─────────────────────────────────────────────────────────────────────────────
+
+@staff_required
+def tools_schedule_edit(request, schedule_id):
+    """Composite edit page: schedule details (Panel 1) + sections (Panel 2)."""
+    schedule = get_object_or_404(Schedule.objects.select_related('regime'), schedule_id=schedule_id)
+
+    errors = {}
+    if request.method == 'POST':
+        schedule_name = request.POST.get('schedule_name', '').strip()
+        if not schedule_name:
+            errors['schedule_name'] = 'Schedule name is required.'
+        if not errors:
+            schedule.schedule_name = schedule_name
+            schedule.display_order = int(request.POST.get('display_order', 0))
+            schedule.save()
+            return redirect(
+                reverse('core:tools_schedule_edit', kwargs={'schedule_id': schedule_id})
+                + '?updated=details'
+            )
+
+    members   = Section.objects.filter(schedule=schedule).order_by('display_order')
+    available = Section.objects.filter(
+        Q(regime=schedule.regime, schedule__isnull=True) |
+        Q(regime__isnull=True, schedule__isnull=True)
+    ).order_by('section_id')
+    next_order = (members.order_by('-display_order').values_list('display_order', flat=True).first() or 0) + 10
+    updated   = request.GET.get('updated')
+    routing_warning_id   = request.GET.get('routing_warning', '')
+    routing_warning_name = ''
+    if routing_warning_id:
+        try:
+            routing_warning_name = Section.objects.get(section_id=routing_warning_id).section_name
+        except Section.DoesNotExist:
+            pass
+
+    return render(request, 'core/tools_schedule_edit.html', {
+        'schedule':             schedule,
+        'members':              members,
+        'available':            available,
+        'next_order':           next_order,
+        'errors':               errors,
+        'updated':              updated,
+        'routing_warning_id':   routing_warning_id,
+        'routing_warning_name': routing_warning_name,
+    })
+
+
 # ── Back-URL helper ───────────────────────────────────────────────────────────
 
 def _back_url(back_regime, back_schedule, back_section):
@@ -2145,7 +2431,7 @@ def tools_question_edit(request, question_id):
         question.save()
 
         if back == 'picker':
-            return redirect('/tools/questions/edit/')
+            return redirect('/tools/questions/')
         return redirect(_back_url(back_regime, back_schedule, back_section))
 
     back          = request.GET.get('back', '')
@@ -2154,7 +2440,7 @@ def tools_question_edit(request, question_id):
     back_section  = request.GET.get('back_section', '')
 
     if back == 'picker':
-        computed_back_url = '/tools/questions/edit/'
+        computed_back_url = '/tools/questions/'
     else:
         computed_back_url = _back_url(back_regime, back_schedule, back_section)
 
@@ -2192,7 +2478,7 @@ def tools_set_edit(request, set_id):
         qs.save()
 
         if back == 'picker':
-            return redirect('/tools/sets/edit/')
+            return redirect('/tools/sets/')
         return redirect(_back_url(back_regime, back_schedule, back_section))
 
     back          = request.GET.get('back', '')
@@ -2201,7 +2487,7 @@ def tools_set_edit(request, set_id):
     back_section  = request.GET.get('back_section', '')
 
     if back == 'picker':
-        computed_back_url = '/tools/sets/edit/'
+        computed_back_url = '/tools/sets/'
     else:
         computed_back_url = _back_url(back_regime, back_schedule, back_section)
 
@@ -2219,6 +2505,10 @@ def tools_set_edit(request, set_id):
     ) or 0
     next_order = max_order + 10
 
+    members_ordered = list(
+        qs.members.select_related('question').order_by('display_order')
+    )
+
     context = {
         'qs':                  qs,
         'back_url':            computed_back_url,
@@ -2228,6 +2518,7 @@ def tools_set_edit(request, set_id):
         'back_section':        back_section,
         'available_questions': available_questions,
         'next_order':          next_order,
+        'members_ordered':     members_ordered,
     }
     return render(request, 'core/tools_set_edit.html', context)
 

@@ -1,0 +1,84 @@
+{% extends "core/base.html" %}
+
+{% block title %}Edit regime {{ regime.regime_id }} — Platform administration{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-two-thirds">
+
+      <a href="/tools/regimes/" class="govuk-back-link">Regimes</a>
+
+      <span class="govuk-caption-l">Regime <code>{{ regime.regime_id }}</code></span>
+      <h1 class="govuk-heading-l govuk-!-margin-top-4">Edit regime</h1>
+
+      {# ── Read-only identifiers ─────────────────────────────────────────────── #}
+      <dl class="govuk-summary-list govuk-!-margin-bottom-6">
+        <div class="govuk-summary-list__row">
+          <dt class="govuk-summary-list__key">Regime ID</dt>
+          <dd class="govuk-summary-list__value">
+            <code>{{ regime.regime_id }}</code>
+          </dd>
+        </div>
+        <div class="govuk-summary-list__row">
+          <dt class="govuk-summary-list__key">Department</dt>
+          <dd class="govuk-summary-list__value">{{ regime.dept_id }}</dd>
+        </div>
+      </dl>
+
+      {% if errors %}
+      <div class="govuk-error-summary" data-module="govuk-error-summary">
+        <div role="alert">
+          <h2 class="govuk-error-summary__title">There is a problem</h2>
+          <div class="govuk-error-summary__body">
+            <ul class="govuk-list govuk-error-summary__list">
+              {% if errors.regime_name %}
+              <li><a href="#regime_name">{{ errors.regime_name }}</a></li>
+              {% endif %}
+            </ul>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      <form method="post" novalidate>
+        {% csrf_token %}
+
+        {# ── Regime name ──────────────────────────────────────────────────────── #}
+        <div class="govuk-form-group {% if errors.regime_name %}govuk-form-group--error{% endif %}">
+          <label class="govuk-label govuk-label--s" for="regime_name">
+            Regime name
+          </label>
+          {% if errors.regime_name %}
+          <p id="regime_name-error" class="govuk-error-message">
+            <span class="govuk-visually-hidden">Error:</span> {{ errors.regime_name }}
+          </p>
+          {% endif %}
+          <input class="govuk-input {% if errors.regime_name %}govuk-input--error{% endif %}"
+                 id="regime_name" name="regime_name" type="text"
+                 value="{{ post.regime_name|default:regime.regime_name }}"
+                 {% if errors.regime_name %}aria-describedby="regime_name-error"{% endif %}>
+        </div>
+
+        {# ── Display order ────────────────────────────────────────────────────── #}
+        <div class="govuk-form-group">
+          <label class="govuk-label govuk-label--s" for="display_order">
+            Display order
+          </label>
+          <div class="govuk-hint">Controls ordering within the department listing.</div>
+          <input class="govuk-input govuk-input--width-5"
+                 id="display_order" name="display_order" type="number"
+                 value="{{ post.display_order|default:regime.display_order }}">
+        </div>
+
+        <div class="govuk-button-group govuk-!-margin-top-6">
+          <button type="submit" class="govuk-button">Save changes</button>
+          <a href="/tools/regimes/" class="govuk-link">Cancel</a>
+        </div>
+
+      </form>
+
+    </div>
+  </div>
+
+{% endblock %}

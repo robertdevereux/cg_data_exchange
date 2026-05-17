@@ -1,0 +1,335 @@
+{% extends "core/base.html" %}
+
+{% block title %}Edit {{ section.section_id }} — Platform administration{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-full">
+
+      <a href="{% url 'core:tools_sections_list' %}" class="govuk-back-link">Sections</a>
+
+      <span class="govuk-caption-l">Section <code>{{ section.section_id }}</code></span>
+      <h1 class="govuk-heading-l govuk-!-margin-top-4">Edit section</h1>
+
+      {% if updated == 'details' %}
+      <div class="govuk-notification-banner govuk-notification-banner--success"
+           role="alert" aria-labelledby="section-updated-banner"
+           data-module="govuk-notification-banner">
+        <div class="govuk-notification-banner__header">
+          <h2 class="govuk-notification-banner__title" id="section-updated-banner">Success</h2>
+        </div>
+        <div class="govuk-notification-banner__content">
+          <p class="govuk-body">Section details updated successfully.</p>
+        </div>
+      </div>
+      {% endif %}
+
+      {# ══════════════════════════════════════════════════════════════════════════
+         PANEL 1 — Section details
+      ══════════════════════════════════════════════════════════════════════════ #}
+
+      <h2 class="govuk-heading-m">Section details</h2>
+
+      {% if errors %}
+      <div class="govuk-error-summary" data-module="govuk-error-summary">
+        <div role="alert">
+          <h2 class="govuk-error-summary__title">There is a problem</h2>
+          <div class="govuk-error-summary__body">
+            <ul class="govuk-list govuk-error-summary__list">
+              {% if errors.section_name %}
+              <li><a href="#section_name">{{ errors.section_name }}</a></li>
+              {% endif %}
+            </ul>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      <form method="post" novalidate>
+        {% csrf_token %}
+
+        {# Section name #}
+        <div class="govuk-form-group {% if errors.section_name %}govuk-form-group--error{% endif %}">
+          <label class="govuk-label govuk-label--s" for="section_name">Section name</label>
+          {% if errors.section_name %}
+          <p id="section_name-error" class="govuk-error-message">
+            <span class="govuk-visually-hidden">Error:</span> {{ errors.section_name }}
+          </p>
+          {% endif %}
+          <input class="govuk-input {% if errors.section_name %}govuk-input--error{% endif %}"
+                 id="section_name" name="section_name" type="text"
+                 value="{{ section.section_name }}"
+                 {% if errors.section_name %}aria-describedby="section_name-error"{% endif %}>
+        </div>
+
+        {# Section type #}
+        <div class="govuk-form-group">
+          <label class="govuk-label govuk-label--s" for="id_section_type">Section type</label>
+          <select class="govuk-select" id="id_section_type" name="section_type">
+            {% for value, label in section_type_choices %}
+            <option value="{{ value }}"
+                    {% if value == section.section_type %}selected{% endif %}>
+              {{ label }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        {# Display order #}
+        <div class="govuk-form-group">
+          <label class="govuk-label govuk-label--s" for="display_order">Display order</label>
+          <div class="govuk-hint">Controls order within its regime or schedule.</div>
+          <input class="govuk-input govuk-input--width-5"
+                 id="display_order" name="display_order" type="number"
+                 value="{{ section.display_order }}">
+        </div>
+
+        {# Table-only fields #}
+        <div id="table-fields">
+          <hr class="govuk-section-break govuk-section-break--m govuk-section-break--visible">
+          <p class="govuk-body-s govuk-!-colour-secondary">
+            The following fields apply to table sections only.
+          </p>
+
+          <div class="govuk-form-group">
+            <label class="govuk-label govuk-label--s" for="section_guidance">
+              Section guidance <span class="govuk-hint" style="display:inline">(optional)</span>
+            </label>
+            <div class="govuk-hint">Shown at the top of table sections.</div>
+            <textarea class="govuk-textarea" id="section_guidance" name="section_guidance"
+                      rows="3">{{ section.section_guidance|default:'' }}</textarea>
+          </div>
+
+          <div class="govuk-form-group">
+            <label class="govuk-label govuk-label--s" for="column_question_ids">
+              Column question IDs <span class="govuk-hint" style="display:inline">(optional)</span>
+            </label>
+            <div class="govuk-hint">Semicolon-delimited, e.g. Q1;Q2;Q3.</div>
+            <input class="govuk-input" id="column_question_ids" name="column_question_ids"
+                   type="text" value="{{ section.column_question_ids|default:'' }}">
+          </div>
+
+          <div class="govuk-form-group">
+            <label class="govuk-label govuk-label--s" for="totals_question_ids">
+              Totals question IDs <span class="govuk-hint" style="display:inline">(optional)</span>
+            </label>
+            <div class="govuk-hint">Semicolon-delimited IDs of numeric questions to total.</div>
+            <input class="govuk-input" id="totals_question_ids" name="totals_question_ids"
+                   type="text" value="{{ section.totals_question_ids|default:'' }}">
+          </div>
+        </div>
+
+        <div class="govuk-button-group govuk-!-margin-top-6">
+          <button type="submit" class="govuk-button govuk-button--secondary">Save details</button>
+          <a href="{% url 'core:tools_sections_list' %}" class="govuk-link">Cancel</a>
+        </div>
+
+      </form>
+
+      <hr class="govuk-section-break govuk-section-break--l govuk-section-break--visible govuk-!-margin-top-6">
+
+      {# ══════════════════════════════════════════════════════════════════════════
+         PANEL 2 — Routing
+      ══════════════════════════════════════════════════════════════════════════ #}
+
+      <h2 class="govuk-heading-m govuk-!-margin-top-6">Routing</h2>
+
+      {% if section.section_type == 1 %}
+      {# Table section — no routing #}
+      <div style="background:#f3f2f1; border-left:4px solid #b1b4b6; padding:1rem 1.25rem;">
+        <p class="govuk-body govuk-!-margin-bottom-0">
+          Table sections do not use routing. Column order is defined by the
+          <strong>Column question IDs</strong> field above.
+        </p>
+      </div>
+
+      {% else %}
+
+      {% if not routing_validation.valid %}
+      <div class="govuk-notification-banner govuk-notification-banner--important"
+           role="region" aria-labelledby="routing-warning-title"
+           data-module="govuk-notification-banner">
+        <div class="govuk-notification-banner__header">
+          <h2 class="govuk-notification-banner__title" id="routing-warning-title">Warning</h2>
+        </div>
+        <div class="govuk-notification-banner__content">
+          <p class="govuk-body govuk-!-margin-bottom-1">
+            This section has routing issues and cannot be used until resolved:
+          </p>
+          <ul class="govuk-list govuk-list--bullet govuk-!-margin-bottom-0">
+            {% for issue in routing_validation.issues %}
+            <li>{{ issue }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if tree|length == 1 and tree.0.type == 'end' %}
+        <p class="govuk-body">No routing defined yet.</p>
+        <a href="{% url 'core:tools_routing_insert' section.section_id %}?position=first"
+           class="govuk-button govuk-button--secondary">Add first node</a>
+      {% else %}
+
+      <style>
+        .routing-tree { font-family: monospace; font-size: 0.875rem; border: 1px solid #b1b4b6; border-radius: 4px; overflow: hidden; }
+        .routing-row {
+          display: flex; align-items: center; padding: 7px 10px;
+          border-bottom: 1px solid #e0e0e0; position: relative;
+        }
+        .routing-row:last-child { border-bottom: none; }
+        .rt-end      { background: #f5f5f5; color: #505a5f; }
+        .rt-cond     { background: #e8f5e9; font-style: italic; }
+        .rt-q-i0     { background: #ffffff; }
+        .rt-q-i2     { background: #e3f2fd; }
+        .rt-q-i4plus { background: #fffde7; }
+        .routing-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .dots-btn {
+          background: none; border: 1px solid #b1b4b6; border-radius: 3px; cursor: pointer;
+          padding: 0 8px; font-size: 1.1rem; line-height: 1.6; margin-left: 8px; flex-shrink: 0;
+        }
+        .dots-btn:hover { background: #f0f0f0; }
+        .action-menu {
+          display: none; position: absolute; right: 10px; top: 34px;
+          background: #fff; border: 1px solid #b1b4b6; border-radius: 3px;
+          padding: 6px 0; z-index: 100; min-width: 260px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        .action-menu a, .action-menu button.am-link {
+          display: block; width: 100%; text-align: left; padding: 6px 16px;
+          background: none; border: none; cursor: pointer; font-size: 0.875rem;
+          font-family: monospace; color: #1d70b8; text-decoration: underline;
+          white-space: nowrap; box-sizing: border-box;
+        }
+        .action-menu a:hover, .action-menu button.am-link:hover { background: #f3f2f1; }
+        .action-menu hr.am-sep { border: none; border-top: 1px solid #e0e0e0; margin: 4px 0; }
+        .add-cond-row { display: flex; gap: 6px; align-items: center; padding: 6px 16px; }
+        .add-cond-row input {
+          border: 1px solid #b1b4b6; padding: 3px 6px; font-size: 0.875rem;
+          font-family: monospace; width: 110px;
+        }
+        .add-cond-row button {
+          padding: 4px 10px; font-size: 0.875rem; background: #00703c;
+          color: #fff; border: none; cursor: pointer; border-radius: 2px;
+        }
+      </style>
+
+      <div class="routing-tree">
+        {% for node in tree %}
+
+          {% if node.type == 'end' and node.indent == 0 %}
+          <div class="routing-row rt-end">
+            <span class="routing-label">END</span>
+          </div>
+
+          {% elif node.type == 'condition' %}
+          <div class="routing-row rt-cond"
+               style="padding-left: calc(10px + {{ node.indent }}rem);">
+            <span class="routing-label">
+              {{ node.answer_value }}{% if node.condition_empty %}&nbsp;&rarr;&nbsp;(goes to convergence){% endif %}
+            </span>
+            <button class="dots-btn" onclick="toggleMenu(this); event.stopPropagation();">&#8942;</button>
+            <div class="action-menu">
+              {% if node.condition_empty %}
+              <a href="{% url 'core:tools_routing_insert' section.section_id %}?position=after&anchor_node={{ node.node_id }}&anchor_answer_value={{ node.answer_value|urlencode }}">
+                Add first question to this branch
+              </a>
+              <hr class="am-sep">
+              {% endif %}
+              <form method="post"
+                    action="{% url 'core:tools_routing_delete_condition' section.section_id %}">
+                {% csrf_token %}
+                <input type="hidden" name="node_id"      value="{{ node.node_id }}">
+                <input type="hidden" name="answer_value" value="{{ node.answer_value }}">
+                <button type="submit" class="am-link">Delete this condition</button>
+              </form>
+            </div>
+          </div>
+
+          {% elif node.type == 'question' %}
+          <div class="routing-row {% if node.indent == 0 %}rt-q-i0{% elif node.indent == 2 %}rt-q-i2{% else %}rt-q-i4plus{% endif %}"
+               style="padding-left: calc(10px + {{ node.indent }}rem);">
+            <span class="routing-label">
+              <strong>{{ node.node_id }}</strong>
+              {% if node.is_branching %}
+                &nbsp;<span style="color:#d4351c; font-size:0.8em;">[{{ node.conditions|join:", " }}]</span>
+              {% endif %}
+              &nbsp;&mdash;&nbsp;{{ node.label }}
+            </span>
+            <button class="dots-btn" onclick="toggleMenu(this); event.stopPropagation();">&#8942;</button>
+            <div class="action-menu">
+              <a href="{% url 'core:tools_routing_insert' section.section_id %}?position=before&anchor_node={{ node.node_id }}">
+                Insert before
+              </a>
+              {% if not node.is_branching %}
+              <a href="{% url 'core:tools_routing_insert' section.section_id %}?position=after&anchor_node={{ node.node_id }}">
+                Insert after
+              </a>
+              {% endif %}
+              <hr class="am-sep">
+              <form method="post" action="{% url 'core:tools_routing_delete' section.section_id %}">
+                {% csrf_token %}
+                <input type="hidden" name="node_id"     value="{{ node.node_id }}">
+                <input type="hidden" name="delete_mode" value="delete_all">
+                <button type="submit" class="am-link">Delete — remove and cut below</button>
+              </form>
+              {% if node.is_branching %}
+              <form method="post" action="{% url 'core:tools_routing_delete' section.section_id %}">
+                {% csrf_token %}
+                <input type="hidden" name="node_id"     value="{{ node.node_id }}">
+                <input type="hidden" name="delete_mode" value="promote">
+                <button type="submit" class="am-link">Promote everything below, then edit further as necessary</button>
+              </form>
+              <hr class="am-sep">
+              <form method="post" action="{% url 'core:tools_routing_add_condition' section.section_id %}">
+                {% csrf_token %}
+                <input type="hidden" name="node_id" value="{{ node.node_id }}">
+                <div class="add-cond-row">
+                  <input type="text" name="answer_value" placeholder="e.g. Maybe">
+                  <button type="submit">Add condition</button>
+                </div>
+              </form>
+              {% endif %}
+            </div>
+          </div>
+
+          {% endif %}
+
+        {% endfor %}
+      </div>
+
+      {% endif %}
+      {% endif %}
+
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var typeSelect  = document.getElementById('id_section_type');
+      var tableFields = document.getElementById('table-fields');
+
+      function toggleTableFields() {
+        tableFields.style.display =
+          ['1', '2'].includes(typeSelect.value) ? 'block' : 'none';
+      }
+
+      typeSelect.addEventListener('change', toggleTableFields);
+      toggleTableFields();
+    })();
+
+    function toggleMenu(btn) {
+      var menu = btn.nextElementSibling;
+      menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+    }
+    document.addEventListener('click', function(e) {
+      if (!e.target.classList.contains('dots-btn')) {
+        document.querySelectorAll('.action-menu').forEach(function(m) {
+          m.style.display = 'none';
+        });
+      }
+    });
+  </script>
+
+{% endblock %}

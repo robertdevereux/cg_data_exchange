@@ -61,8 +61,8 @@
             <td class="govuk-table__cell">{{ sch.display_order }}</td>
             <td class="govuk-table__cell">{{ sch.section_count }}</td>
             <td class="govuk-table__cell">
-              <a href="{% url 'core:tools_schedule_sections' sch.schedule_id %}"
-                 class="govuk-link">Manage sections</a>
+              <a href="{% url 'core:tools_schedule_edit' sch.schedule_id %}"
+                 class="govuk-link">Edit</a>
             </td>
           </tr>
           {% empty %}

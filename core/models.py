@@ -127,20 +127,19 @@ class Section(models.Model):
         ordering = ['display_order', 'section_name']
 
     def clean(self):
-        if self.schedule_id is None and self.regime_id is None:
-            raise ValidationError(
-                'A Section must belong to either a Schedule or a Regime directly.'
-            )
         if self.schedule_id is not None and self.regime_id is not None:
             raise ValidationError(
                 'A Section cannot belong to both a Schedule and a Regime directly.'
             )
+        # regime=None and schedule=None is valid (unassigned section)
 
     def get_regime(self):
-        """Return the parent Regime whether this section sits under a Schedule or directly under a Regime."""
+        """Return the parent Regime, or None if section is unassigned."""
         if self.schedule_id:
             return self.schedule.regime
-        return self.regime
+        if self.regime_id:
+            return self.regime
+        return None
 
     def __str__(self):
         return self.section_name
@@ -184,6 +183,10 @@ class Question(models.Model):
     )
     answer_type = models.CharField(
         max_length=20, choices=ANSWER_TYPE_CHOICES, blank=True, null=True
+    )
+    is_platform = models.BooleanField(
+        default=False,
+        help_text='True for META/wizard questions. Excluded from the shared question bank views.',
     )
 
     def __str__(self):

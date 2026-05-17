@@ -28,6 +28,23 @@
       </div>
       {% endif %}
 
+      {% if updated %}
+      <div class="govuk-notification-banner govuk-notification-banner--success"
+           role="alert" aria-labelledby="govuk-notification-banner-title-updated"
+           data-module="govuk-notification-banner">
+        <div class="govuk-notification-banner__header">
+          <h2 class="govuk-notification-banner__title" id="govuk-notification-banner-title-updated">
+            Success
+          </h2>
+        </div>
+        <div class="govuk-notification-banner__content">
+          <p class="govuk-body">
+            Regime <strong>{{ updated }}</strong> updated successfully.
+          </p>
+        </div>
+      </div>
+      {% endif %}
+
       <div class="govuk-button-group govuk-!-margin-bottom-6">
         <a href="{% url 'core:tools_regime_create' %}" class="govuk-button govuk-button--secondary">
           Create new regime
@@ -59,7 +76,7 @@
             <td class="govuk-table__cell">{{ r.section_count }}</td>
             <td class="govuk-table__cell">{{ r.schedule_count }}</td>
             <td class="govuk-table__cell">
-              <a href="/tools/regimes/{{ r.regime_id }}/edit/"
+              <a href="{% url 'core:tools_regime_edit_composite' r.regime_id %}"
                  class="govuk-link">Edit</a>
             </td>
           </tr>

@@ -22,25 +22,20 @@
         <input type="hidden" name="back_section"  value="{{ back_section }}">
 
         <div class="govuk-form-group">
+          <label class="govuk-label govuk-label--s" for="guidance">
+            Guidance
+            <span class="govuk-hint">Optional. Appears as inset text above the question.</span>
+          </label>
+          <textarea class="govuk-textarea" id="guidance" name="guidance"
+                    rows="3">{{ question.guidance|default:'' }}</textarea>
+        </div>
+
+        <div class="govuk-form-group">
           <label class="govuk-label govuk-label--s" for="question_text">
             Question text
           </label>
           <textarea class="govuk-textarea" id="question_text" name="question_text"
                     rows="3">{{ question.question_text }}</textarea>
-        </div>
-
-        <div class="govuk-form-group">
-          <label class="govuk-label govuk-label--s" for="question_type">
-            Question type
-          </label>
-          <select class="govuk-select" id="question_type" name="question_type">
-            {% for value, label in question_type_choices %}
-            <option value="{{ value }}"
-                    {% if value == question.question_type %}selected{% endif %}>
-              {{ label }}
-            </option>
-            {% endfor %}
-          </select>
         </div>
 
         <div class="govuk-form-group">
@@ -53,18 +48,23 @@
         </div>
 
         <div class="govuk-form-group">
-          <label class="govuk-label govuk-label--s" for="guidance">
-            Guidance
-            <span class="govuk-hint">Optional. Appears as inset text above the question.</span>
+          <label class="govuk-label govuk-label--s" for="id_question_type">
+            Question type
           </label>
-          <textarea class="govuk-textarea" id="guidance" name="guidance"
-                    rows="3">{{ question.guidance|default:'' }}</textarea>
+          <select class="govuk-select" id="id_question_type" name="question_type">
+            {% for value, label in question_type_choices %}
+            <option value="{{ value }}"
+                    {% if value == question.question_type %}selected{% endif %}>
+              {{ label }}
+            </option>
+            {% endfor %}
+          </select>
         </div>
 
-        <div class="govuk-form-group">
+        <div id="options-field" class="govuk-form-group">
           <label class="govuk-label govuk-label--s" for="options">
             Options
-            <span class="govuk-hint">Optional. Semicolon-delimited list for radio/checkbox questions.</span>
+            <span class="govuk-hint">Semicolon-delimited list for radio/checkbox questions.</span>
           </label>
           <input class="govuk-input" id="options" name="options" type="text"
                  value="{{ question.options|default:'' }}">
@@ -78,5 +78,21 @@
 
     </div>
   </div>
+
+  <script>
+    (function () {
+      var typeSelect   = document.getElementById('id_question_type');
+      var optionsField = document.getElementById('options-field');
+      var typesWithOptions = ['radio', 'checkbox'];
+
+      function toggleOptions() {
+        var val = typeSelect.value;
+        optionsField.style.display = typesWithOptions.indexOf(val) !== -1 ? '' : 'none';
+      }
+
+      typeSelect.addEventListener('change', toggleOptions);
+      toggleOptions();
+    })();
+  </script>
 
 {% endblock %}

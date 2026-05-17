@@ -19,10 +19,6 @@ urlpatterns = [
          views_admin_tools.tools_question_add,
          name='tools_question_add'),
 
-    path('tools/questions/edit/',
-         views_admin_tools.tools_questions_edit_picker,
-         name='tools_questions_edit_picker'),
-
     path('tools/sets/',
          views_admin_tools.tools_sets_list,
          name='tools_sets_list'),
@@ -30,10 +26,6 @@ urlpatterns = [
     path('tools/sets/add/',
          views_admin_tools.tools_set_add,
          name='tools_set_add'),
-
-    path('tools/sets/edit/',
-         views_admin_tools.tools_sets_edit_picker,
-         name='tools_sets_edit_picker'),
 
     path('tools/sections/',
          views_admin_tools.tools_sections_list,
@@ -55,6 +47,14 @@ urlpatterns = [
          views_admin_tools.tools_regime_create,
          name='tools_regime_create'),
 
+    path('tools/regimes/<str:regime_id>/',
+         views_admin_tools.tools_regime_edit_composite,
+         name='tools_regime_edit_composite'),
+
+    path('tools/regimes/<str:regime_id>/edit/',
+         views_admin_tools.tools_regime_edit,
+         name='tools_regime_edit'),
+
     path('tools/viewer/',
          views_admin_tools.tools_viewer,
          name='tools_viewer'),
@@ -74,6 +74,10 @@ urlpatterns = [
     path('tools/set/<str:set_id>/member/<str:question_id>/remove/',
          views_admin_tools.tools_set_member_remove,
          name='tools_set_member_remove'),
+
+    path('tools/set/<str:set_id>/member/reorder/',
+         views_admin_tools.tools_set_member_reorder,
+         name='tools_set_member_reorder'),
 
     path('tools/actors/',
          views_admin_tools.tools_actors,
@@ -103,6 +107,10 @@ urlpatterns = [
          views_admin_tools.tools_schedule_create,
          name='tools_schedule_create'),
 
+    path('tools/schedules/<str:schedule_id>/edit/',
+         views_admin_tools.tools_schedule_edit,
+         name='tools_schedule_edit'),
+
     path('tools/schedules/<str:schedule_id>/sections/',
          views_admin_tools.tools_schedule_sections,
          name='tools_schedule_sections'),
@@ -118,6 +126,10 @@ urlpatterns = [
     path('tools/schedules/<str:schedule_id>/sections/reorder/',
          views_admin_tools.tools_schedule_section_reorder,
          name='tools_schedule_section_reorder'),
+
+    path('tools/sections/<str:section_id>/edit/',
+         views_admin_tools.tools_section_edit,
+         name='tools_section_edit'),
 
     path('tools/sections/<str:section_id>/routing/',
          views_admin_tools.tools_section_routing,

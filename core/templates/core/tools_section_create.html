@@ -108,10 +108,10 @@
         {# ── Regime ───────────────────────────────────────────────────────────── #}
         <div class="govuk-form-group {% if errors.regime %}govuk-form-group--error{% endif %}">
           <label class="govuk-label govuk-label--s" for="regime">
-            Regime
+            Regime <span class="govuk-hint" style="display:inline">(optional)</span>
           </label>
           <div class="govuk-hint">
-            The regime this section belongs to directly. Leave for Schedule-based sections — but for now, all sections must belong to a regime.
+            Assign to a regime now, or leave unassigned and wire up later via 'Set regime navigation'.
           </div>
           {% if errors.regime %}
           <p id="regime-error" class="govuk-error-message">
@@ -122,7 +122,7 @@
                          {% if errors.regime %}govuk-select--error{% endif %}"
                   id="regime" name="regime"
                   {% if errors.regime %}aria-describedby="regime-error"{% endif %}>
-            <option value="">— select —</option>
+            <option value="">— Unassigned (wire up later) —</option>
             {% for r in regimes %}
             <option value="{{ r.regime_id }}"
                     {% if post.regime == r.regime_id %}selected{% endif %}>
@@ -130,12 +130,6 @@
             </option>
             {% endfor %}
           </select>
-          {% if not has_regimes %}
-          <p class="govuk-body-s govuk-!-margin-top-2 govuk-!-margin-bottom-0">
-            No regimes shown?
-            <a href="{% url 'core:tools_regime_create' %}" class="govuk-link">Create a regime first →</a>
-          </p>
-          {% endif %}
         </div>
 
         {# ── Section ID preview ───────────────────────────────────────────────── #}
@@ -144,7 +138,7 @@
           <p class="govuk-body-s govuk-!-margin-bottom-0">
             Section ID will be generated automatically as:
             <strong id="section-id-preview">
-              <span id="regime-preview">{{ post.regime|default:'&lt;select a regime&gt;' }}</span>_S<span id="num-preview">N</span>
+              <span id="regime-preview">{{ post.regime|default:active_dept }}</span>_S<span id="num-preview">N</span>
             </strong>
           </p>
         </div>
@@ -209,10 +203,11 @@
     (function () {
       var regimeSelect  = document.getElementById('regime');
       var regimePreview = document.getElementById('regime-preview');
+      var activeDept    = '{{ active_dept }}';
 
       function update() {
         var val = regimeSelect.value;
-        regimePreview.textContent = val || '<select a regime>';
+        regimePreview.textContent = val || activeDept;
       }
 
       regimeSelect.addEventListener('change', update);

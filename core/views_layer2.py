@@ -21,6 +21,7 @@ import uuid
 
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
+from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
@@ -133,6 +134,8 @@ def section_start(request, section_id):
         return redirect('core:section_table', section_id=section_id)
 
     regime = section.get_regime()
+    if regime is None:
+        raise Http404('Section is not yet assigned to a regime.')
 
     # ── Resolve case and actor ────────────────────────────────────────────────
     pss = get_session(request)
@@ -651,6 +654,8 @@ def section_confirm(request, section_id):
 
     # Resolve related objects
     regime = get_object_or_404(Regime, regime_id=regime_id) if regime_id else section.get_regime()
+    if regime is None:
+        raise Http404('Section is not yet assigned to a regime.')
     try:
         case = Case.objects.get(case_id=case_id)
     except Case.DoesNotExist:
@@ -744,6 +749,8 @@ def section_table(request, section_id):
     section = get_object_or_404(Section, section_id=section_id)
     pss     = get_session(request)
     regime  = section.get_regime()
+    if regime is None:
+        raise Http404('Section is not yet assigned to a regime.')
 
     # Bootstrap session context if arriving directly (no Layer 1)
     if not pss.get('case_id'):
@@ -857,6 +864,8 @@ def section_table_add(request, section_id):
     section = get_object_or_404(Section, section_id=section_id)
     pss     = get_session(request)
     regime  = section.get_regime()
+    if regime is None:
+        raise Http404('Section is not yet assigned to a regime.')
 
     col_qids = [
         qid.strip()
@@ -936,6 +945,8 @@ def section_table_delete(request, section_id, row_index):
     section = get_object_or_404(Section, section_id=section_id)
     pss     = get_session(request)
     regime  = section.get_regime()
+    if regime is None:
+        raise Http404('Section is not yet assigned to a regime.')
 
     case_id = pss.get('case_id')
     try:
@@ -977,6 +988,8 @@ def section_confirm_table(request, section_id):
     section = get_object_or_404(Section, section_id=section_id)
     pss     = get_session(request)
     regime  = section.get_regime()
+    if regime is None:
+        raise Http404('Section is not yet assigned to a regime.')
 
     case_id  = pss.get('case_id')
     actor_id = pss.get('actor_id') or request.user.pk

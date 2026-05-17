@@ -1,0 +1,396 @@
+{% extends "core/base.html" %}
+
+{% block title %}{{ regime.regime_id }} — Regime configuration{% endblock %}
+
+{% block extra_css %}
+<style>
+  .regime-panel {
+    background: #f3f2f1;
+    border-top: 4px solid #1d70b8;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+  }
+  .regime-panel__heading {
+    color: #1d70b8;
+    margin-top: 0;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-full">
+
+      <a href="{% url 'core:tools_regime_list' %}" class="govuk-back-link">Regimes</a>
+
+      <h1 class="govuk-heading-l govuk-!-margin-top-4">
+        {{ regime.regime_id }}
+        <span class="govuk-caption-l">{{ regime.regime_name }}</span>
+      </h1>
+
+      {# ══════════════════════════════════════════════════════════════════════ #}
+      {# PANEL 1 — Regime details                                              #}
+      {# ══════════════════════════════════════════════════════════════════════ #}
+      <section class="regime-panel">
+        <h2 class="govuk-heading-m regime-panel__heading">Regime details</h2>
+
+        {% if updated == 'details' %}
+        <div class="govuk-notification-banner govuk-notification-banner--success"
+             role="alert" aria-labelledby="govuk-notification-banner-details"
+             data-module="govuk-notification-banner">
+          <div class="govuk-notification-banner__header">
+            <h2 class="govuk-notification-banner__title" id="govuk-notification-banner-details">Success</h2>
+          </div>
+          <div class="govuk-notification-banner__content">
+            <p class="govuk-body">Regime details updated.</p>
+          </div>
+        </div>
+        {% endif %}
+
+        {% if updated == 'navigation' %}
+        <div class="govuk-notification-banner govuk-notification-banner--success"
+             role="alert" aria-labelledby="govuk-notification-banner-nav"
+             data-module="govuk-notification-banner">
+          <div class="govuk-notification-banner__header">
+            <h2 class="govuk-notification-banner__title" id="govuk-notification-banner-nav">Success</h2>
+          </div>
+          <div class="govuk-notification-banner__content">
+            <p class="govuk-body">Navigation pattern saved.</p>
+          </div>
+        </div>
+        {% endif %}
+
+        {% if errors %}
+        <div class="govuk-error-summary" data-module="govuk-error-summary">
+          <div role="alert">
+            <h2 class="govuk-error-summary__title">There is a problem</h2>
+            <div class="govuk-error-summary__body">
+              <ul class="govuk-list govuk-error-summary__list">
+                {% if errors.regime_name %}
+                <li><a href="#regime_name">{{ errors.regime_name }}</a></li>
+                {% endif %}
+              </ul>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+
+        <dl class="govuk-summary-list govuk-!-margin-bottom-4" style="max-width:30rem">
+          <div class="govuk-summary-list__row">
+            <dt class="govuk-summary-list__key">Regime ID</dt>
+            <dd class="govuk-summary-list__value"><code>{{ regime.regime_id }}</code></dd>
+          </div>
+          <div class="govuk-summary-list__row">
+            <dt class="govuk-summary-list__key">Department</dt>
+            <dd class="govuk-summary-list__value"><code>{{ regime.dept_id }}</code></dd>
+          </div>
+        </dl>
+
+        <form method="post" novalidate style="max-width:30rem">
+          {% csrf_token %}
+
+          <div class="govuk-form-group {% if errors.regime_name %}govuk-form-group--error{% endif %}">
+            <label class="govuk-label govuk-label--s" for="regime_name">Regime name</label>
+            {% if errors.regime_name %}
+            <p id="regime_name-error" class="govuk-error-message">
+              <span class="govuk-visually-hidden">Error:</span> {{ errors.regime_name }}
+            </p>
+            {% endif %}
+            <input class="govuk-input {% if errors.regime_name %}govuk-input--error{% endif %}"
+                   id="regime_name" name="regime_name" type="text"
+                   value="{{ regime.regime_name }}"
+                   {% if errors.regime_name %}aria-describedby="regime_name-error"{% endif %}>
+          </div>
+
+          <div class="govuk-form-group">
+            <label class="govuk-label govuk-label--s" for="display_order">Display order</label>
+            <input class="govuk-input govuk-input--width-5"
+                   id="display_order" name="display_order" type="number"
+                   value="{{ regime.display_order }}">
+          </div>
+
+          <button type="submit" class="govuk-button govuk-button--secondary">
+            Save details
+          </button>
+        </form>
+      </section>
+
+      {# ══════════════════════════════════════════════════════════════════════ #}
+      {# PANEL 2 — Navigation pattern                                          #}
+      {# ══════════════════════════════════════════════════════════════════════ #}
+      <section class="regime-panel">
+        <h2 class="govuk-heading-m regime-panel__heading">Regime navigation</h2>
+
+        {# Structure summary #}
+        <div style="background:#ffffff; border-left:4px solid #1d70b8;
+                    padding:12px 16px; margin-bottom:1.5rem;">
+          <p class="govuk-body-s govuk-!-margin-bottom-1">
+            <strong>Current pattern:</strong>
+            {% if inferred_pattern == 'A' %}Pattern A — single section
+            {% elif inferred_pattern == 'B' %}Pattern B — section menu
+            {% elif inferred_pattern == 'C' %}Pattern C — schedule menu
+            {% else %}Not yet configured
+            {% endif %}
+          </p>
+          <p class="govuk-body-s govuk-!-margin-bottom-1">
+            Direct sections: {{ direct_sections.count }}
+            {% if direct_sections %}
+            —
+            {% for s in direct_sections %}{{ s.section_name }}{% if not forloop.last %}, {% endif %}{% endfor %}
+            {% endif %}
+          </p>
+          <p class="govuk-body-s govuk-!-margin-bottom-0">
+            Schedules: {{ schedules.count }}
+            {% if schedules %}
+            —
+            {% for sch in schedules %}{{ sch.schedule_name }}{% if not forloop.last %}, {% endif %}{% endfor %}
+            {% endif %}
+          </p>
+        </div>
+
+        {# Routing validation warning #}
+        {% if any_invalid %}
+        <div class="govuk-warning-text govuk-!-margin-bottom-4">
+          <span class="govuk-warning-text__icon" aria-hidden="true">!</span>
+          <strong class="govuk-warning-text__text">
+            <span class="govuk-warning-text__assistive">Warning</span>
+            Some sections have routing issues. Fix these before saving navigation.
+          </strong>
+        </div>
+        <ul class="govuk-list govuk-list--bullet govuk-!-font-size-16 govuk-!-margin-bottom-4">
+          {% for section_id, v in section_validations.items %}
+          {% if not v.valid %}
+          <li>
+            <a href="{% url 'core:tools_section_edit' section_id %}" class="govuk-link">{{ section_id }}</a>:
+            {% for issue in v.issues %}{{ issue }}{% if not forloop.last %} / {% endif %}{% endfor %}
+          </li>
+          {% endif %}
+          {% endfor %}
+        </ul>
+        {% endif %}
+
+        {# Navigation wizard — step indicator and inline wizard panels #}
+        <p class="govuk-body-s govuk-hint">
+          Navigation wizard — Step {{ nav_step }} of 3
+          {% if nav_step == 1 %}&mdash; Choose pattern
+          {% elif nav_step == 2 %}&mdash; Order
+          {% elif nav_step == 3 %}&mdash; Confirm
+          {% endif %}
+        </p>
+
+        {# The wizard POSTs to tools_navigation_regime, which redirects back here #}
+        {% if nav_step == 1 %}
+
+          <form method="post" action="{% url 'core:tools_navigation_regime' regime.regime_id %}" novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="action" value="choose_pattern">
+            <div class="govuk-form-group">
+              <fieldset class="govuk-fieldset">
+                <legend class="govuk-fieldset__legend govuk-fieldset__legend--s">
+                  Choose a navigation pattern
+                </legend>
+                <div class="govuk-radios">
+                  <div class="govuk-radios__item">
+                    <input class="govuk-radios__input" id="pattern-a" name="pattern" type="radio" value="A">
+                    <label class="govuk-label govuk-radios__label" for="pattern-a">Pattern A — Single section</label>
+                    <div class="govuk-hint govuk-radios__hint">One section only. No menu shown.</div>
+                  </div>
+                  <div class="govuk-radios__item">
+                    <input class="govuk-radios__input" id="pattern-b" name="pattern" type="radio" value="B">
+                    <label class="govuk-label govuk-radios__label" for="pattern-b">Pattern B — Section menu</label>
+                    <div class="govuk-hint govuk-radios__hint">Multiple direct sections. Citizen chooses from a list.</div>
+                  </div>
+                  <div class="govuk-radios__item">
+                    <input class="govuk-radios__input" id="pattern-c" name="pattern" type="radio" value="C">
+                    <label class="govuk-label govuk-radios__label" for="pattern-c">Pattern C — Schedule menu</label>
+                    <div class="govuk-hint govuk-radios__hint">Sections grouped into schedules. Citizen chooses schedule then section.</div>
+                  </div>
+                </div>
+              </fieldset>
+            </div>
+            <button type="submit" class="govuk-button govuk-button--secondary">Continue</button>
+          </form>
+
+        {% elif nav_step == 2 %}
+
+          <p class="govuk-body-s">Use the up and down buttons to set the display order.</p>
+
+          <table class="govuk-table govuk-!-margin-bottom-4">
+            <thead class="govuk-table__head">
+              <tr class="govuk-table__row">
+                <th scope="col" class="govuk-table__header" style="width:25%">ID</th>
+                <th scope="col" class="govuk-table__header" style="width:45%">Name</th>
+                <th scope="col" class="govuk-table__header" style="width:30%">
+                  <span class="govuk-visually-hidden">Reorder</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody class="govuk-table__body">
+              {% if chosen_pattern == 'C' %}
+                {% for sch in schedules %}
+                <tr class="govuk-table__row">
+                  <td class="govuk-table__cell"><code style="font-size:0.875rem">{{ sch.schedule_id }}</code></td>
+                  <td class="govuk-table__cell">{{ sch.schedule_name }}</td>
+                  <td class="govuk-table__cell" style="white-space:nowrap">
+                    <form method="post" action="{% url 'core:tools_navigation_regime' regime.regime_id %}" style="display:inline">
+                      {% csrf_token %}
+                      <input type="hidden" name="action" value="reorder">
+                      <input type="hidden" name="obj_id" value="{{ sch.schedule_id }}">
+                      <input type="hidden" name="direction" value="up">
+                      <button type="submit" class="govuk-link"
+                              style="background:none;border:none;padding:0;cursor:pointer;font-size:1rem"
+                              {% if forloop.first %}disabled{% endif %}>↑</button>
+                    </form>
+                    &nbsp;
+                    <form method="post" action="{% url 'core:tools_navigation_regime' regime.regime_id %}" style="display:inline">
+                      {% csrf_token %}
+                      <input type="hidden" name="action" value="reorder">
+                      <input type="hidden" name="obj_id" value="{{ sch.schedule_id }}">
+                      <input type="hidden" name="direction" value="down">
+                      <button type="submit" class="govuk-link"
+                              style="background:none;border:none;padding:0;cursor:pointer;font-size:1rem"
+                              {% if forloop.last %}disabled{% endif %}>↓</button>
+                    </form>
+                  </td>
+                </tr>
+                {% empty %}
+                <tr class="govuk-table__row">
+                  <td class="govuk-table__cell" colspan="3">No schedules found.</td>
+                </tr>
+                {% endfor %}
+              {% else %}
+                {% for s in direct_sections %}
+                <tr class="govuk-table__row">
+                  <td class="govuk-table__cell"><code style="font-size:0.875rem">{{ s.section_id }}</code></td>
+                  <td class="govuk-table__cell">{{ s.section_name }}</td>
+                  <td class="govuk-table__cell" style="white-space:nowrap">
+                    <form method="post" action="{% url 'core:tools_navigation_regime' regime.regime_id %}" style="display:inline">
+                      {% csrf_token %}
+                      <input type="hidden" name="action" value="reorder">
+                      <input type="hidden" name="obj_id" value="{{ s.section_id }}">
+                      <input type="hidden" name="direction" value="up">
+                      <button type="submit" class="govuk-link"
+                              style="background:none;border:none;padding:0;cursor:pointer;font-size:1rem"
+                              {% if forloop.first %}disabled{% endif %}>↑</button>
+                    </form>
+                    &nbsp;
+                    <form method="post" action="{% url 'core:tools_navigation_regime' regime.regime_id %}" style="display:inline">
+                      {% csrf_token %}
+                      <input type="hidden" name="action" value="reorder">
+                      <input type="hidden" name="obj_id" value="{{ s.section_id }}">
+                      <input type="hidden" name="direction" value="down">
+                      <button type="submit" class="govuk-link"
+                              style="background:none;border:none;padding:0;cursor:pointer;font-size:1rem"
+                              {% if forloop.last %}disabled{% endif %}>↓</button>
+                    </form>
+                  </td>
+                </tr>
+                {% empty %}
+                <tr class="govuk-table__row">
+                  <td class="govuk-table__cell" colspan="3">No sections found.</td>
+                </tr>
+                {% endfor %}
+              {% endif %}
+            </tbody>
+          </table>
+
+          <form method="post" action="{% url 'core:tools_navigation_regime' regime.regime_id %}">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="confirm_order">
+            <button type="submit" class="govuk-button govuk-button--secondary">Confirm order</button>
+          </form>
+
+        {% elif nav_step == 3 %}
+
+          <dl class="govuk-summary-list govuk-!-margin-bottom-4" style="max-width:30rem">
+            <div class="govuk-summary-list__row">
+              <dt class="govuk-summary-list__key">Pattern</dt>
+              <dd class="govuk-summary-list__value">
+                {% if chosen_pattern == 'A' %}Pattern A — Single section
+                {% elif chosen_pattern == 'B' %}Pattern B — Section menu
+                {% elif chosen_pattern == 'C' %}Pattern C — Schedule menu
+                {% endif %}
+              </dd>
+            </div>
+          </dl>
+
+          {% if not any_invalid %}
+          <form method="post" action="{% url 'core:tools_navigation_regime' regime.regime_id %}">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save">
+            <button type="submit" class="govuk-button govuk-button--secondary">Save and finish</button>
+          </form>
+          {% endif %}
+
+          <form method="post" action="{% url 'core:tools_navigation_regime' regime.regime_id %}">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="back_to_step2">
+            <button type="submit" class="govuk-link"
+                    style="background:none;border:none;padding:0;cursor:pointer;font-size:1rem">
+              Back to ordering
+            </button>
+          </form>
+
+        {% endif %}
+      </section>
+
+      {# ══════════════════════════════════════════════════════════════════════ #}
+      {# PANEL 3 — Review configuration                                        #}
+      {# ══════════════════════════════════════════════════════════════════════ #}
+      <section class="regime-panel">
+        <h2 class="govuk-heading-m regime-panel__heading">Review regime configuration</h2>
+
+        {% if schedules_with_sections %}
+          {# Pattern C — schedules with nested sections #}
+          {% for item in schedules_with_sections %}
+          <h3 class="govuk-heading-s govuk-!-margin-bottom-1">
+            {{ item.schedule.schedule_name }}
+            <span class="govuk-hint" style="display:inline; font-size:0.875rem">
+              ({{ item.schedule.schedule_id }})
+            </span>
+          </h3>
+          {% if item.section_rows %}
+          <ul class="govuk-list govuk-list--bullet govuk-!-margin-bottom-4">
+            {% for s, rcount in item.section_rows %}
+            <li>
+              <a href="{% url 'core:tools_section_edit' s.section_id %}" class="govuk-link">
+                {{ s.section_name }}
+              </a>
+              <span class="govuk-hint" style="display:inline; font-size:0.8125rem">
+                — {{ rcount }} routing row{{ rcount|pluralize }}
+              </span>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <p class="govuk-body-s govuk-!-colour-secondary govuk-!-margin-bottom-4">No sections in this schedule.</p>
+          {% endif %}
+          {% endfor %}
+        {% elif direct_section_rows %}
+          {# Pattern A or B — direct sections #}
+          <ul class="govuk-list govuk-list--bullet govuk-!-margin-bottom-4">
+            {% for s, rcount in direct_section_rows %}
+            <li>
+              <a href="{% url 'core:tools_section_edit' s.section_id %}" class="govuk-link">
+                {{ s.section_name }}
+              </a>
+              <span class="govuk-hint" style="display:inline; font-size:0.8125rem">
+                — {{ rcount }} routing row{{ rcount|pluralize }}
+              </span>
+            </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="govuk-body-s govuk-!-colour-secondary">No sections or schedules configured yet.</p>
+        {% endif %}
+
+        <p class="govuk-body-s govuk-!-margin-top-4">
+          <a href="{% url 'core:tools_viewer' %}" class="govuk-link">Full configuration viewer →</a>
+        </p>
+      </section>
+
+    </div>
+  </div>
+
+{% endblock %}
