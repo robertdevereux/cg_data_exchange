@@ -47,7 +47,7 @@
                     {% if hint %}aria-describedby="answer-hint"{% endif %}>{% if current_answer %}{{ current_answer }}{% elif suggestion %}{{ suggestion }}{% endif %}</textarea>
           {% elif question_type == "number" %}
           <input class="govuk-input govuk-input--width-10"
-                 type="number" id="answer" name="answer"
+                 type="number" step="any" id="answer" name="answer"
                  value="{% if current_answer %}{{ current_answer }}{% elif suggestion %}{{ suggestion }}{% endif %}"
                  {% if hint %}aria-describedby="answer-hint"{% endif %}>
           {% else %}

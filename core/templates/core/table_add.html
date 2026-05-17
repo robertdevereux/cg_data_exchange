@@ -76,7 +76,7 @@
           {% endif %}
           {% if col.question_type == "number" %}
           <input class="govuk-input govuk-input--width-10"
-                 type="number" id="field_{{ col.question_id }}"
+                 type="number" step="any" id="field_{{ col.question_id }}"
                  name="{{ col.question_id }}" value=""
                  {% if col.hint %}aria-describedby="{{ col.question_id }}-hint"{% endif %}>
           {% else %}

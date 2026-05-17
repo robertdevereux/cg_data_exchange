@@ -16,7 +16,7 @@ def combine_files(output_file="file_dump.txt"):
             d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".")
         )
 
-        py_files = sorted(f for f in filenames if f.endswith(".py"))
+        py_files = sorted(f for f in filenames if f.endswith(".py") or f.endswith(".html"))
         for filename in py_files:
             rel_path = os.path.join(dirpath, filename)
             # Normalise: strip leading ./

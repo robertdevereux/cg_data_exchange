@@ -146,7 +146,7 @@
           {% endif %}
 
           <input class="govuk-input govuk-input--width-10{% if field.error %} govuk-input--error{% endif %}"
-                 type="number"
+                 type="number" step="any"
                  id="field-{{ field.question_id }}"
                  name="{{ field.question_id }}"
                  value="{{ field.current_answer|default:'' }}"

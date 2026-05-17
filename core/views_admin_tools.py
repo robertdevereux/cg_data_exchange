@@ -418,6 +418,11 @@ def tools_sections_list(request):
     """List all sections with routing row counts."""
     sections = (
         Section.objects
+        .filter(
+            Q(regime__dept_id=settings.ACTIVE_DEPT) |
+            Q(schedule__regime__dept_id=settings.ACTIVE_DEPT) |
+            Q(regime__isnull=True, schedule__isnull=True)
+        )
         .annotate(routing_count=Count('routing_rules'))
         .select_related('regime', 'schedule')
         .order_by('section_id')
@@ -1245,6 +1250,11 @@ def tools_section_copy_picker(request):
     """List all sections so the admin can pick one to copy."""
     sections = (
         Section.objects
+        .filter(
+            Q(regime__dept_id=settings.ACTIVE_DEPT) |
+            Q(schedule__regime__dept_id=settings.ACTIVE_DEPT) |
+            Q(regime__isnull=True, schedule__isnull=True)
+        )
         .annotate(routing_count=Count('routing_rules'))
         .select_related('regime', 'schedule')
         .order_by('section_id')
