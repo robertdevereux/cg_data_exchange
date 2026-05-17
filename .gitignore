@@ -20,3 +20,8 @@ staticfiles/
 _reference/
 file_dump.txt
 test_out.txt
+~$*
+260*.docx
+260*.txt
+Updated project briefing*
+file_dump.txt
