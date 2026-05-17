@@ -25,9 +25,7 @@
       </div>
       {% endif %}
 
-      {# ══════════════════════════════════════════════════════════════════════════
-         PANEL 1 — Section details
-      ══════════════════════════════════════════════════════════════════════════ #}
+      <!-- PANEL 1 — Section details -->
 
       <h2 class="govuk-heading-m">Section details</h2>
 
@@ -76,15 +74,6 @@
           </select>
         </div>
 
-        {# Display order #}
-        <div class="govuk-form-group">
-          <label class="govuk-label govuk-label--s" for="display_order">Display order</label>
-          <div class="govuk-hint">Controls order within its regime or schedule.</div>
-          <input class="govuk-input govuk-input--width-5"
-                 id="display_order" name="display_order" type="number"
-                 value="{{ section.display_order }}">
-        </div>
-
         {# Table-only fields #}
         <div id="table-fields">
           <hr class="govuk-section-break govuk-section-break--m govuk-section-break--visible">
@@ -129,9 +118,7 @@
 
       <hr class="govuk-section-break govuk-section-break--l govuk-section-break--visible govuk-!-margin-top-6">
 
-      {# ══════════════════════════════════════════════════════════════════════════
-         PANEL 2 — Routing
-      ══════════════════════════════════════════════════════════════════════════ #}
+      <!-- PANEL 2 — Routing -->
 
       <h2 class="govuk-heading-m govuk-!-margin-top-6">Routing</h2>
 
@@ -173,10 +160,11 @@
       {% else %}
 
       <style>
-        .routing-tree { font-family: monospace; font-size: 0.875rem; border: 1px solid #b1b4b6; border-radius: 4px; overflow: hidden; }
+        .routing-tree { font-family: monospace; font-size: 0.875rem; border: 1px solid #b1b4b6; border-radius: 4px; overflow: visible; }
         .routing-row {
           display: flex; align-items: center; padding: 7px 10px;
           border-bottom: 1px solid #e0e0e0; position: relative;
+          overflow: visible;
         }
         .routing-row:last-child { border-bottom: none; }
         .rt-end      { background: #f5f5f5; color: #505a5f; }
@@ -191,10 +179,14 @@
         }
         .dots-btn:hover { background: #f0f0f0; }
         .action-menu {
-          display: none; position: absolute; right: 10px; top: 34px;
+          display: none; position: absolute; right: 0; top: 34px;
           background: #fff; border: 1px solid #b1b4b6; border-radius: 3px;
-          padding: 6px 0; z-index: 100; min-width: 260px;
+          padding: 6px 0; z-index: 1000; min-width: 300px;
           box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        .routing-row:last-child .action-menu,
+        .routing-row:nth-last-child(-n+2) .action-menu {
+          bottom: 100%; top: auto;
         }
         .action-menu a, .action-menu button.am-link {
           display: block; width: 100%; text-align: left; padding: 6px 16px;
@@ -204,6 +196,16 @@
         }
         .action-menu a:hover, .action-menu button.am-link:hover { background: #f3f2f1; }
         .action-menu hr.am-sep { border: none; border-top: 1px solid #e0e0e0; margin: 4px 0; }
+        .routing-action-label {
+          display: block; padding: 6px 16px; font-weight: bold;
+          color: #d4351c; font-size: 0.875rem; font-family: monospace;
+        }
+        .routing-submenu {
+          list-style: none; padding: 0.5rem 0 0.5rem 1rem;
+          border-left: 3px solid #b1b4b6; margin: 0 16px 6px 16px;
+        }
+        .routing-submenu li { margin-bottom: 4px; }
+        .routing-submenu .govuk-button { font-size: 0.8125rem; margin-bottom: 0; }
         .add-cond-row { display: flex; gap: 6px; align-items: center; padding: 6px 16px; }
         .add-cond-row input {
           border: 1px solid #b1b4b6; padding: 3px 6px; font-size: 0.875rem;
@@ -227,7 +229,7 @@
           <div class="routing-row rt-cond"
                style="padding-left: calc(10px + {{ node.indent }}rem);">
             <span class="routing-label">
-              {{ node.answer_value }}{% if node.condition_empty %}&nbsp;&rarr;&nbsp;(goes to convergence){% endif %}
+              {{ node.answer_value }}{% if node.condition_empty %}&nbsp;&rarr;&nbsp;(empty branch){% endif %}
             </span>
             <button class="dots-btn" onclick="toggleMenu(this); event.stopPropagation();">&#8942;</button>
             <div class="action-menu">
@@ -262,25 +264,34 @@
               <a href="{% url 'core:tools_routing_insert' section.section_id %}?position=before&anchor_node={{ node.node_id }}">
                 Insert before
               </a>
-              {% if not node.is_branching %}
               <a href="{% url 'core:tools_routing_insert' section.section_id %}?position=after&anchor_node={{ node.node_id }}">
                 Insert after
               </a>
-              {% endif %}
               <hr class="am-sep">
-              <form method="post" action="{% url 'core:tools_routing_delete' section.section_id %}">
-                {% csrf_token %}
-                <input type="hidden" name="node_id"     value="{{ node.node_id }}">
-                <input type="hidden" name="delete_mode" value="delete_all">
-                <button type="submit" class="am-link">Delete — remove and cut below</button>
-              </form>
               {% if node.is_branching %}
-              <form method="post" action="{% url 'core:tools_routing_delete' section.section_id %}">
-                {% csrf_token %}
-                <input type="hidden" name="node_id"     value="{{ node.node_id }}">
-                <input type="hidden" name="delete_mode" value="promote">
-                <button type="submit" class="am-link">Promote everything below, then edit further as necessary</button>
-              </form>
+              <span class="routing-action-label">Delete</span>
+              <ul class="routing-submenu">
+                <li>
+                  <form method="post" action="{% url 'core:tools_routing_delete' section.section_id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="node_id"     value="{{ node.node_id }}">
+                    <input type="hidden" name="delete_mode" value="delete_all">
+                    <button type="submit" class="govuk-button govuk-button--warning govuk-!-margin-bottom-0">
+                      Delete question and all branched questions below
+                    </button>
+                  </form>
+                </li>
+                <li>
+                  <form method="post" action="{% url 'core:tools_routing_delete' section.section_id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="node_id"     value="{{ node.node_id }}">
+                    <input type="hidden" name="delete_mode" value="promote">
+                    <button type="submit" class="govuk-button govuk-button--secondary govuk-!-margin-bottom-0">
+                      Delete question and promote branched questions below
+                    </button>
+                  </form>
+                </li>
+              </ul>
               <hr class="am-sep">
               <form method="post" action="{% url 'core:tools_routing_add_condition' section.section_id %}">
                 {% csrf_token %}
@@ -289,6 +300,13 @@
                   <input type="text" name="answer_value" placeholder="e.g. Maybe">
                   <button type="submit">Add condition</button>
                 </div>
+              </form>
+              {% else %}
+              <form method="post" action="{% url 'core:tools_routing_delete' section.section_id %}">
+                {% csrf_token %}
+                <input type="hidden" name="node_id"     value="{{ node.node_id }}">
+                <input type="hidden" name="delete_mode" value="delete_all">
+                <button type="submit" class="am-link" style="color:#d4351c;">Delete</button>
               </form>
               {% endif %}
             </div>

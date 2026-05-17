@@ -96,10 +96,8 @@
         <div style="background:#f3f2f1; border-left:4px solid #b1b4b6;
                     padding:12px 16px; margin-bottom:24px;">
           <p class="govuk-body-s govuk-!-margin-bottom-0">
-            Schedule ID will be generated automatically as:
-            <strong id="schedule-id-preview">
-              <span id="regime-preview">{{ post.regime|default:'&lt;select a regime&gt;' }}</span>_SCH<span id="num-preview">N</span>
-            </strong>
+            Schedule ID will be assigned automatically as:
+            <strong>{{ next_schedule_id }}</strong>
           </p>
         </div>
 
@@ -112,20 +110,5 @@
 
     </div>
   </div>
-
-  <script>
-    (function () {
-      var regimeSelect  = document.getElementById('regime');
-      var regimePreview = document.getElementById('regime-preview');
-
-      function update() {
-        var val = regimeSelect.value;
-        regimePreview.textContent = val || '<select a regime>';
-      }
-
-      regimeSelect.addEventListener('change', update);
-      update();
-    })();
-  </script>
 
 {% endblock %}

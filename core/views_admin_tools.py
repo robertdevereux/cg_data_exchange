@@ -479,20 +479,14 @@ def tools_schedule_create(request):
                 errors['regime'] = 'Select a valid regime'
 
         if not errors:
-            # Auto-generate schedule_id: <regime_id>_SCH<N>
-            prefix = f'{regime_id}_SCH'
-            existing = (
-                Schedule.objects
-                .filter(schedule_id__istartswith=prefix)
-                .values_list('schedule_id', flat=True)
-            )
-            nums = []
-            for sid in existing:
-                suffix = sid[len(prefix):]
-                if suffix.isdigit():
-                    nums.append(int(suffix))
-            next_num = (max(nums) + 1) if nums else 1
-            schedule_id = f'{prefix}{next_num}'
+            # Auto-generate schedule_id: <ACTIVE_DEPT>_SCH<N>
+            sch_prefix = settings.ACTIVE_DEPT
+            sch_existing = Schedule.objects.filter(
+                schedule_id__regex=rf'^{re.escape(sch_prefix)}_SCH\d+$'
+            ).values_list('schedule_id', flat=True)
+            sch_nums = [int(re.search(r'\d+', s).group()) for s in sch_existing if re.search(r'\d+', s)]
+            sch_next = (max(sch_nums) + 1) if sch_nums else 1
+            schedule_id = f'{sch_prefix}_SCH{sch_next}'
 
             try:
                 display_order_int = int(display_order)
@@ -507,11 +501,20 @@ def tools_schedule_create(request):
             )
             return redirect(f'/tools/schedules/{schedule_id}/sections/')
 
+    # Preview ID for the template info panel
+    _sch_prefix = settings.ACTIVE_DEPT
+    _sch_existing = Schedule.objects.filter(
+        schedule_id__regex=rf'^{re.escape(_sch_prefix)}_SCH\d+$'
+    ).values_list('schedule_id', flat=True)
+    _sch_nums = [int(re.search(r'\d+', s).group()) for s in _sch_existing if re.search(r'\d+', s)]
+    next_schedule_id = f'{_sch_prefix}_SCH{(max(_sch_nums) + 1) if _sch_nums else 1}'
+
     context = {
-        'regimes':      regimes,
-        'errors':       errors,
-        'post':         post,
-        'active_dept':  settings.ACTIVE_DEPT,
+        'regimes':          regimes,
+        'errors':           errors,
+        'post':             post,
+        'active_dept':      settings.ACTIVE_DEPT,
+        'next_schedule_id': next_schedule_id,
     }
     return render(request, 'core/tools_schedule_create.html', context)
 
@@ -1137,8 +1140,6 @@ def tools_section_create(request):
         copy_from_id        = post.get('copy_from', '').strip()
         section_name        = post.get('section_name', '').strip()
         section_type        = post.get('section_type', '0').strip()
-        display_order       = post.get('display_order', '0').strip()
-        regime_id           = post.get('regime', '').strip()
         section_guidance    = post.get('section_guidance', '').strip() or None
         column_question_ids = post.get('column_question_ids', '').strip() or None
         totals_question_ids = post.get('totals_question_ids', '').strip() or None
@@ -1146,38 +1147,27 @@ def tools_section_create(request):
         if not section_name:
             errors['section_name'] = 'Enter a section name'
 
-        regime = None
-        if regime_id:
-            try:
-                regime = Regime.objects.get(regime_id=regime_id)
-            except Regime.DoesNotExist:
-                errors['regime'] = 'Select a valid regime'
-
         if not errors:
-            # Auto-generate section_id: <regime_id>_S<N> or <ACTIVE_DEPT>_S<N>
-            id_prefix = regime_id if regime_id else settings.ACTIVE_DEPT
+            # Auto-generate section_id: <ACTIVE_DEPT>_S<N>
+            prefix = settings.ACTIVE_DEPT
             existing = Section.objects.filter(
-                section_id__regex=rf'^{re.escape(id_prefix)}_S\d+$'
+                section_id__regex=rf'^{re.escape(prefix)}_S\d+$'
             ).values_list('section_id', flat=True)
             nums = [int(re.search(r'\d+', s).group()) for s in existing if re.search(r'\d+', s)]
             next_num = (max(nums) + 1) if nums else 1
-            section_id = f'{id_prefix}_S{next_num}'
+            section_id = f'{prefix}_S{next_num}'
 
             try:
-                section_type_int  = int(section_type)
+                section_type_int = int(section_type)
             except ValueError:
                 section_type_int = 0
-            try:
-                display_order_int = int(display_order)
-            except ValueError:
-                display_order_int = 0
 
             new_section = Section.objects.create(
                 section_id=section_id,
                 section_name=section_name,
                 section_type=section_type_int,
-                display_order=display_order_int,
-                regime=regime,
+                display_order=0,
+                regime=None,
                 schedule=None,
                 section_guidance=section_guidance,
                 column_question_ids=column_question_ids,
@@ -1230,6 +1220,14 @@ def tools_section_create(request):
             except Section.DoesNotExist:
                 copy_from_id = ''
 
+    # Preview ID for the template info panel
+    _prefix = settings.ACTIVE_DEPT
+    _existing = Section.objects.filter(
+        section_id__regex=rf'^{re.escape(_prefix)}_S\d+$'
+    ).values_list('section_id', flat=True)
+    _nums = [int(re.search(r'\d+', s).group()) for s in _existing if re.search(r'\d+', s)]
+    next_section_id = f'{_prefix}_S{(max(_nums) + 1) if _nums else 1}'
+
     context = {
         'regimes':               regimes,
         'section_type_choices':  Section.SECTION_TYPE_CHOICES,
@@ -1237,6 +1235,7 @@ def tools_section_create(request):
         'post':                  post,
         'active_dept':           settings.ACTIVE_DEPT,
         'copy_source':           copy_source,
+        'next_section_id':       next_section_id,
     }
     return render(request, 'core/tools_section_create.html', context)
 
@@ -2248,7 +2247,6 @@ def tools_section_edit(request, section_id):
         if not errors:
             section.section_name      = section_name
             section.section_type      = int(request.POST.get('section_type', 0))
-            section.display_order     = int(request.POST.get('display_order', 0))
             section.section_guidance  = request.POST.get('section_guidance', '').strip() or None
             section.column_question_ids = request.POST.get('column_question_ids', '').strip() or None
             section.totals_question_ids = request.POST.get('totals_question_ids', '').strip() or None
