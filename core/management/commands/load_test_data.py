@@ -200,8 +200,8 @@ class Command(BaseCommand):
 
         # ── DWP test users ────────────────────────────────────────────────────
         for username, first, last in [
-            ('dwp_alice', 'Alice', 'Chapman'),
-            ('dwp_bob',   'Bob',   'Chapman'),
+            ('dwp_alice',  'Alice', 'Chapman'),
+            ('dwp_bob',    'Bob',   'Chapman'),
             ('dwp_agent1', 'Agent', 'One'),
         ]:
             u, created = User.objects.get_or_create(
@@ -215,6 +215,19 @@ class Command(BaseCommand):
             )
             if created:
                 counters['User'] += 1
+
+        # ── DEFRA test users ──────────────────────────────────────────────────
+        u, created = User.objects.get_or_create(
+            username='defra_alice',
+            defaults={
+                'first_name': 'Alice',
+                'last_name':  'DEFRA',
+                'email':      'defra_alice@example.com',
+                'password':   pw,
+            },
+        )
+        if created:
+            counters['User'] += 1
 
         alice      = User.objects.get(username='alice')
         bob        = User.objects.get(username='bob')
@@ -451,6 +464,10 @@ class Command(BaseCommand):
         Department.objects.get_or_create(
             dept_id='DWP',
             defaults={'dept_name': 'Department for Work and Pensions'},
+        )
+        Department.objects.get_or_create(
+            dept_id='DEFRA',
+            defaults={'dept_name': 'Department for Environment, Food and Rural Affairs'},
         )
 
         # Populate Q55 options from Department records so the wizard dropdown
@@ -972,6 +989,7 @@ class Command(BaseCommand):
         self.stdout.write('')
         self.stdout.write('Users:      alice / bob / carla / solicitor1  (pw: testpass123)')
         self.stdout.write('            dwp_alice / dwp_bob / dwp_agent1  (pw: testpass123)')
+        self.stdout.write('            defra_alice                        (pw: testpass123)')
         self.stdout.write('Regimes:    DEMO_SIMPLE · DEMO_SECTIONS · DEMO_SCHEDULES')
         self.stdout.write('Alice:      SIMPLE_S1 complete, answer history present')
         self.stdout.write('Bob:        SECTIONS_S1 complete, S2+S3 not started')

@@ -48,20 +48,20 @@ class TestDWPEntryPoint(TestCase):
 class TestDWPChooseUser(TestCase):
     """
     choose_user: a citizen with no agent clients skips the person-picker and
-    redirects straight to select_regime; an agent with clients sees the picker.
+    redirects straight to dept_home; an agent with clients sees the picker.
     """
 
     def test_citizen_skips_picker_and_redirects(self):
         """
         dwp_alice has only a self-permission — no one else acts on her behalf
         in the other direction.  When she visits /dwp/, choose_user finds no
-        clients for her actor role and redirects to select-regime.
+        clients for her actor role and redirects to dept_home (/dwp/regimes/).
         """
         c = Client()
         c.login(username='dwp_alice', password='testpass123')
         r = c.get('/dwp/')
         self.assertEqual(r.status_code, 302)
-        self.assertIn('select-regime', r['Location'])
+        self.assertIn('/dwp/regimes/', r['Location'])
 
     def test_agent_sees_person_picker(self):
         """
@@ -118,10 +118,11 @@ class TestDWPDeptHome(TestCase):
         self.assertEqual(r.status_code, 302)
         self.assertIn('/accounts/login/', r['Location'])
 
-    def test_dept_home_no_access_renders_gracefully(self):
+    def test_dept_home_no_perms_renders_gracefully(self):
         """
-        A user with no Permission records at all sees the no_access warning,
-        not a 500 error.
+        A user with no Permission records sees an empty regime list, not a 500.
+        Permission enforcement is at the section level; dept_home is open to
+        all authenticated users.
         """
         u, _ = User.objects.get_or_create(
             username='dwp_noperms',
@@ -136,7 +137,6 @@ class TestDWPDeptHome(TestCase):
         c.login(username='dwp_noperms', password='testpass123')
         r = c.get('/dwp/regimes/')
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, 'do not have access')
 
 
 # ─────────────────────────────────────────────────────────────────────────────

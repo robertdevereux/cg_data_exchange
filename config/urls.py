@@ -20,9 +20,10 @@ from django.views.static import serve
 from django.conf import settings
 import os
 
-from dept_demo import urls as dept_demo_urls
-from dept_dwp  import urls as dept_dwp_urls
-from dept_hmrc import urls as dept_hmrc_urls
+from dept_demo  import urls as dept_demo_urls
+from dept_dwp   import urls as dept_dwp_urls
+from dept_hmrc  import urls as dept_hmrc_urls
+from dept_defra import urls as dept_defra_urls
 
 # Local static directory that holds our GDS assets.
 _GDS_STATIC = os.path.join(settings.BASE_DIR, 'core', 'static')
@@ -43,9 +44,10 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('accounts/', include('django.contrib.auth.urls')),
     path('', include('core.urls', namespace='core')),
-    path('demo/', include((dept_demo_urls, 'dept_demo'))),
-    path('dwp/',  include((dept_dwp_urls,  'dept_dwp'))),
-    path('hmrc/', include((dept_hmrc_urls, 'dept_hmrc'))),
+    path('demo/',  include((dept_demo_urls,  'dept_demo'))),
+    path('dwp/',   include((dept_dwp_urls,   'dept_dwp'))),
+    path('hmrc/',  include((dept_hmrc_urls,  'dept_hmrc'))),
+    path('defra/', include((dept_defra_urls, 'dept_defra'))),
 ] + [
     path(asset, serve, {
         'path': 'govuk-' + asset,   # maps to core/static/govuk-assets/...

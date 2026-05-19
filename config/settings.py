@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'dept_demo',
     'dept_dwp',
     'dept_hmrc',
+    'dept_defra',
 ]
 
 ACTIVE_DEPT = os.environ.get('ACTIVE_DEPT', 'HMRC')
@@ -161,12 +162,14 @@ LOGOUT_REDIRECT_URL = '/'
 
 CURRENT_BASE_URL = os.environ.get('CURRENT_BASE_URL', 'http://127.0.0.1:8000')
 
-_hmrc_base = os.environ.get('HMRC_BASE_URL', '')
-_dwp_base  = os.environ.get('DWP_BASE_URL',  '')
-_demo_base = os.environ.get('DEMO_BASE_URL',  '')
+_hmrc_base  = os.environ.get('HMRC_BASE_URL',  '')
+_dwp_base   = os.environ.get('DWP_BASE_URL',   '')
+_demo_base  = os.environ.get('DEMO_BASE_URL',  '')
+_defra_base = os.environ.get('DEFRA_BASE_URL', '')
 
 DEPT_BASE_URLS = {
-    'HMRC': _hmrc_base,
-    'DWP':  _dwp_base,
-    'DEMO': _demo_base,
+    'HMRC':  _hmrc_base,
+    'DWP':   _dwp_base,
+    'DEMO':  _demo_base,
+    'DEFRA': _defra_base,
 }

@@ -13,7 +13,7 @@ def root_landing(request):
     """
     if request.user.is_authenticated:
         auth_logout(request)
-    depts = Department.objects.exclude(dept_id='PLATFORM').order_by('dept_id')
+    depts = Department.objects.exclude(dept_id__in=['PLATFORM', 'DWP', 'DEMO']).order_by('dept_id')
     dept_base_urls = settings.DEPT_BASE_URLS
     dept_data = []
     for dept in depts:
