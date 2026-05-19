@@ -2,11 +2,12 @@
 core/views_layer1.py — Shared Layer 1 navigation views.
 
 Generic (department-neutral) views served at /regime/... for all departments.
-Currently implements Pattern C (schedule → section list) navigation.
+Implements Pattern B (direct section list) and Pattern C (schedule → section
+list) navigation.
 
-Departments register their own regime home pages and link here for schedule-
-based navigation. Breadcrumbs and regime_home_url are read from session,
-where they are expected to have been set by the regime home page.
+Departments register their own regime home pages and link here for navigation.
+Breadcrumbs and regime_home_url are read from session, where they are expected
+to have been set by the regime home page.
 """
 
 from django.contrib.auth.decorators import login_required
@@ -24,6 +25,66 @@ _STATUS_LABEL = {
     'in_progress': 'In progress',
     'complete':    'Complete',
 }
+
+
+# ── Pattern B — direct section list (no schedule) ────────────────────────────
+
+@login_required
+def regime_sections(request, regime_id):
+    """
+    Pattern B: list direct sections for a regime (no schedule).
+    Reads breadcrumbs and regime_home_url from session (set by regime home page).
+    Sets return_url in session so section_done redirects back here.
+    """
+    actor  = request.user
+    pss    = get_session(request)
+    user   = _resolve_user(pss, actor)
+    regime = get_object_or_404(Regime, regime_id=regime_id)
+
+    permitted = get_permitted_sections(actor, user).filter(
+        regime_id=regime_id,
+        schedule__isnull=True,
+    )
+
+    section_statuses = {
+        ss.section_id: ss.status
+        for ss in SectionStatus.objects.filter(
+            user=user, regime=regime, section__in=permitted,
+        )
+    }
+
+    section_data = []
+    for section in permitted.order_by('display_order', 'section_name'):
+        status = section_statuses.get(section.section_id, 'not_started')
+        if section.section_type in (1, 2):
+            action_url = f'/section/{section.section_id}/table/'
+        else:
+            action_url = f'/section/{section.section_id}/start/'
+        section_data.append({
+            'section':        section,
+            'status':         status,
+            'status_display': _STATUS_LABEL.get(status, 'Not started'),
+            'action_url':     action_url,
+        })
+
+    regime_home_url  = pss.get('regime_home_url', '/')
+    breadcrumbs      = pss.get('breadcrumbs', [])
+    section_list_url = reverse('core:regime_sections', kwargs={'regime_id': regime_id})
+
+    update_session(request, {
+        'return_url':      section_list_url,
+        'schedule_id':     None,
+        'regime_home_url': regime_home_url,
+        'breadcrumbs':     breadcrumbs,
+    })
+
+    return render(request, 'core/regime_sections.html', {
+        'regime':      regime,
+        'sections':    section_data,
+        'back_url':    regime_home_url,
+        'breadcrumbs': breadcrumbs,
+        'acting_for':  get_acting_for_name(pss),
+    })
 
 
 # ── Pattern C level 1 — schedule list ────────────────────────────────────────

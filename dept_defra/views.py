@@ -58,20 +58,13 @@ def regime_home(request, regime_id):
     user  = _resolve_user(pss, actor)
 
     entry_url = call_regime(request, regime, actor, user)
+    if not entry_url:
+        entry_url = request.path
 
-    # Map core /regime/... entry URLs to DEFRA-namespaced equivalents.
-    # Pattern C (schedules): /regime/<id>/schedules/ → dept_defra:regime_schedules
-    # Pattern B (sections):  /regime/<id>/sections/ → dept_defra:select_section
-    if entry_url.startswith('/regime/') and entry_url.endswith('/schedules/'):
-        entry_url = reverse(
-            'dept_defra:regime_schedules',
-            kwargs={'regime_id': regime.regime_id},
-        )
-    elif entry_url.startswith('/regime/') and entry_url.endswith('/sections/'):
-        entry_url = reverse(
-            'dept_defra:select_section',
-            kwargs={'regime_id': regime.regime_id},
-        )
+    # Map core /regime/... entry URLs to DEFRA-namespaced equivalents
+    # by prepending the /defra prefix.
+    if entry_url.startswith('/regime/'):
+        entry_url = '/defra' + entry_url
 
     # Completion status
     permitted = get_permitted_sections(actor, user).filter(

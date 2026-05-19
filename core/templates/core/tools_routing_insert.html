@@ -99,7 +99,32 @@
           {% endif %}
         </div>
 
-        {# ── Branch builder (radio/checkbox questions only) ───────────────── #}
+        {# ── Branching choice (radio/checkbox questions only) ────────────── #}
+        <div id="branching-choice" style="display:none">
+          <div class="govuk-form-group">
+            <fieldset class="govuk-fieldset">
+              <legend class="govuk-fieldset__legend govuk-fieldset__legend--s">
+                <h2 class="govuk-fieldset__heading">
+                  Do you want different answers to lead to different questions?
+                </h2>
+              </legend>
+              <div class="govuk-radios govuk-radios--inline">
+                <div class="govuk-radios__item">
+                  <input class="govuk-radios__input" id="wants-branch-yes"
+                         name="wants_branch" type="radio" value="yes">
+                  <label class="govuk-label govuk-radios__label" for="wants-branch-yes">Yes</label>
+                </div>
+                <div class="govuk-radios__item">
+                  <input class="govuk-radios__input" id="wants-branch-no"
+                         name="wants_branch" type="radio" value="no">
+                  <label class="govuk-label govuk-radios__label" for="wants-branch-no">No</label>
+                </div>
+              </div>
+            </fieldset>
+          </div>
+        </div>
+
+        {# ── Branch builder (shown when wants_branch = yes) ───────────────── #}
         <div id="branch-builder" style="display:none">
           <hr class="govuk-section-break govuk-section-break--m govuk-section-break--visible">
           <h2 class="govuk-heading-s">Branch builder</h2>
@@ -145,7 +170,7 @@
         if (selectQ) selectQ.disabled = !isQ;
         if (selectS) selectS.disabled =  isQ;
         if (!isQ) {
-          hideBranchBuilder();
+          hideAll();
         } else if (selectQ) {
           onQuestionChange();
         }
@@ -166,9 +191,17 @@
       if (!selectQ) return;
       var qid = selectQ.value;
       if (qid && questionOptions[qid]) {
-        showBranchBuilder(questionOptions[qid]);
+        // Radio/checkbox — show branching choice, hide branch builder until user decides
+        document.getElementById('branching-choice').style.display = '';
+        document.getElementById('branch-builder').style.display = 'none';
+        document.getElementById('add-branch-btn').style.display = 'none';
+        document.getElementById('branch-groups').innerHTML = '';
+        document.getElementById('branching-input').value = 'no';
+        document.querySelectorAll('input[name="wants_branch"]').forEach(function(r) {
+          r.checked = false;
+        });
       } else {
-        hideBranchBuilder();
+        hideAll();
       }
     }
 
@@ -182,12 +215,32 @@
       addBranchGroup(options, 1);
     }
 
-    function hideBranchBuilder() {
+    function hideAll() {
       document.getElementById('branching-input').value = 'no';
+      document.getElementById('branching-choice').style.display = 'none';
       document.getElementById('branch-builder').style.display = 'none';
       document.getElementById('add-branch-btn').style.display = 'none';
       document.getElementById('branch-groups').innerHTML = '';
+      document.querySelectorAll('input[name="wants_branch"]').forEach(function(r) {
+        r.checked = false;
+      });
     }
+
+    document.querySelectorAll('input[name="wants_branch"]').forEach(function(radio) {
+      radio.addEventListener('change', function() {
+        var selectQ = document.querySelector('#q-group select');
+        if (!selectQ) return;
+        var qid = selectQ.value;
+        if (this.value === 'yes') {
+          showBranchBuilder(questionOptions[qid] || []);
+        } else {
+          document.getElementById('branching-input').value = 'no';
+          document.getElementById('branch-builder').style.display = 'none';
+          document.getElementById('add-branch-btn').style.display = 'none';
+          document.getElementById('branch-groups').innerHTML = '';
+        }
+      });
+    });
 
     function addBranchGroup(options, index) {
       var container = document.getElementById('branch-groups');

@@ -13,6 +13,11 @@ urlpatterns = [
     path('tools/', include('core.urls_tools')),
 
 
+    # ── Layer 1 navigation — Pattern B (direct section list) ─────────────────
+    path('regime/<str:regime_id>/sections/',
+         views_layer1.regime_sections,
+         name='regime_sections'),
+
     # ── Layer 1 navigation — Pattern C (schedule → section list) ─────────────
     path('regime/<str:regime_id>/schedules/',
          views_layer1.regime_schedules,

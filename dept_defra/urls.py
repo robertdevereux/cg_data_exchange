@@ -1,6 +1,6 @@
 from django.urls import path, include
 from . import views
-from core.views_layer1 import regime_schedules, regime_schedule_sections
+from core.views_layer1 import regime_schedules, regime_schedule_sections, regime_sections
 
 app_name = 'dept_defra'
 
@@ -14,6 +14,9 @@ urlpatterns = [
     path('regime/<str:regime_id>/',
          views.regime_home,
          name='regime_home'),
+    path('regime/<str:regime_id>/sections/',
+         regime_sections,
+         name='regime_sections'),
     path('<str:regime_id>/schedules/',
          regime_schedules,
          name='regime_schedules'),

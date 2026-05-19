@@ -59,19 +59,10 @@ def regime_home(request, regime_id):
 
     entry_url = call_regime(request, regime, actor, user)
 
-    # Map core /regime/... entry URLs to HMRC-namespaced equivalents.
-    # Pattern C (schedules): /regime/<id>/schedules/ → dept_hmrc:regime_schedules
-    # Pattern B (sections):  /regime/<id>/sections/ → dept_hmrc:select_section
-    if entry_url.startswith('/regime/') and entry_url.endswith('/schedules/'):
-        entry_url = reverse(
-            'dept_hmrc:regime_schedules',
-            kwargs={'regime_id': regime.regime_id},
-        )
-    elif entry_url.startswith('/regime/') and entry_url.endswith('/sections/'):
-        entry_url = reverse(
-            'dept_hmrc:select_section',
-            kwargs={'regime_id': regime.regime_id},
-        )
+    # Map core /regime/... entry URLs to HMRC-namespaced equivalents
+    # by prepending the /hmrc prefix.
+    if entry_url.startswith('/regime/'):
+        entry_url = '/hmrc' + entry_url
 
     # Completion status
     permitted = get_permitted_sections(actor, user).filter(

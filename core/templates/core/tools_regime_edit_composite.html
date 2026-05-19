@@ -61,6 +61,19 @@
         </div>
         {% endif %}
 
+        {% if updated == 'item_added' %}
+        <div class="govuk-notification-banner govuk-notification-banner--success"
+             role="alert" aria-labelledby="govuk-notification-banner-item"
+             data-module="govuk-notification-banner">
+          <div class="govuk-notification-banner__header">
+            <h2 class="govuk-notification-banner__title" id="govuk-notification-banner-item">Success</h2>
+          </div>
+          <div class="govuk-notification-banner__content">
+            <p class="govuk-body">Item added to regime.</p>
+          </div>
+        </div>
+        {% endif %}
+
         {% if errors %}
         <div class="govuk-error-summary" data-module="govuk-error-summary">
           <div role="alert">
@@ -196,9 +209,13 @@
           <p class="govuk-body-s govuk-!-colour-secondary">No sections or schedules configured yet.</p>
         {% endif %}
 
-        <p class="govuk-body-s govuk-!-margin-top-4">
+        <div class="govuk-button-group govuk-!-margin-top-4">
+          <a href="{% url 'core:tools_regime_item_add' regime.regime_id %}"
+             class="govuk-button govuk-button--secondary">
+            Add item to regime
+          </a>
           <a href="{% url 'core:tools_viewer' %}" class="govuk-link">Full configuration viewer →</a>
-        </p>
+        </div>
       </section>
 
     </div>

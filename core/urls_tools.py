@@ -72,6 +72,10 @@ urlpatterns = [
          views_admin_tools.tools_regime_item_move_down,
          name='tools_regime_item_move_down'),
 
+    path('regimes/<str:regime_id>/add-item/',
+         views_admin_tools.tools_regime_item_add,
+         name='tools_regime_item_add'),
+
     path('regimes/<str:regime_id>/delete/',
          views_admin_tools.tools_regime_delete,
          name='tools_regime_delete'),

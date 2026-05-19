@@ -1,0 +1,131 @@
+{% extends "core/base.html" %}
+
+{% block title %}Add item to regime — {{ regime.regime_name }} — Platform administration{% endblock %}
+
+{% block content %}
+<div class="govuk-grid-row">
+  <div class="govuk-grid-column-two-thirds">
+
+    <a href="{{ edit_url }}" class="govuk-back-link">Back to regime</a>
+
+    <span class="govuk-caption-l">{{ regime.regime_id }}</span>
+    <h1 class="govuk-heading-l">Add item to regime — {{ regime.regime_name }}</h1>
+
+    {% if step == 1 %}
+    {# ── Step 1: choose type ──────────────────────────────────────────────── #}
+
+    {% if error %}
+    <div class="govuk-error-summary" data-module="govuk-error-summary">
+      <div role="alert">
+        <h2 class="govuk-error-summary__title">There is a problem</h2>
+        <div class="govuk-error-summary__body">
+          <ul class="govuk-list govuk-error-summary__list">
+            <li><a href="#item_type_schedule">{{ error }}</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <form method="post" novalidate>
+      {% csrf_token %}
+
+      <div class="govuk-form-group {% if error %}govuk-form-group--error{% endif %}">
+        <fieldset class="govuk-fieldset">
+          <legend class="govuk-fieldset__legend govuk-fieldset__legend--m">
+            What type of item do you want to add?
+          </legend>
+          {% if error %}
+          <p class="govuk-error-message">
+            <span class="govuk-visually-hidden">Error:</span> {{ error }}
+          </p>
+          {% endif %}
+          <div class="govuk-radios">
+            <div class="govuk-radios__item">
+              <input class="govuk-radios__input" id="item_type_schedule"
+                     name="item_type" type="radio" value="schedule">
+              <label class="govuk-label govuk-radios__label" for="item_type_schedule">
+                Schedule
+              </label>
+              <div id="item_type_schedule-hint" class="govuk-hint govuk-radios__hint">
+                A named group of sections — use for Pattern C (schedule → section) navigation.
+              </div>
+            </div>
+            <div class="govuk-radios__item">
+              <input class="govuk-radios__input" id="item_type_section"
+                     name="item_type" type="radio" value="section">
+              <label class="govuk-label govuk-radios__label" for="item_type_section">
+                Section
+              </label>
+              <div id="item_type_section-hint" class="govuk-hint govuk-radios__hint">
+                A direct section — use for Pattern A (single) or Pattern B (section menu) navigation.
+              </div>
+            </div>
+          </div>
+        </fieldset>
+      </div>
+
+      <div class="govuk-button-group">
+        <button type="submit" class="govuk-button">Continue</button>
+        <a href="{{ edit_url }}" class="govuk-link">Cancel</a>
+      </div>
+    </form>
+
+    {% elif step == 2 %}
+    {# ── Step 2: choose item ──────────────────────────────────────────────── #}
+
+    <form method="post" novalidate>
+      {% csrf_token %}
+      <input type="hidden" name="item_type" value="{{ item_type }}">
+
+      <div class="govuk-form-group">
+        {% if item_type == 'schedule' %}
+        <label class="govuk-label govuk-label--s" for="item_id">
+          Select a schedule
+        </label>
+        <div class="govuk-hint">
+          Only unassigned schedules (not currently linked to any regime) are shown.
+        </div>
+        {% else %}
+        <label class="govuk-label govuk-label--s" for="item_id">
+          Select a section
+        </label>
+        <div class="govuk-hint">
+          Only unassigned sections (not currently in any regime or schedule) are shown.
+        </div>
+        {% endif %}
+
+        {% if available %}
+        <select class="govuk-select" id="item_id" name="item_id">
+          <option value="">— select —</option>
+          {% for item in available %}
+          <option value="{{ item.pk }}">
+            {% if item_type == 'schedule' %}
+              {{ item.schedule_id }} — {{ item.schedule_name }}
+            {% else %}
+              {{ item.section_id }} — {{ item.section_name }}
+            {% endif %}
+          </option>
+          {% endfor %}
+        </select>
+        {% else %}
+        <p class="govuk-body govuk-hint">
+          No unassigned {% if item_type == 'schedule' %}schedules{% else %}sections{% endif %} available.
+          Create one first before adding it to a regime.
+        </p>
+        {% endif %}
+      </div>
+
+      <div class="govuk-button-group">
+        {% if available %}
+        <button type="submit" class="govuk-button">Add to regime</button>
+        {% endif %}
+        <a href="{{ edit_url }}" class="govuk-link">Cancel</a>
+      </div>
+    </form>
+
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}

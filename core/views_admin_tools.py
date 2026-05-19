@@ -1252,6 +1252,88 @@ def tools_regime_edit_composite(request, regime_id):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 0m. REGIME ITEM ADD
+# ─────────────────────────────────────────────────────────────────────────────
+
+@staff_required
+def tools_regime_item_add(request, regime_id):
+    """
+    Two-step wizard to add a Schedule or Section to a regime.
+
+    Step 1 (GET):           type-choice radio (Schedule / Section)
+    Step 2 (POST, no item): item dropdown for the chosen type
+    Step 3 (POST, item set): assign item to regime, redirect to edit page
+    """
+    regime = get_object_or_404(
+        Regime, regime_id=regime_id,
+        dept_id=request.session.get('active_dept', settings.ACTIVE_DEPT),
+    )
+    edit_url = reverse('core:tools_regime_edit_composite', kwargs={'regime_id': regime_id})
+
+    if request.method == 'GET':
+        return render(request, 'core/tools_regime_item_add.html', {
+            'regime':   regime,
+            'edit_url': edit_url,
+            'step':     1,
+        })
+
+    # POST — read submitted fields
+    item_type = request.POST.get('item_type', '').strip()
+    item_id   = request.POST.get('item_id', '').strip()
+
+    if not item_id:
+        # Step 2: type chosen, show item picker
+        if item_type not in ('schedule', 'section'):
+            return render(request, 'core/tools_regime_item_add.html', {
+                'regime':   regime,
+                'edit_url': edit_url,
+                'step':     1,
+                'error':    'Select a type.',
+            })
+        if item_type == 'schedule':
+            available = Schedule.objects.filter(
+                regime__isnull=True,
+            ).order_by('schedule_id')
+        else:
+            available = Section.objects.filter(
+                regime__isnull=True,
+                schedule__isnull=True,
+            ).order_by('section_id')
+        return render(request, 'core/tools_regime_item_add.html', {
+            'regime':    regime,
+            'edit_url':  edit_url,
+            'step':      2,
+            'item_type': item_type,
+            'available': available,
+        })
+
+    # Step 3: item_id submitted — assign to regime
+    if item_type == 'schedule':
+        schedule = get_object_or_404(Schedule, schedule_id=item_id)
+        max_order = (
+            Schedule.objects.filter(regime=regime)
+            .aggregate(m=Max('display_order'))['m'] or 0
+        )
+        schedule.regime        = regime
+        schedule.display_order = max_order + 1
+        schedule.save()
+    elif item_type == 'section':
+        section = get_object_or_404(Section, section_id=item_id)
+        max_order = (
+            Section.objects.filter(regime=regime, schedule__isnull=True)
+            .aggregate(m=Max('display_order'))['m'] or 0
+        )
+        section.regime        = regime
+        section.schedule      = None
+        section.display_order = max_order + 1
+        section.save()
+    else:
+        return redirect(edit_url)
+
+    return redirect(edit_url + '?updated=item_added')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 0n. REGIME CREATE
 # ─────────────────────────────────────────────────────────────────────────────
 
