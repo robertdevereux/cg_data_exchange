@@ -8,7 +8,7 @@ from django.urls import reverse
 
 from core.nav_reference import _resolve_user
 from core.permissions import get_permitted_regimes
-from core.session import get_acting_for_name, get_session
+from core.session import get_acting_for_name, get_session, update_session
 
 
 def _build_regime_item(regime):
@@ -26,8 +26,11 @@ def dept_home(request):
     all permitted regimes are shown in a single list ordered by display_order.
     """
     request.session['active_dept'] = 'DWP'
-    actor    = request.user
-    pss      = get_session(request)
+    actor = request.user
+    pss   = get_session(request)
+    if not pss.get('user_id'):
+        update_session(request, {'user_id': actor.pk, 'actor_id': actor.pk})
+        pss = get_session(request)
     user     = _resolve_user(pss, actor)
     is_agent = (actor.pk != user.pk)
 

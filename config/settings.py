@@ -158,3 +158,11 @@ TEST_RUNNER = 'config.test_runner.LoadOnceTestRunner'
 LOGIN_URL = '/accounts/login/'
 LOGIN_REDIRECT_URL = '/'   # fallback only — @login_required passes ?next= so dept apps handle their own post-login redirects
 LOGOUT_REDIRECT_URL = '/'
+
+CURRENT_BASE_URL = os.environ.get('CURRENT_BASE_URL', 'http://127.0.0.1:8000')
+
+DEPT_BASE_URLS = {
+    'HMRC': 'https://cg-data-exchange-hmrc.onrender.com',
+    'DWP':  'https://cg-data-exchange-dwp.onrender.com',
+    'DEMO': 'https://cg-data-exchange.onrender.com',
+}

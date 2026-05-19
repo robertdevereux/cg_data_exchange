@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth import logout as auth_logout
 from django.shortcuts import render
 
@@ -13,9 +14,22 @@ def root_landing(request):
     if request.user.is_authenticated:
         auth_logout(request)
     depts = Department.objects.exclude(dept_id='PLATFORM').order_by('dept_id')
+    dept_base_urls = settings.DEPT_BASE_URLS
     dept_data = []
     for dept in depts:
+        base = dept_base_urls.get(dept.dept_id, '')
+        prefix = dept.dept_id.lower()
         regimes = Regime.objects.filter(dept_id=dept.dept_id).order_by('display_order', 'regime_id')
         if regimes.exists():
-            dept_data.append({'dept': dept, 'regimes': regimes})
+            dept_data.append({
+                'dept':     dept,
+                'dept_url': f'{base}/{prefix}/',
+                'regimes':  [
+                    {
+                        'regime': r,
+                        'url':    f'{base}/{prefix}/regime/{r.regime_id}/',
+                    }
+                    for r in regimes
+                ],
+            })
     return render(request, 'core/root_landing.html', {'dept_data': dept_data})

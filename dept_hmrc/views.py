@@ -12,7 +12,7 @@ from core.views_layer1 import regime_schedule_sections, regime_schedules  # noqa
 from core.models import Regime, SectionStatus
 from core.nav_reference import _resolve_user
 from core.permissions import get_permitted_regimes, get_permitted_sections
-from core.session import get_acting_for_name, get_session
+from core.session import get_acting_for_name, get_session, update_session
 
 
 @login_required
@@ -21,6 +21,9 @@ def dept_home(request):
     request.session['active_dept'] = 'HMRC'
     actor = request.user
     pss   = get_session(request)
+    if not pss.get('user_id'):
+        update_session(request, {'user_id': actor.pk, 'actor_id': actor.pk})
+        pss = get_session(request)
     user  = _resolve_user(pss, actor)
 
     regimes = (
