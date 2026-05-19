@@ -278,7 +278,7 @@
                 {% for section_id, v in section_validations.items %}
                 {% if not v.valid %}
                 <li>
-                  <a href="/tools/sections/{{ section_id }}/routing/">{{ section_id }}</a>
+                  <a href="{% url 'core:tools_section_routing' section_id=section_id %}">{{ section_id }}</a>
                   <ul class="govuk-list govuk-list--bullet govuk-!-margin-top-1 govuk-!-margin-bottom-0">
                     {% for issue in v.issues %}
                     <li>{{ issue }}</li>

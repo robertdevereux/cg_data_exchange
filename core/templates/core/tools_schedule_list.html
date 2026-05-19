@@ -28,6 +28,23 @@
       </div>
       {% endif %}
 
+      {% if deleted %}
+      <div class="govuk-notification-banner govuk-notification-banner--success"
+           role="alert" aria-labelledby="govuk-notification-banner-title-deleted"
+           data-module="govuk-notification-banner">
+        <div class="govuk-notification-banner__header">
+          <h2 class="govuk-notification-banner__title" id="govuk-notification-banner-title-deleted">
+            Success
+          </h2>
+        </div>
+        <div class="govuk-notification-banner__content">
+          <p class="govuk-body">
+            Schedule <strong>{{ deleted }}</strong> has been deleted.
+          </p>
+        </div>
+      </div>
+      {% endif %}
+
       <div class="govuk-button-group govuk-!-margin-bottom-6">
         <a href="{% url 'core:tools_schedule_create' %}" class="govuk-button govuk-button--secondary">
           Create new schedule
@@ -45,7 +62,7 @@
             <th scope="col" class="govuk-table__header" style="width:20%">Regime</th>
             <th scope="col" class="govuk-table__header" style="width:8%">Order</th>
             <th scope="col" class="govuk-table__header" style="width:8%">Sections</th>
-            <th scope="col" class="govuk-table__header" style="width:14%">
+            <th scope="col" class="govuk-table__header" style="width:20%">
               <span class="govuk-visually-hidden">Actions</span>
             </th>
           </tr>
@@ -63,6 +80,9 @@
             <td class="govuk-table__cell">
               <a href="{% url 'core:tools_schedule_edit' sch.schedule_id %}"
                  class="govuk-link">Edit</a>
+              &nbsp;
+              <a href="{% url 'core:tools_schedule_delete' sch.schedule_id %}"
+                 class="govuk-link govuk-link--no-visited-state" style="color:#d4351c;">Delete</a>
             </td>
           </tr>
           {% empty %}

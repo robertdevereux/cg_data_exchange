@@ -187,9 +187,9 @@ class TestSolicitor1Flow(TestCase):
         self.assertEqual(r.status_code, 200)
         final_url = r.redirect_chain[-1][0] if r.redirect_chain else ''
         self.assertIn('/demo/regimes/', final_url)
-        # Step 2: follow into the Financial Information schedule section list
+        # Step 2: follow into the Financial Information schedule section list (core URL)
         r2 = self.client.get(
-            '/demo/regime/DEMO_SCHEDULES/schedule/SCHED_FINANCES/sections/',
+            '/regime/DEMO_SCHEDULES/schedule/SCHED_FINANCES/sections/',
             follow=True,
         )
         self.assertEqual(r2.status_code, 200)

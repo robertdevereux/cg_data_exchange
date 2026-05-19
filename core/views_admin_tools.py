@@ -22,6 +22,7 @@ Staff-only views for inspecting, editing, and creating regime configuration.
   /tools/create/abandon/                          — abandon current draft and restart
 """
 
+import json
 import os
 import re
 import uuid
@@ -97,16 +98,6 @@ def validate_section_routing(section):
         issues.append(
             f'Node {node_id} is defined but cannot be reached from the entry point.'
         )
-
-    # Check 4: conditional-only branching nodes with no unconditional fallback
-    for node_id, node_rows in node_map.items():
-        has_conditional   = any(r.answer_value is not None for r in node_rows)
-        has_unconditional = any(r.answer_value is None     for r in node_rows)
-        if has_conditional and not has_unconditional:
-            issues.append(
-                f'Node {node_id} has conditional routes but no unconditional fallback — '
-                f'answers not matching any condition will have no route.'
-            )
 
     return {'valid': len(issues) == 0, 'issues': issues}
 
@@ -419,8 +410,8 @@ def tools_sections_list(request):
     sections = (
         Section.objects
         .filter(
-            Q(regime__dept_id=settings.ACTIVE_DEPT) |
-            Q(schedule__regime__dept_id=settings.ACTIVE_DEPT) |
+            Q(regime__dept_id=request.session.get('active_dept', settings.ACTIVE_DEPT)) |
+            Q(schedule__regime__dept_id=request.session.get('active_dept', settings.ACTIVE_DEPT)) |
             Q(regime__isnull=True, schedule__isnull=True)
         )
         .annotate(routing_count=Count('routing_rules'))
@@ -430,6 +421,34 @@ def tools_sections_list(request):
     return render(request, 'core/tools_sections_list.html', {
         'sections':  sections,
         'added':     request.GET.get('added', ''),
+        'deleted':   request.GET.get('deleted', ''),
+    })
+
+
+@staff_required
+def tools_section_delete(request, section_id):
+    """Confirm and delete a section (GET: confirm page; POST: delete)."""
+    section = get_object_or_404(Section, section_id=section_id)
+
+    if request.method == 'POST':
+        # Explicitly remove routing and status records first (CASCADE would
+        # handle them, but being explicit matches the documented behaviour).
+        Routing.objects.filter(section=section).delete()
+        SectionStatus.objects.filter(section=section).delete()
+        # Delete the section itself — Answer/AnswerHistory/AnswerTable rows
+        # with non-nullable section FKs will cascade-delete automatically.
+        section.delete()
+        return redirect(
+            reverse('core:tools_sections_list') + f'?deleted={section_id}'
+        )
+
+    # Build context for the confirmation page.
+    schedule_assignment = section.schedule
+    regime_assignment   = section.regime
+    return render(request, 'core/tools_section_delete.html', {
+        'section':             section,
+        'schedule_assignment': schedule_assignment,
+        'regime_assignment':   regime_assignment,
     })
 
 
@@ -442,7 +461,7 @@ def tools_schedule_list(request):
     """List all schedules for the active department."""
     schedules = (
         Schedule.objects
-        .filter(regime__dept_id=settings.ACTIVE_DEPT)
+        .filter(regime__dept_id=request.session.get('active_dept', settings.ACTIVE_DEPT))
         .annotate(section_count=Count('sections', distinct=True))
         .select_related('regime')
         .order_by('regime__regime_id', 'display_order')
@@ -450,37 +469,52 @@ def tools_schedule_list(request):
     return render(request, 'core/tools_schedule_list.html', {
         'schedules': schedules,
         'added':     request.GET.get('added', ''),
+        'deleted':   request.GET.get('deleted', ''),
+    })
+
+
+@staff_required
+def tools_schedule_delete(request, schedule_id):
+    """Confirm and delete a schedule (GET: confirm page; POST: delete)."""
+    schedule = get_object_or_404(Schedule, schedule_id=schedule_id)
+
+    if request.method == 'POST':
+        # Preserve sections by unlinking them from this schedule before
+        # deleting — Section.schedule is nullable with CASCADE so we must
+        # do this explicitly to avoid losing the section records.
+        Section.objects.filter(schedule=schedule).update(schedule=None)
+        # Delete the schedule itself — ScheduleStatus rows cascade automatically.
+        schedule.delete()
+        return redirect(
+            reverse('core:tools_schedule_list') + f'?deleted={schedule_id}'
+        )
+
+    # Build context for the confirmation page.
+    regime     = schedule.regime
+    sections   = schedule.sections.order_by('display_order', 'section_id')
+    return render(request, 'core/tools_schedule_delete.html', {
+        'schedule': schedule,
+        'regime':   regime,
+        'sections': sections,
     })
 
 
 @staff_required
 def tools_schedule_create(request):
     """Create a new schedule and redirect straight to section assignment."""
-    regimes = Regime.objects.filter(dept_id=settings.ACTIVE_DEPT).order_by('regime_id')
     errors = {}
     post = {}
 
     if request.method == 'POST':
         post = request.POST
         schedule_name = post.get('schedule_name', '').strip()
-        regime_id     = post.get('regime', '').strip()
-        display_order = post.get('display_order', '0').strip()
 
         if not schedule_name:
             errors['schedule_name'] = 'Enter a schedule name'
 
-        regime = None
-        if not regime_id:
-            errors['regime'] = 'Select a regime'
-        else:
-            try:
-                regime = Regime.objects.get(regime_id=regime_id, dept_id=settings.ACTIVE_DEPT)
-            except Regime.DoesNotExist:
-                errors['regime'] = 'Select a valid regime'
-
         if not errors:
             # Auto-generate schedule_id: <ACTIVE_DEPT>_SCH<N>
-            sch_prefix = settings.ACTIVE_DEPT
+            sch_prefix = request.session.get('active_dept', settings.ACTIVE_DEPT)
             sch_existing = Schedule.objects.filter(
                 schedule_id__regex=rf'^{re.escape(sch_prefix)}_SCH\d+$'
             ).values_list('schedule_id', flat=True)
@@ -488,21 +522,14 @@ def tools_schedule_create(request):
             sch_next = (max(sch_nums) + 1) if sch_nums else 1
             schedule_id = f'{sch_prefix}_SCH{sch_next}'
 
-            try:
-                display_order_int = int(display_order)
-            except ValueError:
-                display_order_int = 0
-
             Schedule.objects.create(
                 schedule_id=schedule_id,
                 schedule_name=schedule_name,
-                regime=regime,
-                display_order=display_order_int,
             )
             return redirect(f'/tools/schedules/{schedule_id}/sections/')
 
     # Preview ID for the template info panel
-    _sch_prefix = settings.ACTIVE_DEPT
+    _sch_prefix = request.session.get('active_dept', settings.ACTIVE_DEPT)
     _sch_existing = Schedule.objects.filter(
         schedule_id__regex=rf'^{re.escape(_sch_prefix)}_SCH\d+$'
     ).values_list('schedule_id', flat=True)
@@ -510,10 +537,8 @@ def tools_schedule_create(request):
     next_schedule_id = f'{_sch_prefix}_SCH{(max(_sch_nums) + 1) if _sch_nums else 1}'
 
     context = {
-        'regimes':          regimes,
         'errors':           errors,
         'post':             post,
-        'active_dept':      settings.ACTIVE_DEPT,
         'next_schedule_id': next_schedule_id,
     }
     return render(request, 'core/tools_schedule_create.html', context)
@@ -565,19 +590,20 @@ def tools_schedule_section_add(request, schedule_id):
     if request.method != 'POST':
         return redirect(reverse('core:tools_schedule_edit', kwargs={'schedule_id': schedule_id}))
     schedule = get_object_or_404(Schedule.objects.select_related('regime'), schedule_id=schedule_id)
-    section_id    = request.POST.get('section_id', '').strip()
-    display_order = request.POST.get('display_order', '0').strip()
+    section_id = request.POST.get('section_id', '').strip()
     try:
         section = Section.objects.get(section_id=section_id)
     except Section.DoesNotExist:
         return redirect(reverse('core:tools_schedule_edit', kwargs={'schedule_id': schedule_id}))
-    try:
-        order_int = int(display_order)
-    except ValueError:
-        order_int = 0
+    max_order = (
+        Section.objects.filter(schedule=schedule)
+        .order_by('-display_order')
+        .values_list('display_order', flat=True)
+        .first() or 0
+    )
     section.schedule      = schedule
     section.regime        = None
-    section.display_order = order_int
+    section.display_order = max_order + 10
     section.save()
     result = validate_section_routing(section)
     if not result['valid']:
@@ -668,7 +694,7 @@ def tools_navigation(request):
     """Landing page: list regimes with their inferred navigation pattern."""
     regimes = (
         Regime.objects
-        .filter(dept_id=settings.ACTIVE_DEPT)
+        .filter(dept_id=request.session.get('active_dept', settings.ACTIVE_DEPT))
         .annotate(
             direct_count=Count('direct_sections', distinct=True),
             schedule_count=Count('schedules', distinct=True),
@@ -698,7 +724,7 @@ def tools_navigation(request):
 @staff_required
 def tools_navigation_regime(request, regime_id):
     """Three-step wizard (session-backed) for choosing and confirming a navigation pattern."""
-    regime = get_object_or_404(Regime, regime_id=regime_id, dept_id=settings.ACTIVE_DEPT)
+    regime = get_object_or_404(Regime, regime_id=regime_id, dept_id=request.session.get('active_dept', settings.ACTIVE_DEPT))
 
     # Session keys namespaced per regime so multiple regimes don't collide
     sk_step    = f'nav_{regime_id}_step'
@@ -904,7 +930,7 @@ def tools_regime_list(request):
     """List regimes for the active department."""
     regimes = (
         Regime.objects
-        .filter(dept_id=settings.ACTIVE_DEPT)
+        .filter(dept_id=request.session.get('active_dept', settings.ACTIVE_DEPT))
         .annotate(
             section_count=Count('direct_sections', distinct=True),
             schedule_count=Count('schedules', distinct=True),
@@ -915,6 +941,38 @@ def tools_regime_list(request):
         'regimes': regimes,
         'added':   request.GET.get('added', ''),
         'updated': request.GET.get('updated', ''),
+        'deleted': request.GET.get('deleted', ''),
+    })
+
+
+@staff_required
+def tools_regime_delete(request, regime_id):
+    """Confirm and delete a regime (GET: confirm page; POST: delete)."""
+    regime = get_object_or_404(
+        Regime, regime_id=regime_id,
+        dept_id=request.session.get('active_dept', settings.ACTIVE_DEPT)
+    )
+
+    if request.method == 'POST':
+        # Preserve schedules and direct sections by unlinking them before
+        # deleting — their regime FKs are nullable with CASCADE so we must
+        # do this explicitly to avoid cascade-deleting structural records.
+        Schedule.objects.filter(regime=regime).update(regime=None)
+        Section.objects.filter(regime=regime).update(regime=None)
+        # Delete the regime itself — Cases, Answers, SectionStatus, Permission
+        # rows with this regime will cascade-delete automatically.
+        regime.delete()
+        return redirect(
+            reverse('core:tools_regime_list') + f'?deleted={regime_id}'
+        )
+
+    # Build context for the confirmation page.
+    schedule_count = regime.schedules.count()
+    section_count  = regime.direct_sections.count()
+    return render(request, 'core/tools_regime_delete.html', {
+        'regime':          regime,
+        'schedule_count':  schedule_count,
+        'section_count':   section_count,
     })
 
 
@@ -962,7 +1020,7 @@ def tools_regime_edit(request, regime_id):
 def tools_regime_edit_composite(request, regime_id):
     """Composite regime page: details + navigation wizard + review."""
     regime = get_object_or_404(
-        Regime, regime_id=regime_id, dept_id=settings.ACTIVE_DEPT
+        Regime, regime_id=regime_id, dept_id=request.session.get('active_dept', settings.ACTIVE_DEPT)
     )
 
     if request.method == 'POST':
@@ -1076,7 +1134,8 @@ def tools_regime_create(request):
         elif not regime_code.isalpha():
             errors['regime_code'] = 'Regime code must be uppercase letters only, e.g. IHT'
 
-        generated_id = f'{settings.ACTIVE_DEPT}_{regime_code}' if regime_code else ''
+        _active_dept = request.session.get('active_dept', settings.ACTIVE_DEPT)
+        generated_id = f'{_active_dept}_{regime_code}' if regime_code else ''
 
         if not errors.get('regime_code') and generated_id:
             if Regime.objects.filter(regime_id=generated_id).exists():
@@ -1089,7 +1148,7 @@ def tools_regime_create(request):
             regime = Regime.objects.create(
                 regime_id=generated_id,
                 regime_name=regime_name,
-                dept_id=settings.ACTIVE_DEPT,
+                dept_id=request.session.get('active_dept', settings.ACTIVE_DEPT),
                 display_order=0,
             )
             # Auto-grant to all non-actor users
@@ -1109,7 +1168,7 @@ def tools_regime_create(request):
     context = {
         'errors':      errors,
         'post':        post,
-        'active_dept': settings.ACTIVE_DEPT,
+        'active_dept': request.session.get('active_dept', settings.ACTIVE_DEPT),
     }
     return render(request, 'core/tools_regime_create.html', context)
 
@@ -1128,7 +1187,7 @@ def tools_section_create(request):
     """
     regimes = (
         Regime.objects
-        .filter(dept_id=settings.ACTIVE_DEPT)
+        .filter(dept_id=request.session.get('active_dept', settings.ACTIVE_DEPT))
         .order_by('regime_id')
     )
     errors = {}
@@ -1149,7 +1208,7 @@ def tools_section_create(request):
 
         if not errors:
             # Auto-generate section_id: <ACTIVE_DEPT>_S<N>
-            prefix = settings.ACTIVE_DEPT
+            prefix = request.session.get('active_dept', settings.ACTIVE_DEPT)
             existing = Section.objects.filter(
                 section_id__regex=rf'^{re.escape(prefix)}_S\d+$'
             ).values_list('section_id', flat=True)
@@ -1221,7 +1280,7 @@ def tools_section_create(request):
                 copy_from_id = ''
 
     # Preview ID for the template info panel
-    _prefix = settings.ACTIVE_DEPT
+    _prefix = request.session.get('active_dept', settings.ACTIVE_DEPT)
     _existing = Section.objects.filter(
         section_id__regex=rf'^{re.escape(_prefix)}_S\d+$'
     ).values_list('section_id', flat=True)
@@ -1233,7 +1292,7 @@ def tools_section_create(request):
         'section_type_choices':  Section.SECTION_TYPE_CHOICES,
         'errors':                errors,
         'post':                  post,
-        'active_dept':           settings.ACTIVE_DEPT,
+        'active_dept':           request.session.get('active_dept', settings.ACTIVE_DEPT),
         'copy_source':           copy_source,
         'next_section_id':       next_section_id,
     }
@@ -1250,8 +1309,8 @@ def tools_section_copy_picker(request):
     sections = (
         Section.objects
         .filter(
-            Q(regime__dept_id=settings.ACTIVE_DEPT) |
-            Q(schedule__regime__dept_id=settings.ACTIVE_DEPT) |
+            Q(regime__dept_id=request.session.get('active_dept', settings.ACTIVE_DEPT)) |
+            Q(schedule__regime__dept_id=request.session.get('active_dept', settings.ACTIVE_DEPT)) |
             Q(regime__isnull=True, schedule__isnull=True)
         )
         .annotate(routing_count=Count('routing_rules'))
@@ -1351,7 +1410,7 @@ def build_routing_tree(section):
     )
 
     if not rows:
-        return [{'type': 'end', 'node_id': None, 'label': 'END', 'indent': 0,
+        return [{'type': 'end', 'node_id': None, 'label': 'END', 'indent': 0, 'depth': 0,
                  'is_branching': False, 'conditions': [], 'answer_value': None,
                  'next_node': None, 'routing_row_id': None, 'condition_empty': False}]
 
@@ -1385,6 +1444,7 @@ def build_routing_tree(section):
         if node_id is None:
             result.append({
                 'type': 'end', 'node_id': None, 'label': 'END', 'indent': indent,
+                'depth': (indent + 1) // 2,
                 'is_branching': False, 'conditions': [], 'answer_value': None,
                 'next_node': None, 'routing_row_id': None, 'condition_empty': False,
             })
@@ -1412,6 +1472,7 @@ def build_routing_tree(section):
                 'node_id': node_id,
                 'label': node_label(node_id),
                 'indent': indent,
+                'depth': (indent + 1) // 2,
                 'is_branching': False,
                 'conditions': [],
                 'answer_value': None,
@@ -1453,6 +1514,7 @@ def build_routing_tree(section):
                 'node_id': node_id,
                 'label': node_label(node_id),
                 'indent': indent,
+                'depth': (indent + 1) // 2,
                 'is_branching': True,
                 'conditions': conditions_labels,
                 'answer_value': None,
@@ -1481,6 +1543,7 @@ def build_routing_tree(section):
                     'node_id': node_id,
                     'label': cond_row.answer_value or '(unconditional)',
                     'indent': indent + 1,
+                    'depth': (indent + 2) // 2,
                     'is_branching': False,
                     'conditions': [],
                     'answer_value': cond_row.answer_value,
@@ -1685,7 +1748,7 @@ def tools_routing_insert(request, section_id):
         anchor_answer_value = request.POST.get('anchor_answer_value', '').strip() or None
         node_type           = request.POST.get('node_type', 'question').strip()
         new_node_id         = request.POST.get('node_id', '').strip()
-        new_answer_value    = request.POST.get('answer_value', '').strip() or None
+        branching           = request.POST.get('branching', 'no').strip()
 
         # Validate node exists and is not already in this section's routing
         if not new_node_id:
@@ -1699,6 +1762,19 @@ def tools_routing_insert(request, section_id):
         if Routing.objects.filter(section=section, current_node=new_node_id).exists():
             return _routing_redirect(section_id)
 
+        # Collect branch answer values (branching == 'yes') or single unconditional
+        if branching == 'yes':
+            branch_answer_values = []
+            for i in range(10):
+                key = f'branch_{i}'
+                if key not in request.POST:
+                    break
+                vals = request.POST.getlist(key)
+                joined = ';'.join(v for v in vals if v.strip())
+                branch_answer_values.append(joined if joined else None)
+        else:
+            branch_answer_values = [None]
+
         max_order = (
             Routing.objects.filter(section=section)
             .order_by('-order_in_section')
@@ -1706,27 +1782,51 @@ def tools_routing_insert(request, section_id):
             .first()
         ) or 0
 
-        if position == 'first':
-            Routing.objects.create(
-                section=section,
-                current_node=new_node_id,
-                answer_value=None,
-                next_node=None,
-                order_in_section=10,
+        # ── Handle __END__ sentinel: treat as 'after' on last unconditional row ─
+        if position == 'before' and anchor_node == '__END__':
+            last_row = (
+                Routing.objects
+                .filter(section=section, next_node__isnull=True, answer_value__isnull=True)
+                .order_by('-order_in_section')
+                .first()
             )
+            if last_row is not None:
+                last_row.next_node = new_node_id
+                last_row.save()
+            for av in branch_answer_values:
+                Routing.objects.create(
+                    section=section,
+                    current_node=new_node_id,
+                    answer_value=av,
+                    next_node=None,
+                    order_in_section=max_order + 10,
+                )
+                max_order += 10
+
+        elif position == 'first':
+            for av in branch_answer_values:
+                Routing.objects.create(
+                    section=section,
+                    current_node=new_node_id,
+                    answer_value=av,
+                    next_node=None,
+                    order_in_section=10,
+                )
 
         elif position == 'before' and anchor_node:
             # All rows pointing to anchor_node → new_node_id
             Routing.objects.filter(section=section, next_node=anchor_node).update(
                 next_node=new_node_id
             )
-            Routing.objects.create(
-                section=section,
-                current_node=new_node_id,
-                answer_value=new_answer_value,
-                next_node=anchor_node,
-                order_in_section=max_order + 10,
-            )
+            for av in branch_answer_values:
+                Routing.objects.create(
+                    section=section,
+                    current_node=new_node_id,
+                    answer_value=av,
+                    next_node=anchor_node,
+                    order_in_section=max_order + 10,
+                )
+                max_order += 10
 
         elif position == 'after' and anchor_node:
             if anchor_answer_value is not None:
@@ -1754,13 +1854,15 @@ def tools_routing_insert(request, section_id):
                 z = anchor_row.next_node
                 anchor_row.next_node = new_node_id
                 anchor_row.save()
-            Routing.objects.create(
-                section=section,
-                current_node=new_node_id,
-                answer_value=new_answer_value,
-                next_node=z,
-                order_in_section=max_order + 10,
-            )
+            for av in branch_answer_values:
+                Routing.objects.create(
+                    section=section,
+                    current_node=new_node_id,
+                    answer_value=av,
+                    next_node=z,
+                    order_in_section=max_order + 10,
+                )
+                max_order += 10
 
         _renumber_routing(section)
         return _routing_redirect(section_id)
@@ -1778,13 +1880,22 @@ def tools_routing_insert(request, section_id):
     questions = Question.objects.exclude(question_id__in=existing_node_ids).order_by('question_id')
     sets      = QuestionSet.objects.exclude(set_id__in=existing_node_ids).order_by('set_id')
 
+    # Build options map for radio/checkbox questions only
+    question_options = {}
+    for q in questions:
+        if q.question_type in ('radio', 'checkbox') and q.options:
+            opts = [o.strip() for o in q.options.split(';') if o.strip()]
+            if opts:
+                question_options[q.question_id] = opts
+
     return render(request, 'core/tools_routing_insert.html', {
-        'section':             section,
-        'position':            position,
-        'anchor_node':         anchor_node,
-        'anchor_answer_value': anchor_answer_value,
-        'questions':           questions,
-        'sets':                sets,
+        'section':              section,
+        'position':             position,
+        'anchor_node':          anchor_node,
+        'anchor_answer_value':  anchor_answer_value,
+        'questions':            questions,
+        'sets':                 sets,
+        'question_options_json': json.dumps(question_options),
     })
 
 
@@ -2286,7 +2397,6 @@ def tools_schedule_edit(request, schedule_id):
             errors['schedule_name'] = 'Schedule name is required.'
         if not errors:
             schedule.schedule_name = schedule_name
-            schedule.display_order = int(request.POST.get('display_order', 0))
             schedule.save()
             return redirect(
                 reverse('core:tools_schedule_edit', kwargs={'schedule_id': schedule_id})
@@ -2294,11 +2404,7 @@ def tools_schedule_edit(request, schedule_id):
             )
 
     members   = Section.objects.filter(schedule=schedule).order_by('display_order')
-    available = Section.objects.filter(
-        Q(regime=schedule.regime, schedule__isnull=True) |
-        Q(regime__isnull=True, schedule__isnull=True)
-    ).order_by('section_id')
-    next_order = (members.order_by('-display_order').values_list('display_order', flat=True).first() or 0) + 10
+    available = Section.objects.exclude(schedule=schedule).order_by('section_id')
     updated   = request.GET.get('updated')
     routing_warning_id   = request.GET.get('routing_warning', '')
     routing_warning_name = ''
@@ -2312,7 +2418,6 @@ def tools_schedule_edit(request, schedule_id):
         'schedule':             schedule,
         'members':              members,
         'available':            available,
-        'next_order':           next_order,
         'errors':               errors,
         'updated':              updated,
         'routing_warning_id':   routing_warning_id,

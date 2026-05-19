@@ -2,7 +2,7 @@
 dept_demo smoke tests — end-to-end navigation flows for all three patterns.
 
 Covers:
-  A) Login redirect → /demo/
+  A) Login redirect → / (root landing; LOGIN_REDIRECT_URL fallback when no ?next=)
   B) Dept home: multi-regime user sees card list; single-regime user auto-redirects
   C) DEMO_SIMPLE (Pattern A): start → questions → confirm → returns to regime home
   D) DEMO_SECTIONS (Pattern B): regime home → section task list → section →
@@ -26,9 +26,9 @@ from core.models import SectionStatus, User
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestLoginRedirect(TestCase):
-    """POST to login should redirect to /demo/ (LOGIN_REDIRECT_URL)."""
+    """POST to login without ?next= should redirect to / (root landing page)."""
 
-    def test_login_lands_at_demo(self):
+    def test_login_lands_at_root(self):
         r = self.client.post(
             '/accounts/login/',
             {'username': 'alice', 'password': 'testpass123'},
@@ -36,8 +36,22 @@ class TestLoginRedirect(TestCase):
         )
         self.assertEqual(r.status_code, 200)
         final = r.redirect_chain[-1][0] if r.redirect_chain else ''
-        self.assertIn('/demo/', final,
-                      f'Login should redirect to /demo/, got chain: {r.redirect_chain}')
+        self.assertEqual(final, '/',
+                         f'Login should redirect to /, got chain: {r.redirect_chain}')
+
+    def test_login_with_next_honours_next(self):
+        r = self.client.post(
+            '/accounts/login/?next=/demo/',
+            {'username': 'alice', 'password': 'testpass123', 'next': '/demo/'},
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        # The redirect chain should pass through /demo/
+        urls = [url for url, _ in r.redirect_chain]
+        self.assertTrue(
+            any('/demo/' in url for url in urls),
+            f'Login with next=/demo/ should redirect through /demo/, got chain: {r.redirect_chain}',
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -319,14 +333,14 @@ class TestPatternC_DemoSchedules(TestCase):
         self.assertEqual(r.status_code, 200)
 
     def test_regime_schedules_home_entry_url_is_schedule_list(self):
-        """Pattern C entry URL must be the schedule list (/demo/regime/.../schedules/)."""
+        """Pattern C entry URL must be the schedule list (/regime/.../schedules/ served by core)."""
         r = self.client.get('/demo/regime/demo-schedules/')
-        self.assertContains(r, '/demo/regime/DEMO_SCHEDULES/schedules/',
+        self.assertContains(r, '/regime/DEMO_SCHEDULES/schedules/',
                             msg_prefix='entry_url should point to schedule list')
 
     def test_schedule_list_renders_with_both_schedules(self):
         self.client.get('/demo/regime/demo-schedules/')
-        r = self.client.get('/demo/regime/DEMO_SCHEDULES/schedules/')
+        r = self.client.get('/regime/DEMO_SCHEDULES/schedules/')
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, 'Personal Information')
         self.assertContains(r, 'Financial Information')
@@ -334,7 +348,7 @@ class TestPatternC_DemoSchedules(TestCase):
     def test_section_list_for_personal_schedule_renders(self):
         self.client.get('/demo/regime/demo-schedules/')
         r = self.client.get(
-            '/demo/regime/DEMO_SCHEDULES/schedule/SCHED_PERSONAL/sections/'
+            '/regime/DEMO_SCHEDULES/schedule/SCHED_PERSONAL/sections/'
         )
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, 'SCHED_S1')
@@ -343,14 +357,14 @@ class TestPatternC_DemoSchedules(TestCase):
     def test_section_done_returns_to_section_list_not_schedule_list(self):
         """
         Critical: after confirming SCHED_S1, section_done must redirect
-        to /demo/regime/DEMO_SCHEDULES/schedule/SCHED_PERSONAL/sections/
+        to /regime/DEMO_SCHEDULES/schedule/SCHED_PERSONAL/sections/ (core URL)
         NOT to the schedule list.
         """
         # Set up navigation context (sets return_url to section list)
         self.client.get('/demo/regime/demo-schedules/')
-        self.client.get('/demo/regime/DEMO_SCHEDULES/schedules/')
+        self.client.get('/regime/DEMO_SCHEDULES/schedules/')
         self.client.get(
-            '/demo/regime/DEMO_SCHEDULES/schedule/SCHED_PERSONAL/sections/'
+            '/regime/DEMO_SCHEDULES/schedule/SCHED_PERSONAL/sections/'
         )
 
         # Answer SCHED_S1 (Identity: name, DOB, NINO branch)
@@ -372,7 +386,7 @@ class TestPatternC_DemoSchedules(TestCase):
         self.assertEqual(r.status_code, 200)
         final = r.redirect_chain[-1][0] if r.redirect_chain else r.wsgi_request.path
         self.assertIn(
-            '/demo/regime/DEMO_SCHEDULES/schedule/SCHED_PERSONAL/sections/',
+            '/regime/DEMO_SCHEDULES/schedule/SCHED_PERSONAL/sections/',
             final,
             f'section_done should return to section list, got: {final}',
         )
@@ -384,7 +398,7 @@ class TestPatternC_DemoSchedules(TestCase):
         """Finances schedule shows SCHED_S3 (table) and SCHED_S4 (declaration)."""
         self.client.get('/demo/regime/demo-schedules/')
         r = self.client.get(
-            '/demo/regime/DEMO_SCHEDULES/schedule/SCHED_FINANCES/sections/'
+            '/regime/DEMO_SCHEDULES/schedule/SCHED_FINANCES/sections/'
         )
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, 'SCHED_S3')

@@ -1,0 +1,46 @@
+{% extends "core/base.html" %}
+
+{% block title %}Available services{% endblock %}
+
+{% block content %}
+<div class="govuk-grid-row">
+  <div class="govuk-grid-column-two-thirds">
+
+    <h1 class="govuk-heading-xl">Available services</h1>
+
+    {% if dept_data %}
+      {% for item in dept_data %}
+      <h2 class="govuk-heading-m govuk-!-margin-top-6">
+        <a href="/{{ item.dept.dept_id|lower }}/" class="govuk-link">
+          {{ item.dept.dept_name }}
+        </a>
+      </h2>
+      <ul class="govuk-list govuk-list--bullet">
+        {% for regime in item.regimes %}
+        <li>
+          <a href="/{{ item.dept.dept_id|lower }}/regime/{{ regime.regime_id }}/"
+             class="govuk-link">
+            {{ regime.regime_name }}
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endfor %}
+    {% else %}
+      <p class="govuk-body">No services are currently available.</p>
+    {% endif %}
+
+  </div>
+</div>
+
+{% if request.user.is_staff %}
+<div class="govuk-grid-row govuk-!-margin-top-4">
+  <div class="govuk-grid-column-full">
+    <p class="govuk-body-s" style="text-align:right;">
+      <a href="{% url 'core:tools_index' %}" class="govuk-link">Admin tools</a>
+      — visit a department home first to set the department context
+    </p>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

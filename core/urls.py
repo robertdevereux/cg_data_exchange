@@ -1,168 +1,26 @@
-from django.urls import path
+from django.urls import include, path
 
-from . import views_admin_tools, views_layer2
+from . import views, views_layer1, views_layer2
 
 app_name = 'core'
 
 urlpatterns = [
 
-    # ── Admin tools ───────────────────────────────────────────────────────────
-    path('tools/',
-         views_admin_tools.tools_home,
-         name='tools_index'),
+    # ── Root landing page ─────────────────────────────────────────────────────
+    path('', views.root_landing, name='root_landing'),
 
-    path('tools/questions/',
-         views_admin_tools.tools_questions_list,
-         name='tools_questions_list'),
+    # ── Admin tools (also mounted at /hmrc/tools/, /dwp/tools/, /demo/tools/) ─
+    path('tools/', include('core.urls_tools')),
 
-    path('tools/questions/add/',
-         views_admin_tools.tools_question_add,
-         name='tools_question_add'),
 
-    path('tools/sets/',
-         views_admin_tools.tools_sets_list,
-         name='tools_sets_list'),
+    # ── Layer 1 navigation — Pattern C (schedule → section list) ─────────────
+    path('regime/<str:regime_id>/schedules/',
+         views_layer1.regime_schedules,
+         name='regime_schedules'),
 
-    path('tools/sets/add/',
-         views_admin_tools.tools_set_add,
-         name='tools_set_add'),
-
-    path('tools/sections/',
-         views_admin_tools.tools_sections_list,
-         name='tools_sections_list'),
-
-    path('tools/sections/create/',
-         views_admin_tools.tools_section_create,
-         name='tools_section_create'),
-
-    path('tools/sections/copy/',
-         views_admin_tools.tools_section_copy_picker,
-         name='tools_section_copy_picker'),
-
-    path('tools/regimes/',
-         views_admin_tools.tools_regime_list,
-         name='tools_regime_list'),
-
-    path('tools/regimes/create/',
-         views_admin_tools.tools_regime_create,
-         name='tools_regime_create'),
-
-    path('tools/regimes/<str:regime_id>/',
-         views_admin_tools.tools_regime_edit_composite,
-         name='tools_regime_edit_composite'),
-
-    path('tools/regimes/<str:regime_id>/edit/',
-         views_admin_tools.tools_regime_edit,
-         name='tools_regime_edit'),
-
-    path('tools/viewer/',
-         views_admin_tools.tools_viewer,
-         name='tools_viewer'),
-
-    path('tools/question/<str:question_id>/edit/',
-         views_admin_tools.tools_question_edit,
-         name='tools_question_edit'),
-
-    path('tools/set/<str:set_id>/edit/',
-         views_admin_tools.tools_set_edit,
-         name='tools_set_edit'),
-
-    path('tools/set/<str:set_id>/member/add/',
-         views_admin_tools.tools_set_member_add,
-         name='tools_set_member_add'),
-
-    path('tools/set/<str:set_id>/member/<str:question_id>/remove/',
-         views_admin_tools.tools_set_member_remove,
-         name='tools_set_member_remove'),
-
-    path('tools/set/<str:set_id>/member/reorder/',
-         views_admin_tools.tools_set_member_reorder,
-         name='tools_set_member_reorder'),
-
-    path('tools/actors/',
-         views_admin_tools.tools_actors,
-         name='tools_actors'),
-
-    path('tools/actors/create/',
-         views_admin_tools.tools_actor_create,
-         name='tools_actor_create'),
-
-    path('tools/actors/revoke/',
-         views_admin_tools.tools_actor_revoke,
-         name='tools_actor_revoke'),
-
-    path('tools/navigation/',
-         views_admin_tools.tools_navigation,
-         name='tools_navigation'),
-
-    path('tools/navigation/<str:regime_id>/',
-         views_admin_tools.tools_navigation_regime,
-         name='tools_navigation_regime'),
-
-    path('tools/schedules/',
-         views_admin_tools.tools_schedule_list,
-         name='tools_schedule_list'),
-
-    path('tools/schedules/create/',
-         views_admin_tools.tools_schedule_create,
-         name='tools_schedule_create'),
-
-    path('tools/schedules/<str:schedule_id>/edit/',
-         views_admin_tools.tools_schedule_edit,
-         name='tools_schedule_edit'),
-
-    path('tools/schedules/<str:schedule_id>/sections/',
-         views_admin_tools.tools_schedule_sections,
-         name='tools_schedule_sections'),
-
-    path('tools/schedules/<str:schedule_id>/sections/add/',
-         views_admin_tools.tools_schedule_section_add,
-         name='tools_schedule_section_add'),
-
-    path('tools/schedules/<str:schedule_id>/sections/remove/',
-         views_admin_tools.tools_schedule_section_remove,
-         name='tools_schedule_section_remove'),
-
-    path('tools/schedules/<str:schedule_id>/sections/reorder/',
-         views_admin_tools.tools_schedule_section_reorder,
-         name='tools_schedule_section_reorder'),
-
-    path('tools/sections/<str:section_id>/edit/',
-         views_admin_tools.tools_section_edit,
-         name='tools_section_edit'),
-
-    path('tools/sections/<str:section_id>/routing/',
-         views_admin_tools.tools_section_routing,
-         name='tools_section_routing'),
-
-    path('tools/sections/<str:section_id>/routing/insert/',
-         views_admin_tools.tools_routing_insert,
-         name='tools_routing_insert'),
-
-    path('tools/sections/<str:section_id>/routing/delete/',
-         views_admin_tools.tools_routing_delete,
-         name='tools_routing_delete'),
-
-    path('tools/sections/<str:section_id>/routing/delete-condition/',
-         views_admin_tools.tools_routing_delete_condition,
-         name='tools_routing_delete_condition'),
-
-    path('tools/sections/<str:section_id>/routing/add-condition/',
-         views_admin_tools.tools_routing_add_condition,
-         name='tools_routing_add_condition'),
-
-    path('tools/create/',
-         views_admin_tools.tools_create,
-         name='tools_create'),
-
-    path('tools/create/save/',
-         views_admin_tools.tools_create_save,
-         name='tools_create_save'),
-
-    path('tools/create/abandon/',
-         views_admin_tools.tools_create_abandon,
-         name='tools_create_abandon'),
-
+    path('regime/<str:regime_id>/schedule/<str:schedule_id>/sections/',
+         views_layer1.regime_schedule_sections,
+         name='regime_schedule_sections'),
 
     # ── Standard section flow ─────────────────────────────────────────────────
     path('section/<str:section_id>/start/',

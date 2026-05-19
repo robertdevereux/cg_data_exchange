@@ -44,9 +44,7 @@
       </div>
       {% endif %}
 
-      {# ══════════════════════════════════════════════════════════════════════════
-         PANEL 1 — Schedule details
-      ══════════════════════════════════════════════════════════════════════════ #}
+      {# ── PANEL 1 — Schedule details ─────────────────────────────────────── #}
 
       <h2 class="govuk-heading-m">Schedule details</h2>
 
@@ -57,7 +55,7 @@
         </div>
         <div class="govuk-summary-list__row">
           <dt class="govuk-summary-list__key">Regime</dt>
-          <dd class="govuk-summary-list__value">{{ schedule.regime.regime_id }} — {{ schedule.regime.regime_name }}</dd>
+          <dd class="govuk-summary-list__value">{% if schedule.regime %}{{ schedule.regime.regime_id }} — {{ schedule.regime.regime_name }}{% else %}—{% endif %}</dd>
         </div>
       </dl>
 
@@ -92,14 +90,6 @@
                  {% if errors.schedule_name %}aria-describedby="schedule_name-error"{% endif %}>
         </div>
 
-        <div class="govuk-form-group">
-          <label class="govuk-label govuk-label--s" for="display_order">Display order</label>
-          <div class="govuk-hint">Controls ordering within the regime.</div>
-          <input class="govuk-input govuk-input--width-5"
-                 id="display_order" name="display_order" type="number"
-                 value="{{ schedule.display_order }}">
-        </div>
-
         <div class="govuk-button-group govuk-!-margin-top-4">
           <button type="submit" class="govuk-button govuk-button--secondary">Save details</button>
           <a href="{% url 'core:tools_schedule_list' %}" class="govuk-link">Cancel</a>
@@ -109,9 +99,7 @@
 
       <hr class="govuk-section-break govuk-section-break--l govuk-section-break--visible govuk-!-margin-top-6">
 
-      {# ══════════════════════════════════════════════════════════════════════════
-         PANEL 2 — Component sections
-      ══════════════════════════════════════════════════════════════════════════ #}
+      {# ── PANEL 2 — Component sections ────────────────────────────────────── #}
 
       <h2 class="govuk-heading-m govuk-!-margin-top-6">Component sections</h2>
 
@@ -191,7 +179,7 @@
         <div class="govuk-form-group">
           <label class="govuk-label govuk-label--s" for="section_id">Section</label>
           <div class="govuk-hint">
-            Shows unassigned sections belonging to regime {{ schedule.regime.regime_id }}.
+            Available sections.
           </div>
           <select class="govuk-select" id="section_id" name="section_id">
             <option value="">— select —</option>
@@ -201,20 +189,13 @@
           </select>
         </div>
 
-        <div class="govuk-form-group">
-          <label class="govuk-label govuk-label--s" for="display_order_add">Display order</label>
-          <input class="govuk-input govuk-input--width-5"
-                 id="display_order_add" name="display_order" type="number"
-                 value="{{ next_order }}">
-        </div>
-
         <div class="govuk-button-group">
           <button type="submit" class="govuk-button govuk-button--secondary">Add section</button>
         </div>
       </form>
       {% else %}
       <p class="govuk-body govuk-hint">
-        No unassigned sections in regime {{ schedule.regime.regime_id }}.
+        No sections available.
         <a href="{% url 'core:tools_section_create' %}" class="govuk-link">Create a section</a> first.
       </p>
       {% endif %}

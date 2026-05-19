@@ -30,7 +30,7 @@
           <p class="govuk-body govuk-!-margin-bottom-0">
             Section <strong>{{ routing_warning_name|default:routing_warning_id }}</strong>
             was added but has incomplete routing.
-            <a href="/tools/sections/{{ routing_warning_id }}/routing/" class="govuk-link">
+            <a href="{% url 'core:tools_section_routing' section_id=routing_warning_id %}" class="govuk-link">
               Edit routing →
             </a>
           </p>

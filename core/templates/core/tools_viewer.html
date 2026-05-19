@@ -122,7 +122,7 @@
               <ul class="govuk-summary-card__actions">
                 <li class="govuk-summary-card__action">
                   <a class="govuk-link"
-                     href="/tools/question/{{ qid }}/edit/?back_regime={{ selected_regime_id }}&amp;back_section={{ selected_section_id }}">
+                     href="{% url 'core:tools_question_edit' question_id=qid %}?back_regime={{ selected_regime_id }}&amp;back_section={{ selected_section_id }}">
                     Change<span class="govuk-visually-hidden"> {{ qid }}</span>
                   </a>
                 </li>
@@ -176,7 +176,7 @@
               <ul class="govuk-summary-card__actions">
                 <li class="govuk-summary-card__action">
                   <a class="govuk-link"
-                     href="/tools/set/{{ sid }}/edit/?back_regime={{ selected_regime_id }}&amp;back_section={{ selected_section_id }}">
+                     href="{% url 'core:tools_set_edit' set_id=sid %}?back_regime={{ selected_regime_id }}&amp;back_section={{ selected_section_id }}">
                     Change<span class="govuk-visually-hidden"> {{ sid }}</span>
                   </a>
                 </li>

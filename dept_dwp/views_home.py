@@ -25,12 +25,13 @@ def dept_home(request):
     Flat regime card list for DWP. Unlike dept_demo, no current/other split —
     all permitted regimes are shown in a single list ordered by display_order.
     """
+    request.session['active_dept'] = 'DWP'
     actor    = request.user
     pss      = get_session(request)
     user     = _resolve_user(pss, actor)
     is_agent = (actor.pk != user.pk)
 
-    permitted_regimes = get_permitted_regimes(actor, user)
+    permitted_regimes = get_permitted_regimes(actor, user, dept_id='DWP')
     acting_for        = get_acting_for_name(pss)
 
     if not permitted_regimes.exists():

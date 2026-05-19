@@ -57,6 +57,8 @@ class Schedule(models.Model):
         to_field='regime_id',
         on_delete=models.CASCADE,
         related_name='schedules',
+        null=True,
+        blank=True,
     )
     display_order = models.PositiveIntegerField(default=0)
 

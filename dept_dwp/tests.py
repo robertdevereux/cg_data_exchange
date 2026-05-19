@@ -188,14 +188,14 @@ class TestDWPNavViews(TestCase):
         self.client.login(username='dwp_alice', password='testpass123')
 
     def test_select_schedule_renders_for_schedules_regime(self):
-        """DEMO_SCHEDULES has two schedules; select_schedule should render 200."""
-        r = self.client.get('/dwp/regime/DEMO_SCHEDULES/schedules/')
+        """DEMO_SCHEDULES has two schedules; schedule list (now at core) should render 200."""
+        r = self.client.get('/regime/DEMO_SCHEDULES/schedules/')
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, 'Personal Information')
         self.assertContains(r, 'Financial Information')
 
     def test_select_schedule_unknown_regime_returns_404(self):
-        r = self.client.get('/dwp/regime/NONEXISTENT/schedules/')
+        r = self.client.get('/regime/NONEXISTENT/schedules/')
         self.assertEqual(r.status_code, 404)
 
     def test_select_section_renders_for_sections_regime(self):
@@ -207,9 +207,9 @@ class TestDWPNavViews(TestCase):
                                 msg_prefix=f'{section_id} missing from section list')
 
     def test_select_section_in_schedule_renders(self):
-        """Filtered section list for a specific schedule renders 200."""
+        """Filtered section list for a specific schedule renders 200 (now at core)."""
         r = self.client.get(
-            '/dwp/regime/DEMO_SCHEDULES/schedule/SCHED_PERSONAL/sections/'
+            '/regime/DEMO_SCHEDULES/schedule/SCHED_PERSONAL/sections/'
         )
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, 'SCHED_S1')

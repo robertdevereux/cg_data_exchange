@@ -7,13 +7,15 @@
   <div class="govuk-grid-row">
     <div class="govuk-grid-column-two-thirds">
 
-      <a href="{% url 'core:tools_section_routing' section.section_id %}" class="govuk-back-link">Back to routing</a>
+      <a href="{% url 'core:tools_section_edit' section.section_id %}" class="govuk-back-link">Back to section</a>
 
       <span class="govuk-caption-l">{{ section.section_id }} — {{ section.section_name }}</span>
       <h1 class="govuk-heading-l">
         Insert node
         {% if position == 'first' %}
           — at start
+        {% elif position == 'before' and anchor_node == '__END__' %}
+          — before END
         {% elif position == 'before' %}
           — before <code>{{ anchor_node }}</code>
         {% elif position == 'after' and anchor_answer_value %}
@@ -27,8 +29,8 @@
       <p class="govuk-body govuk-hint">
         No available nodes — all Questions and QuestionSets are already used in this section's routing.
       </p>
-      <a href="{% url 'core:tools_section_routing' section.section_id %}"
-         class="govuk-button govuk-button--secondary">Back to routing</a>
+      <a href="{% url 'core:tools_section_edit' section.section_id %}"
+         class="govuk-button govuk-button--secondary">Back to section</a>
 
       {% else %}
       <form method="post" novalidate>
@@ -36,6 +38,7 @@
         <input type="hidden" name="position"            value="{{ position }}">
         <input type="hidden" name="anchor_node"         value="{{ anchor_node }}">
         <input type="hidden" name="anchor_answer_value" value="{{ anchor_answer_value }}">
+        <input type="hidden" name="branching"           value="no" id="branching-input">
 
         {# ── Node type ────────────────────────────────────────────────────── #}
         <div class="govuk-form-group">
@@ -96,23 +99,24 @@
           {% endif %}
         </div>
 
-        {# ── Condition value (optional) ───────────────────────────────────── #}
-        <div class="govuk-form-group">
-          <label class="govuk-label govuk-label--s" for="answer_value">
-            Condition value
-            <span class="govuk-hint" style="display:inline">(optional)</span>
-          </label>
-          <div class="govuk-hint">
-            If this node should only be reached under a specific condition, enter the
-            answer value, e.g. <code>Yes</code> or <code>No</code>. Leave blank for unconditional.
-          </div>
-          <input class="govuk-input govuk-input--width-10"
-                 id="answer_value" name="answer_value" type="text">
+        {# ── Branch builder (radio/checkbox questions only) ───────────────── #}
+        <div id="branch-builder" style="display:none">
+          <hr class="govuk-section-break govuk-section-break--m govuk-section-break--visible">
+          <h2 class="govuk-heading-s">Branch builder</h2>
+          <p class="govuk-body-s">
+            This question has defined answer options. Assign each option to a branch.
+            Each branch will become a condition in the routing tree.
+          </p>
+          <div id="branch-groups"></div>
+          <button type="button" class="govuk-button govuk-button--secondary govuk-!-margin-top-2"
+                  id="add-branch-btn" style="display:none">
+            Add another branch
+          </button>
         </div>
 
         <div class="govuk-button-group govuk-!-margin-top-6">
           <button type="submit" class="govuk-button">Insert node</button>
-          <a href="{% url 'core:tools_section_routing' section.section_id %}"
+          <a href="{% url 'core:tools_section_edit' section.section_id %}"
              class="govuk-link">Cancel</a>
         </div>
 
@@ -123,6 +127,9 @@
   </div>
 
   <script>
+    const questionOptions = {{ question_options_json|safe }};
+    const MAX_BRANCHES = 5;
+
     (function () {
       var radioQ  = document.getElementById('node-type-q');
       var radioS  = document.getElementById('node-type-s');
@@ -135,15 +142,104 @@
         var isQ = radioQ.checked;
         groupQ.style.display = isQ ? '' : 'none';
         groupS.style.display = isQ ? 'none' : '';
-        // Disable the hidden select so it doesn't submit its value
         if (selectQ) selectQ.disabled = !isQ;
         if (selectS) selectS.disabled =  isQ;
+        if (!isQ) {
+          hideBranchBuilder();
+        } else if (selectQ) {
+          onQuestionChange();
+        }
       }
 
       radioQ.addEventListener('change', toggle);
       radioS.addEventListener('change', toggle);
+
+      if (selectQ) {
+        selectQ.addEventListener('change', onQuestionChange);
+      }
+
       toggle();
     })();
+
+    function onQuestionChange() {
+      var selectQ = document.querySelector('#q-group select');
+      if (!selectQ) return;
+      var qid = selectQ.value;
+      if (qid && questionOptions[qid]) {
+        showBranchBuilder(questionOptions[qid]);
+      } else {
+        hideBranchBuilder();
+      }
+    }
+
+    function showBranchBuilder(options) {
+      document.getElementById('branching-input').value = 'yes';
+      document.getElementById('branch-builder').style.display = '';
+      document.getElementById('add-branch-btn').style.display = '';
+      var container = document.getElementById('branch-groups');
+      container.innerHTML = '';
+      addBranchGroup(options, 0);
+      addBranchGroup(options, 1);
+    }
+
+    function hideBranchBuilder() {
+      document.getElementById('branching-input').value = 'no';
+      document.getElementById('branch-builder').style.display = 'none';
+      document.getElementById('add-branch-btn').style.display = 'none';
+      document.getElementById('branch-groups').innerHTML = '';
+    }
+
+    function addBranchGroup(options, index) {
+      var container = document.getElementById('branch-groups');
+      if (index >= MAX_BRANCHES) return;
+
+      var div = document.createElement('div');
+      div.id = 'branch-group-' + index;
+      div.style.marginBottom = '1.5rem';
+
+      var legend = document.createElement('p');
+      legend.className = 'govuk-body-s govuk-!-font-weight-bold govuk-!-margin-bottom-1';
+      legend.textContent = 'Branch ' + (index + 1);
+      div.appendChild(legend);
+
+      options.forEach(function(opt) {
+        var item = document.createElement('div');
+        item.className = 'govuk-checkboxes__item';
+
+        var cb = document.createElement('input');
+        cb.className = 'govuk-checkboxes__input';
+        cb.type = 'checkbox';
+        cb.name = 'branch_' + index;
+        cb.value = opt;
+        cb.id = 'branch-' + index + '-' + opt.replace(/\s+/g, '_');
+
+        var lbl = document.createElement('label');
+        lbl.className = 'govuk-label govuk-checkboxes__label';
+        lbl.setAttribute('for', cb.id);
+        lbl.textContent = opt;
+
+        item.appendChild(cb);
+        item.appendChild(lbl);
+        div.appendChild(item);
+      });
+
+      container.appendChild(div);
+    }
+
+    document.getElementById('add-branch-btn').addEventListener('click', function () {
+      var selectQ = document.querySelector('#q-group select');
+      if (!selectQ) return;
+      var qid = selectQ.value;
+      var opts = questionOptions[qid] || [];
+      var container = document.getElementById('branch-groups');
+      var nextIndex = container.children.length;
+      if (nextIndex < MAX_BRANCHES) {
+        addBranchGroup(opts, nextIndex);
+      }
+      if (nextIndex + 1 >= MAX_BRANCHES) {
+        document.getElementById('add-branch-btn').style.display = 'none';
+      }
+    });
   </script>
 
 {% endblock %}

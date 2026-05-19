@@ -33,12 +33,13 @@ def dept_home(request):
     Reads the session user so intermediaries see the subject's regimes.
     Regimes are split into 'current' and 'other' groups for the HMRC-style layout.
     """
+    request.session['active_dept'] = 'DEMO'
     actor    = request.user
     pss      = get_session(request)
     user     = _resolve_user(pss, actor)
     is_agent = (actor.pk != user.pk)
 
-    permitted_regimes = get_permitted_regimes(actor, user)
+    permitted_regimes = get_permitted_regimes(actor, user, dept_id='DEMO')
 
     acting_for = get_acting_for_name(pss)
 

@@ -1,0 +1,88 @@
+{% extends "core/base.html" %}
+
+{% block title %}Delete section {{ section.section_id }} — Platform administration{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-two-thirds">
+
+      <a href="{% url 'core:tools_sections_list' %}" class="govuk-back-link">Sections</a>
+
+      <span class="govuk-caption-l">Section <code>{{ section.section_id }}</code></span>
+      <h1 class="govuk-heading-l govuk-!-margin-top-4">Delete section</h1>
+
+      <dl class="govuk-summary-list govuk-!-margin-bottom-6">
+        <div class="govuk-summary-list__row">
+          <dt class="govuk-summary-list__key">Section ID</dt>
+          <dd class="govuk-summary-list__value"><code>{{ section.section_id }}</code></dd>
+        </div>
+        <div class="govuk-summary-list__row">
+          <dt class="govuk-summary-list__key">Name</dt>
+          <dd class="govuk-summary-list__value">{{ section.section_name }}</dd>
+        </div>
+        <div class="govuk-summary-list__row">
+          <dt class="govuk-summary-list__key">Type</dt>
+          <dd class="govuk-summary-list__value">{{ section.get_section_type_display }}</dd>
+        </div>
+        <div class="govuk-summary-list__row">
+          <dt class="govuk-summary-list__key">Assigned to</dt>
+          <dd class="govuk-summary-list__value">
+            {% if schedule_assignment %}
+              Schedule <code>{{ schedule_assignment.schedule_id }}</code>
+              — {{ schedule_assignment.schedule_name }}
+            {% elif regime_assignment %}
+              Regime <code>{{ regime_assignment.regime_id }}</code>
+              — {{ regime_assignment.regime_name }}
+            {% else %}
+              <span class="govuk-hint">Not assigned to any schedule or regime</span>
+            {% endif %}
+          </dd>
+        </div>
+      </dl>
+
+      <div class="govuk-inset-text">
+        {% if schedule_assignment %}
+          This section appears in schedule
+          <strong>{{ schedule_assignment.schedule_name }}</strong>
+          (<code>{{ schedule_assignment.schedule_id }}</code>).
+          Deleting this section will also remove it from that schedule.
+          The section's routing will also be deleted.
+          The component questions and prior answers will be preserved.
+        {% elif regime_assignment %}
+          This section appears in regime
+          <strong>{{ regime_assignment.regime_name }}</strong>
+          (<code>{{ regime_assignment.regime_id }}</code>).
+          Deleting this section will also remove it from that regime.
+          The section's routing will also be deleted.
+          The component questions and prior answers will be preserved.
+        {% else %}
+          This section is not currently assigned to any schedule or regime.
+          The section's routing will also be deleted.
+          The component questions and prior answers will be preserved.
+        {% endif %}
+      </div>
+
+      <div class="govuk-warning-text">
+        <span class="govuk-warning-text__icon" aria-hidden="true">!</span>
+        <strong class="govuk-warning-text__text">
+          <span class="govuk-visually-hidden">Warning</span>
+          Are you sure you want to delete this section?
+          This action cannot be undone.
+        </strong>
+      </div>
+
+      <form method="post" novalidate>
+        {% csrf_token %}
+        <div class="govuk-button-group">
+          <button type="submit" class="govuk-button govuk-button--warning">
+            Delete section
+          </button>
+          <a href="{% url 'core:tools_sections_list' %}" class="govuk-link">Cancel</a>
+        </div>
+      </form>
+
+    </div>
+  </div>
+
+{% endblock %}

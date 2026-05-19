@@ -57,10 +57,13 @@ def get_permitted_sections(actor, user):
     return (scope1 | scope2).distinct()
 
 
-def get_permitted_regimes(actor, user):
+def get_permitted_regimes(actor, user, dept_id=None):
     """
     Return a distinct QuerySet[Regime] of all regimes reachable from the
     actor/user's permitted sections.  Used to build the regime selection menu.
+
+    If dept_id is provided, the result is further filtered to regimes whose
+    dept_id matches — used by per-department home views to scope their listing.
     """
     permitted = get_permitted_sections(actor, user)
 
@@ -75,4 +78,7 @@ def get_permitted_regimes(actor, user):
     ).values_list('schedule__regime_id', flat=True)
 
     all_ids = set(list(direct_ids) + list(indirect_ids))
-    return Regime.objects.exclude(dept_id='PLATFORM').filter(regime_id__in=all_ids)
+    qs = Regime.objects.exclude(dept_id='PLATFORM').filter(regime_id__in=all_ids)
+    if dept_id is not None:
+        qs = qs.filter(dept_id=dept_id)
+    return qs

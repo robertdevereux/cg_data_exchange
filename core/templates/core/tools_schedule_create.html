@@ -20,9 +20,6 @@
               {% if errors.schedule_name %}
               <li><a href="#schedule_name">{{ errors.schedule_name }}</a></li>
               {% endif %}
-              {% if errors.regime %}
-              <li><a href="#regime">{{ errors.regime }}</a></li>
-              {% endif %}
             </ul>
           </div>
         </div>
@@ -50,46 +47,6 @@
                  id="schedule_name" name="schedule_name" type="text"
                  value="{{ post.schedule_name|default:'' }}"
                  {% if errors.schedule_name %}aria-describedby="schedule_name-error"{% endif %}>
-        </div>
-
-        {# ── Display order ────────────────────────────────────────────────────── #}
-        <div class="govuk-form-group">
-          <label class="govuk-label govuk-label--s" for="display_order">
-            Display order
-          </label>
-          <div class="govuk-hint">
-            Controls order within its regime.
-          </div>
-          <input class="govuk-input govuk-input--width-5"
-                 id="display_order" name="display_order" type="number"
-                 value="{{ post.display_order|default:'0' }}">
-        </div>
-
-        {# ── Regime ───────────────────────────────────────────────────────────── #}
-        <div class="govuk-form-group {% if errors.regime %}govuk-form-group--error{% endif %}">
-          <label class="govuk-label govuk-label--s" for="regime">
-            Regime
-          </label>
-          <div class="govuk-hint">
-            The regime this schedule belongs to.
-          </div>
-          {% if errors.regime %}
-          <p id="regime-error" class="govuk-error-message">
-            <span class="govuk-visually-hidden">Error:</span> {{ errors.regime }}
-          </p>
-          {% endif %}
-          <select class="govuk-select
-                         {% if errors.regime %}govuk-select--error{% endif %}"
-                  id="regime" name="regime"
-                  {% if errors.regime %}aria-describedby="regime-error"{% endif %}>
-            <option value="">— select —</option>
-            {% for r in regimes %}
-            <option value="{{ r.regime_id }}"
-                    {% if post.regime == r.regime_id %}selected{% endif %}>
-              {{ r.regime_id }} — {{ r.regime_name }}
-            </option>
-            {% endfor %}
-          </select>
         </div>
 
         {# ── Schedule ID preview ──────────────────────────────────────────────── #}

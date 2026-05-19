@@ -16,7 +16,6 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import include, path
-from django.views.generic import RedirectView
 from django.views.static import serve
 from django.conf import settings
 import os
@@ -38,12 +37,8 @@ _gds_assets = [
     'assets/fonts/light-f591b13f7d-v2.woff',
 ]
 
-# ACTIVE_DEPT controls the root redirect (/) only.
 # Both dept apps are always registered at their own prefixes so tests can
-# hit /demo/... and /dwp/... directly regardless of the ACTIVE_DEPT setting.
-_dept_home = ('/dwp/'  if settings.ACTIVE_DEPT == 'DWP'  else
-              '/hmrc/' if settings.ACTIVE_DEPT == 'HMRC' else '/demo/')
-
+# hit /demo/... and /dwp/... directly regardless of settings.
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('accounts/', include('django.contrib.auth.urls')),
@@ -57,6 +52,4 @@ urlpatterns = [
         'document_root': _GDS_STATIC,
     })
     for asset in _gds_assets
-] + [
-    path('', RedirectView.as_view(url=_dept_home, permanent=False)),
 ]

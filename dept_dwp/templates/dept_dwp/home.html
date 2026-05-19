@@ -54,4 +54,14 @@
     </div>
   </div>
 
+  {% if request.user.is_staff %}
+  <div class="govuk-grid-row govuk-!-margin-top-2">
+    <div class="govuk-grid-column-full">
+      <p class="govuk-body-s" style="text-align:right;">
+        <a href="{% url 'core:tools_index' %}" class="govuk-link">Admin tools</a>
+      </p>
+    </div>
+  </div>
+  {% endif %}
+
 {% endblock %}

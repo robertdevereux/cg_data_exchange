@@ -10,7 +10,7 @@
       <nav class="govuk-breadcrumbs govuk-!-margin-bottom-6" aria-label="Breadcrumb">
         <ol class="govuk-breadcrumbs__list">
           <li class="govuk-breadcrumbs__list-item">
-            <a class="govuk-breadcrumbs__link" href="/tools/">Platform administration</a>
+            <a class="govuk-breadcrumbs__link" href="{% url 'core:tools_index' %}">Platform administration</a>
           </li>
           <li class="govuk-breadcrumbs__list-item">Create new regime</li>
         </ol>
@@ -56,7 +56,7 @@
         {% endif %}
       </div>
       <div class="govuk-button-group">
-        <a href="/tools/viewer/?regime={{ target_regime_id }}"
+        <a href="{% url 'core:tools_viewer' %}?regime={{ target_regime_id }}"
            class="govuk-button govuk-button--secondary">
           View regime in configuration viewer
         </a>

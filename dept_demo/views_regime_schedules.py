@@ -40,23 +40,25 @@ def regime_schedules_home(request):
     complete = statuses.filter(status='complete').count()
     all_complete = total > 0 and complete == total
 
-    # Set the four SESSION_KEYS + return_url
+    # Set the four SESSION_KEYS + return_url + breadcrumbs up to regime name
+    # (core Pattern C views extend these breadcrumbs with schedule/section names)
+    regime_home_url = request.path
     update_session(request, {
-        'user_id':    user.pk,
-        'actor_id':   actor.pk,
-        'regime_id':  regime.regime_id,
-        'case_id':    case.case_id,
-        'return_url': request.path,
+        'user_id':         user.pk,
+        'actor_id':        actor.pk,
+        'regime_id':       regime.regime_id,
+        'case_id':         case.case_id,
+        'return_url':      request.path,
+        'regime_home_url': regime_home_url,
         'breadcrumbs': [
             {'label': 'HMRC',                 'url': '/demo/'},
             {'label': 'Personal Tax Account', 'url': '/demo/regimes/'},
+            {'label': regime.regime_name,     'url': regime_home_url},
         ],
     })
 
-    # Resolve entry URL; remap any /regime/... path to /demo/regime/...
+    # Resolve entry URL — Pattern C schedule list is served by core at /regime/...
     entry_url = resolve_layer1_entry_url(permitted, _REGIME_ID, all_complete)
-    if entry_url.startswith('/regime/'):
-        entry_url = '/demo' + entry_url
 
     pss = get_session(request)
     return render(request, _TEMPLATE, {

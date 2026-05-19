@@ -7,7 +7,7 @@
   <div class="govuk-grid-row">
     <div class="govuk-grid-column-two-thirds">
 
-      <a href="/tools/regimes/" class="govuk-back-link">Regimes</a>
+      <a href="{% url 'core:tools_regime_list' %}" class="govuk-back-link">Regimes</a>
 
       <span class="govuk-caption-l">Regime <code>{{ regime.regime_id }}</code></span>
       <h1 class="govuk-heading-l govuk-!-margin-top-4">Edit regime</h1>
@@ -73,7 +73,7 @@
 
         <div class="govuk-button-group govuk-!-margin-top-6">
           <button type="submit" class="govuk-button">Save changes</button>
-          <a href="/tools/regimes/" class="govuk-link">Cancel</a>
+          <a href="{% url 'core:tools_regime_list' %}" class="govuk-link">Cancel</a>
         </div>
 
       </form>

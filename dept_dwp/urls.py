@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import include, path
 
 from . import views_dept, views_home, views_nav, views_regime_generic
 
@@ -26,15 +26,18 @@ urlpatterns = [
          name='regime_home'),
 
     # ── Layer 1 navigation patterns ───────────────────────────────────────
-    path('regime/<str:regime_id>/schedules/',
-         views_nav.select_schedule,
-         name='select_schedule'),
-
+    # Pattern B: section task list (no schedule)
     path('regime/<str:regime_id>/sections/',
          views_nav.select_section,
          name='select_section'),
 
+    # Pattern C: schedule list and schedule-section list under /dwp/
+    path('regime/<str:regime_id>/schedules/',
+         views_nav.regime_schedules,
+         name='regime_schedules'),
     path('regime/<str:regime_id>/schedule/<str:schedule_id>/sections/',
-         views_nav.select_section,
-         name='select_section_in_schedule'),
+         views_nav.regime_schedule_sections,
+         name='regime_schedule_sections'),
+
+    path('tools/', include('core.urls_tools')),
 ]

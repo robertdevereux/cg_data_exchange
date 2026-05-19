@@ -45,6 +45,23 @@
       </div>
       {% endif %}
 
+      {% if deleted %}
+      <div class="govuk-notification-banner govuk-notification-banner--success"
+           role="alert" aria-labelledby="govuk-notification-banner-title-deleted"
+           data-module="govuk-notification-banner">
+        <div class="govuk-notification-banner__header">
+          <h2 class="govuk-notification-banner__title" id="govuk-notification-banner-title-deleted">
+            Success
+          </h2>
+        </div>
+        <div class="govuk-notification-banner__content">
+          <p class="govuk-body">
+            Regime <strong>{{ deleted }}</strong> has been deleted.
+          </p>
+        </div>
+      </div>
+      {% endif %}
+
       <div class="govuk-button-group govuk-!-margin-bottom-6">
         <a href="{% url 'core:tools_regime_create' %}" class="govuk-button govuk-button--secondary">
           Create new regime
@@ -61,7 +78,7 @@
             <th scope="col" class="govuk-table__header" style="width:35%">Name</th>
             <th scope="col" class="govuk-table__header" style="width:15%">Sections</th>
             <th scope="col" class="govuk-table__header" style="width:15%">Schedules</th>
-            <th scope="col" class="govuk-table__header" style="width:10%">
+            <th scope="col" class="govuk-table__header" style="width:15%">
               <span class="govuk-visually-hidden">Actions</span>
             </th>
           </tr>
@@ -78,6 +95,9 @@
             <td class="govuk-table__cell">
               <a href="{% url 'core:tools_regime_edit_composite' r.regime_id %}"
                  class="govuk-link">Edit</a>
+              &nbsp;
+              <a href="{% url 'core:tools_regime_delete' r.regime_id %}"
+                 class="govuk-link govuk-link--no-visited-state" style="color:#d4351c;">Delete</a>
             </td>
           </tr>
           {% empty %}
