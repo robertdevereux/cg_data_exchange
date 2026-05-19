@@ -9,6 +9,11 @@ urlpatterns = [
     path('regimes/',                views.regime_list, name='regime_list'),
     path('regime/<str:regime_id>/', views.regime_home, name='regime_home'),
 
+    # Pattern B Layer 1 — section task list (no schedule) under /hmrc/
+    path('regime/<str:regime_id>/sections/',
+         views.select_section,
+         name='select_section'),
+
     # Pattern C Layer 1 — schedule list and schedule-section list under /hmrc/
     path('regime/<str:regime_id>/schedules/',
          views.regime_schedules,

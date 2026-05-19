@@ -50,6 +50,7 @@ def regime_schedules_home(request):
         'case_id':         case.case_id,
         'return_url':      request.path,
         'regime_home_url': regime_home_url,
+        'active_dept':     'DEMO',
         'breadcrumbs': [
             {'label': 'HMRC',                 'url': '/demo/'},
             {'label': 'Personal Tax Account', 'url': '/demo/regimes/'},

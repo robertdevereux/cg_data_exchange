@@ -11,13 +11,15 @@ from core.interfaces import call_regime
 from core.views_layer1 import regime_schedule_sections, regime_schedules  # noqa: F401 — re-exported for urls.py
 from core.models import Regime, SectionStatus
 from core.nav_reference import _resolve_user
-from core.permissions import get_permitted_regimes, get_permitted_sections
+from core.permissions import get_permitted_sections
 from core.session import get_acting_for_name, get_session, update_session
 
 
 @login_required
 def dept_home(request):
-    """HMRC department landing page — lists permitted HMRC regimes."""
+    """HMRC department landing page — lists all HMRC regimes.
+    Permission enforcement happens at the section level, not here.
+    """
     request.session['active_dept'] = 'HMRC'
     actor = request.user
     pss   = get_session(request)
@@ -26,10 +28,7 @@ def dept_home(request):
         pss = get_session(request)
     user  = _resolve_user(pss, actor)
 
-    regimes = (
-        get_permitted_regimes(actor, user, dept_id='HMRC')
-        .order_by('display_order', 'regime_name')
-    )
+    regimes = Regime.objects.filter(dept_id='HMRC').order_by('display_order', 'regime_name')
 
     return render(request, 'dept_hmrc/dept_home.html', {
         'regimes':     regimes,
@@ -62,12 +61,15 @@ def regime_home(request, regime_id):
 
     # Map core /regime/... entry URLs to HMRC-namespaced equivalents.
     # Pattern C (schedules): /regime/<id>/schedules/ → dept_hmrc:regime_schedules
-    # Pattern B (sections):  /regime/<id>/sections/ — not registered under /hmrc/;
-    #                        HMRC regimes are Pattern A or C only, so this is unreachable
-    #                        in practice, but left unmapped rather than producing a 404.
+    # Pattern B (sections):  /regime/<id>/sections/ → dept_hmrc:select_section
     if entry_url.startswith('/regime/') and entry_url.endswith('/schedules/'):
         entry_url = reverse(
             'dept_hmrc:regime_schedules',
+            kwargs={'regime_id': regime.regime_id},
+        )
+    elif entry_url.startswith('/regime/') and entry_url.endswith('/sections/'):
+        entry_url = reverse(
+            'dept_hmrc:select_section',
             kwargs={'regime_id': regime.regime_id},
         )
 
@@ -82,22 +84,104 @@ def regime_home(request, regime_id):
     complete     = statuses.filter(status='complete').count()
     all_complete = total > 0 and complete == total
 
-    # Re-read session after call_regime has written to it
+    # Re-read session after call_regime has written to it, then write fresh
+    # breadcrumbs so downstream views (schedule list, section list) inherit them.
     pss = get_session(request)
+    crumbs = [
+        {'label': 'HMRC',             'url': '/hmrc/'},
+        {'label': regime.regime_name, 'url': request.path},
+    ]
+    update_session(request, {
+        'breadcrumbs':     crumbs,
+        'regime_home_url': request.path,
+        'active_dept':     'HMRC',
+        'regime_id':       regime.regime_id,
+    })
 
     templates = [
         f'dept_hmrc/{regime_id}_home.html',
         'dept_hmrc/regime_home.html',
     ]
     return render(request, templates, {
-        'regime':      regime,
-        'total':       total,
-        'complete':    complete,
+        'regime':       regime,
+        'total':        total,
+        'complete':     complete,
         'all_complete': all_complete,
-        'entry_url':   entry_url,
-        'acting_for':  get_acting_for_name(pss),
+        'entry_url':    entry_url,
+        'acting_for':   get_acting_for_name(pss),
         'breadcrumbs': [
             {'label': 'HMRC',             'url': '/hmrc/'},
             {'label': regime.regime_name, 'url': None},
         ],
+    })
+
+
+@login_required
+def select_section(request, regime_id):
+    """
+    Pattern B task-list: all permitted sections in this HMRC regime (no schedule).
+    Sets return_url so section_done redirects back here.
+    """
+    actor  = request.user
+    pss    = get_session(request)
+    user   = _resolve_user(pss, actor)
+    regime = get_object_or_404(Regime.objects.filter(dept_id='HMRC'), regime_id=regime_id)
+
+    permitted = get_permitted_sections(actor, user).filter(
+        Q(regime_id=regime_id) | Q(schedule__regime_id=regime_id)
+    )
+
+    section_statuses = {
+        ss.section_id: ss.status
+        for ss in SectionStatus.objects.filter(
+            user=user, regime=regime, section__in=permitted,
+        )
+    }
+
+    _status_label = {
+        'not_started': 'Not started',
+        'in_progress': 'In progress',
+        'complete':    'Complete',
+    }
+
+    section_data = []
+    for section in permitted.order_by('display_order', 'section_name'):
+        status = section_statuses.get(section.section_id, 'not_started')
+        if section.section_type in (1, 2):
+            action_url = f'/section/{section.section_id}/table/'
+        else:
+            action_url = f'/section/{section.section_id}/start/'
+        section_data.append({
+            'section':        section,
+            'status':         status,
+            'status_display': _status_label.get(status, 'Not started'),
+            'action_url':     action_url,
+        })
+
+    regime_home_url = pss.get(
+        'regime_home_url',
+        reverse('dept_hmrc:regime_home', kwargs={'regime_id': regime_id}),
+    )
+    back_url   = reverse('dept_hmrc:dept_home')
+    return_url = reverse('dept_hmrc:select_section', kwargs={'regime_id': regime_id})
+    crumbs = pss.get('breadcrumbs') or [
+        {'label': 'HMRC',             'url': '/hmrc/'},
+        {'label': regime.regime_name, 'url': regime_home_url},
+    ]
+
+    update_session(request, {
+        'return_url':        return_url,
+        'schedule_id':       None,
+        'breadcrumbs':       crumbs,
+        'regime_home_url':   regime_home_url,
+        'schedule_list_url': None,
+    })
+
+    return render(request, 'core/select_section.html', {
+        'regime':      regime,
+        'schedule':    None,
+        'sections':    section_data,
+        'back_url':    back_url,
+        'breadcrumbs': crumbs,
+        'acting_for':  get_acting_for_name(pss),
     })

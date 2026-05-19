@@ -44,14 +44,17 @@ def regime_sections_home(request):
     # For Pattern B the per-section return_url is set by select_section when
     # the citizen visits the task list. This sets the regime-level fallback.
     update_session(request, {
-        'user_id':    user.pk,
-        'actor_id':   actor.pk,
-        'regime_id':  regime.regime_id,
-        'case_id':    case.case_id,
-        'return_url': request.path,
+        'user_id':         user.pk,
+        'actor_id':        actor.pk,
+        'regime_id':       regime.regime_id,
+        'case_id':         case.case_id,
+        'return_url':      request.path,
+        'regime_home_url': request.path,
+        'active_dept':     'DEMO',
         'breadcrumbs': [
             {'label': 'HMRC',                 'url': '/demo/'},
             {'label': 'Personal Tax Account', 'url': '/demo/regimes/'},
+            {'label': regime.regime_name,     'url': request.path},
         ],
     })
 

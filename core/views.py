@@ -23,11 +23,11 @@ def root_landing(request):
         if regimes.exists():
             dept_data.append({
                 'dept':     dept,
-                'dept_url': f'{base}/{prefix}/',
+                'dept_url': f'{base}/{prefix}/' if base else f'/{prefix}/',
                 'regimes':  [
                     {
                         'regime': r,
-                        'url':    f'{base}/{prefix}/regime/{r.regime_id}/',
+                        'url':    f'{base}/{prefix}/regime/{r.regime_id}/' if base else f'/{prefix}/regime/{r.regime_id}/',
                     }
                     for r in regimes
                 ],

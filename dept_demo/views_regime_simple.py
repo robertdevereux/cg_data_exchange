@@ -48,6 +48,7 @@ def regime_simple_home(request):
         'case_id':         case.case_id,
         'return_url':      request.path,
         'regime_home_url': request.path,
+        'active_dept':     'DEMO',
         'breadcrumbs': [
             {'label': 'HMRC',                 'url': '/demo/'},
             {'label': 'Personal Tax Account', 'url': '/demo/regimes/'},

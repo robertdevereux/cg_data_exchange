@@ -54,6 +54,8 @@ def regime_generic_home(request, regime_id):
     regime_home_url = request.path
     update_session(request, {
         'regime_home_url': regime_home_url,
+        'active_dept':     'DWP',
+        'regime_id':       regime.regime_id,
         'breadcrumbs': [
             {'label': 'DWP',              'url': '/dwp/'},
             {'label': 'DWP Account',      'url': '/dwp/regimes/'},

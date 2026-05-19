@@ -6,8 +6,8 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from django.urls import reverse
 
+from core.models import Regime
 from core.nav_reference import _resolve_user
-from core.permissions import get_permitted_regimes
 from core.session import get_acting_for_name, get_session, update_session
 
 
@@ -22,8 +22,8 @@ def _build_regime_item(regime):
 @login_required
 def dept_home(request):
     """
-    Flat regime card list for DWP. Unlike dept_demo, no current/other split —
-    all permitted regimes are shown in a single list ordered by display_order.
+    Flat regime card list for DWP. Shows all DWP regimes — permission
+    enforcement happens at the section level, not here.
     """
     request.session['active_dept'] = 'DWP'
     actor = request.user
@@ -34,32 +34,14 @@ def dept_home(request):
     user     = _resolve_user(pss, actor)
     is_agent = (actor.pk != user.pk)
 
-    permitted_regimes = get_permitted_regimes(actor, user, dept_id='DWP')
-    acting_for        = get_acting_for_name(pss)
-
-    if not permitted_regimes.exists():
-        return render(request, 'dept_dwp/home.html', {
-            'regime_data':  [],
-            'no_access':    True,
-            'is_agent':     is_agent,
-            'subject':      user,
-            'acting_for':   acting_for,
-            'breadcrumbs': [
-                {'label': 'DWP',        'url': '/dwp/'},
-                {'label': 'DWP Account', 'url': None},
-            ],
-        })
-
-    regime_data = [
-        _build_regime_item(r)
-        for r in permitted_regimes.order_by('display_order')
-    ]
+    all_regimes = Regime.objects.filter(dept_id='DWP').order_by('display_order', 'regime_id')
+    regime_data = [_build_regime_item(r) for r in all_regimes]
 
     return render(request, 'dept_dwp/home.html', {
         'regime_data':  regime_data,
         'is_agent':     is_agent,
         'subject':      user,
-        'acting_for':   acting_for,
+        'acting_for':   get_acting_for_name(pss),
         'breadcrumbs': [
             {'label': 'DWP',        'url': '/dwp/'},
             {'label': 'DWP Account', 'url': None},

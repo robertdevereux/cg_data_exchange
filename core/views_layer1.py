@@ -148,10 +148,15 @@ def regime_schedule_sections(request, regime_id, schedule_id):
         kwargs={'regime_id': regime_id, 'schedule_id': schedule_id},
     )
 
-    # Extend session breadcrumbs (set by regime home) with schedule name.
-    # Layer 2 pages read these breadcrumbs to build their trail.
+    # Build breadcrumbs: truncate session crumbs to the regime level (to avoid
+    # stacking on repeated visits), then append the schedule name.
     base_crumbs = pss.get('breadcrumbs', [])
-    crumbs = list(base_crumbs) + [
+    truncated = base_crumbs
+    for i, crumb in enumerate(base_crumbs):
+        if crumb.get('url') == regime_home_url:
+            truncated = base_crumbs[:i + 1]
+            break
+    crumbs = truncated + [
         {'label': schedule.schedule_name, 'url': section_list_url},
     ]
 
