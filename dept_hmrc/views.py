@@ -23,9 +23,8 @@ def dept_home(request):
     request.session['active_dept'] = 'HMRC'
     actor = request.user
     pss   = get_session(request)
-    if not pss.get('user_id'):
-        update_session(request, {'user_id': actor.pk, 'actor_id': actor.pk})
-        pss = get_session(request)
+    update_session(request, {'user_id': actor.pk, 'actor_id': actor.pk})
+    pss = get_session(request)
     user  = _resolve_user(pss, actor)
 
     regimes = Regime.objects.filter(dept_id='HMRC').order_by('display_order', 'regime_name')
@@ -57,12 +56,7 @@ def regime_home(request, regime_id):
     pss   = get_session(request)
     user  = _resolve_user(pss, actor)
 
-    entry_url = call_regime(request, regime, actor, user)
-
-    # Map core /regime/... entry URLs to HMRC-namespaced equivalents
-    # by prepending the /hmrc prefix.
-    if entry_url.startswith('/regime/'):
-        entry_url = '/hmrc' + entry_url
+    entry_url = call_regime(request, regime, actor, user, url_prefix='hmrc')
 
     # Completion status
     permitted = get_permitted_sections(actor, user).filter(

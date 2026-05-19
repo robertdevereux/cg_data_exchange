@@ -28,9 +28,8 @@ def dept_home(request):
     request.session['active_dept'] = 'DWP'
     actor = request.user
     pss   = get_session(request)
-    if not pss.get('user_id'):
-        update_session(request, {'user_id': actor.pk, 'actor_id': actor.pk})
-        pss = get_session(request)
+    update_session(request, {'user_id': actor.pk, 'actor_id': actor.pk})
+    pss = get_session(request)
     user     = _resolve_user(pss, actor)
     is_agent = (actor.pk != user.pk)
 

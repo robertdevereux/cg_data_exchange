@@ -58,8 +58,10 @@ def regime_schedules_home(request):
         ],
     })
 
-    # Resolve entry URL — Pattern C schedule list is served by core at /regime/...
+    # Resolve entry URL; remap any /regime/... path to /demo/regime/...
     entry_url = resolve_layer1_entry_url(permitted, _REGIME_ID, all_complete)
+    if entry_url.startswith('/regime/'):
+        entry_url = '/demo' + entry_url
 
     pss = get_session(request)
     return render(request, _TEMPLATE, {

@@ -119,7 +119,7 @@ def _build_permitted_lists(permitted):
     return permitted_schedule_ids, permitted_section_ids
 
 
-def call_regime(request, regime, actor, user):
+def call_regime(request, regime, actor, user, url_prefix=''):
     """
     Full-regime entry point.
 
@@ -127,8 +127,9 @@ def call_regime(request, regime, actor, user):
     plus permitted_schedule_ids, permitted_section_ids, and return_url to
     session, then returns the Layer 1 entry URL.
 
-    The returned URL may begin with /regime/... — remap to the dept prefix
-    in the calling view if needed (core does not know the dept's URL structure).
+    url_prefix: optional dept prefix (e.g. 'hmrc') — when provided, any
+    /regime/... entry URL is rewritten to /<prefix>/regime/... so the calling
+    view does not need a separate remap block.
     """
     from django.db.models import Q
     from .permissions import get_permitted_sections
@@ -154,16 +155,21 @@ def call_regime(request, regime, actor, user):
         'permitted_section_ids':  permitted_section_ids,
     })
 
-    return resolve_layer1_entry_url(permitted, regime.regime_id)
+    entry_url = resolve_layer1_entry_url(permitted, regime.regime_id)
+    if url_prefix and entry_url.startswith('/regime/'):
+        entry_url = '/' + url_prefix.strip('/') + entry_url
+    return entry_url
 
 
-def call_schedules(request, regime, actor, user, schedule_ids):
+def call_schedules(request, regime, actor, user, schedule_ids, url_prefix=''):
     """
     Schedule-filtered entry point.
 
     Like call_regime but only includes sections whose schedule is in
     schedule_ids. Useful when an intermediary has access to specific schedules
     rather than the whole regime.
+
+    url_prefix: see call_regime.
     """
     from .permissions import get_permitted_sections
     from .nav_reference import resolve_layer1_entry_url
@@ -188,16 +194,21 @@ def call_schedules(request, regime, actor, user, schedule_ids):
         'permitted_section_ids':  permitted_section_ids,
     })
 
-    return resolve_layer1_entry_url(permitted, regime.regime_id)
+    entry_url = resolve_layer1_entry_url(permitted, regime.regime_id)
+    if url_prefix and entry_url.startswith('/regime/'):
+        entry_url = '/' + url_prefix.strip('/') + entry_url
+    return entry_url
 
 
-def call_sections(request, regime, actor, user, section_ids):
+def call_sections(request, regime, actor, user, section_ids, url_prefix=''):
     """
     Section-filtered entry point.
 
     Like call_regime but only includes sections whose section_id is in
     section_ids. Useful when an intermediary has access to specific sections
     rather than the whole regime or schedule.
+
+    url_prefix: see call_regime.
     """
     from .permissions import get_permitted_sections
     from .nav_reference import resolve_layer1_entry_url
@@ -222,4 +233,7 @@ def call_sections(request, regime, actor, user, section_ids):
         'permitted_section_ids':  permitted_section_ids,
     })
 
-    return resolve_layer1_entry_url(permitted, regime.regime_id)
+    entry_url = resolve_layer1_entry_url(permitted, regime.regime_id)
+    if url_prefix and entry_url.startswith('/regime/'):
+        entry_url = '/' + url_prefix.strip('/') + entry_url
+    return entry_url

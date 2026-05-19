@@ -160,8 +160,6 @@ LOGIN_URL = '/accounts/login/'
 LOGIN_REDIRECT_URL = '/'   # fallback only — @login_required passes ?next= so dept apps handle their own post-login redirects
 LOGOUT_REDIRECT_URL = '/'
 
-CURRENT_BASE_URL = os.environ.get('CURRENT_BASE_URL', 'http://127.0.0.1:8000')
-
 _hmrc_base  = os.environ.get('HMRC_BASE_URL',  '')
 _dwp_base   = os.environ.get('DWP_BASE_URL',   '')
 _demo_base  = os.environ.get('DEMO_BASE_URL',  '')
