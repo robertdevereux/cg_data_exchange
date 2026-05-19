@@ -30,7 +30,10 @@
   <div class="govuk-grid-row">
     <div class="govuk-grid-column-full">
 
-      <h1 class="govuk-heading-xl">Configuration tools</h1>
+      <h1 class="govuk-heading-xl">Configuration tools — {{ active_dept }}</h1>
+      <p class="govuk-body-s">
+        <a href="{% url 'core:tools_switch_dept' %}" class="govuk-link">Switch department</a>
+      </p>
 
       {# ── LAYER 1 — Questions and their collections ───────────────────────── #}
       <section class="config-layer">

@@ -157,4 +157,4 @@ TEST_RUNNER = 'config.test_runner.LoadOnceTestRunner'
 
 LOGIN_URL = '/accounts/login/'
 LOGIN_REDIRECT_URL = '/'   # fallback only — @login_required passes ?next= so dept apps handle their own post-login redirects
-LOGOUT_REDIRECT_URL = '/accounts/login/'
+LOGOUT_REDIRECT_URL = '/'

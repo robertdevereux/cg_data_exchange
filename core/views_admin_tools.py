@@ -40,6 +40,7 @@ from .models import (
     Answer,
     AnswerTable,
     Case,
+    Department,
     Permission,
     Question,
     QuestionSet,
@@ -102,6 +103,16 @@ def validate_section_routing(section):
     return {'valid': len(issues) == 0, 'issues': issues}
 
 
+def _renumber(items):
+    """Silently renumber display_order to 1, 2, 3… if existing values are wrong.
+    items must be a list already sorted in the desired order.
+    """
+    for i, item in enumerate(items, 1):
+        if item.display_order != i:
+            item.display_order = i
+            item.save(update_fields=['display_order'])
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 0. TOOLS HOME
 # ─────────────────────────────────────────────────────────────────────────────
@@ -109,7 +120,23 @@ def validate_section_routing(section):
 @staff_required
 def tools_home(request):
     """Staff landing page — entry point for all platform admin tools."""
-    return render(request, 'core/tools_home.html', {})
+    active_dept = request.session.get('active_dept', settings.ACTIVE_DEPT)
+    return render(request, 'core/tools_home.html', {'active_dept': active_dept})
+
+
+@staff_required
+def tools_switch_dept(request):
+    """Set active_dept in session and return to tools home."""
+    if request.method == 'POST':
+        dept_id = request.POST.get('dept_id', '').strip()
+        if Department.objects.filter(dept_id=dept_id).exclude(dept_id='PLATFORM').exists():
+            request.session['active_dept'] = dept_id
+        return redirect('core:tools_index')
+    depts = Department.objects.exclude(dept_id='PLATFORM').order_by('dept_id')
+    return render(request, 'core/tools_switch_dept.html', {
+        'depts':   depts,
+        'current': request.session.get('active_dept', settings.ACTIVE_DEPT),
+    })
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -674,6 +701,45 @@ def tools_schedule_section_reorder(request, schedule_id):
     return redirect(edit_url)
 
 
+def _schedule_section_move(request, schedule_id, section_id, direction):
+    """Shared logic for schedule-section move-up / move-down."""
+    edit_url = reverse('core:tools_schedule_edit', kwargs={'schedule_id': schedule_id})
+    if request.method != 'POST':
+        return redirect(edit_url)
+    schedule = get_object_or_404(Schedule, schedule_id=schedule_id)
+    members = list(
+        Section.objects.filter(schedule=schedule).order_by('display_order', 'section_id')
+    )
+    idx = next((i for i, s in enumerate(members) if s.section_id == section_id), None)
+    if idx is None:
+        return redirect(edit_url)
+    if direction == 'up' and idx > 0:
+        neighbour = members[idx - 1]
+    elif direction == 'down' and idx < len(members) - 1:
+        neighbour = members[idx + 1]
+    else:
+        return redirect(edit_url)
+    section = members[idx]
+    section.display_order, neighbour.display_order = neighbour.display_order, section.display_order
+    if section.display_order == neighbour.display_order:
+        section.display_order += -1 if direction == 'up' else 1
+    section.save()
+    neighbour.save()
+    return redirect(edit_url)
+
+
+@staff_required
+def tools_schedule_section_move_up(request, schedule_id, section_id):
+    """POST: move a section up one position within a schedule."""
+    return _schedule_section_move(request, schedule_id, section_id, 'up')
+
+
+@staff_required
+def tools_schedule_section_move_down(request, schedule_id, section_id):
+    """POST: move a section down one position within a schedule."""
+    return _schedule_section_move(request, schedule_id, section_id, 'down')
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 0p. NAVIGATION PATTERN WIZARD
 # ─────────────────────────────────────────────────────────────────────────────
@@ -935,7 +1001,7 @@ def tools_regime_list(request):
             section_count=Count('direct_sections', distinct=True),
             schedule_count=Count('schedules', distinct=True),
         )
-        .order_by('regime_id')
+        .order_by('display_order', 'regime_id')
     )
     return render(request, 'core/tools_regime_list.html', {
         'regimes': regimes,
@@ -943,6 +1009,106 @@ def tools_regime_list(request):
         'updated': request.GET.get('updated', ''),
         'deleted': request.GET.get('deleted', ''),
     })
+
+
+def _regime_move(request, regime_id, direction):
+    """Shared logic for regime move-up / move-down."""
+    if request.method != 'POST':
+        return redirect('core:tools_regime_list')
+    active_dept = request.session.get('active_dept', settings.ACTIVE_DEPT)
+    regime = get_object_or_404(Regime, regime_id=regime_id, dept_id=active_dept)
+    regimes = list(
+        Regime.objects
+        .filter(dept_id=active_dept)
+        .order_by('display_order', 'regime_id')
+    )
+    idx = next((i for i, r in enumerate(regimes) if r.regime_id == regime_id), None)
+    if idx is None:
+        return redirect('core:tools_regime_list')
+
+    if direction == 'up' and idx > 0:
+        neighbour = regimes[idx - 1]
+    elif direction == 'down' and idx < len(regimes) - 1:
+        neighbour = regimes[idx + 1]
+    else:
+        return redirect('core:tools_regime_list')
+
+    regime.display_order, neighbour.display_order = (
+        neighbour.display_order, regime.display_order
+    )
+    if regime.display_order == neighbour.display_order:
+        if direction == 'up':
+            regime.display_order -= 1
+        else:
+            regime.display_order += 1
+    regime.save()
+    neighbour.save()
+    return redirect('core:tools_regime_list')
+
+
+@staff_required
+def tools_regime_move_up(request, regime_id):
+    """POST: move a regime up one position in display order."""
+    return _regime_move(request, regime_id, 'up')
+
+
+@staff_required
+def tools_regime_move_down(request, regime_id):
+    """POST: move a regime down one position in display order."""
+    return _regime_move(request, regime_id, 'down')
+
+
+def _regime_item_move(request, regime_id, item_id, direction):
+    """Shared logic for regime top-level item move-up / move-down.
+    item_id may be a schedule_id or a direct section_id.
+    """
+    edit_url = reverse('core:tools_regime_edit_composite', kwargs={'regime_id': regime_id})
+    if request.method != 'POST':
+        return redirect(edit_url)
+    active_dept = request.session.get('active_dept', settings.ACTIVE_DEPT)
+    regime = get_object_or_404(Regime, regime_id=regime_id, dept_id=active_dept)
+
+    # Determine whether item_id refers to a schedule or a direct section
+    if Schedule.objects.filter(schedule_id=item_id, regime=regime).exists():
+        items = list(
+            Schedule.objects.filter(regime=regime).order_by('display_order', 'schedule_id')
+        )
+        idx = next((i for i, s in enumerate(items) if s.schedule_id == item_id), None)
+    else:
+        items = list(
+            Section.objects.filter(regime=regime, schedule__isnull=True)
+            .order_by('display_order', 'section_id')
+        )
+        idx = next((i for i, s in enumerate(items) if s.section_id == item_id), None)
+
+    if idx is None:
+        return redirect(edit_url)
+    if direction == 'up' and idx > 0:
+        neighbour = items[idx - 1]
+    elif direction == 'down' and idx < len(items) - 1:
+        neighbour = items[idx + 1]
+    else:
+        return redirect(edit_url)
+
+    item = items[idx]
+    item.display_order, neighbour.display_order = neighbour.display_order, item.display_order
+    if item.display_order == neighbour.display_order:
+        item.display_order += -1 if direction == 'up' else 1
+    item.save()
+    neighbour.save()
+    return redirect(edit_url)
+
+
+@staff_required
+def tools_regime_item_move_up(request, regime_id, item_id):
+    """POST: move a regime top-level item (schedule or direct section) up."""
+    return _regime_item_move(request, regime_id, item_id, 'up')
+
+
+@staff_required
+def tools_regime_item_move_down(request, regime_id, item_id):
+    """POST: move a regime top-level item (schedule or direct section) down."""
+    return _regime_item_move(request, regime_id, item_id, 'down')
 
 
 @staff_required
@@ -982,25 +1148,18 @@ def tools_regime_delete(request, regime_id):
 
 @staff_required
 def tools_regime_edit(request, regime_id):
-    """Edit regime_name and display_order for an existing regime."""
+    """Edit regime_name for an existing regime."""
     regime = get_object_or_404(Regime, regime_id=regime_id)
     errors = {}
 
     if request.method == 'POST':
-        regime_name   = request.POST.get('regime_name', '').strip()
-        display_order = request.POST.get('display_order', '').strip()
+        regime_name = request.POST.get('regime_name', '').strip()
 
         if not regime_name:
             errors['regime_name'] = 'Enter a regime name'
 
-        try:
-            display_order_int = int(display_order)
-        except (ValueError, TypeError):
-            display_order_int = regime.display_order
-
         if not errors:
-            regime.regime_name   = regime_name
-            regime.display_order = display_order_int
+            regime.regime_name = regime_name
             regime.save()
             return redirect(f'/tools/regimes/?updated={regime_id}')
 
@@ -1030,7 +1189,6 @@ def tools_regime_edit_composite(request, regime_id):
             errors['regime_name'] = 'Regime name is required.'
         if not errors:
             regime.regime_name = regime_name
-            regime.display_order = int(request.POST.get('display_order', 0) or 0)
             regime.save()
             return redirect(
                 reverse('core:tools_regime_edit_composite',
@@ -1040,48 +1198,39 @@ def tools_regime_edit_composite(request, regime_id):
     else:
         errors = {}
 
-    # Navigation structure
-    direct_sections = Section.objects.filter(
-        regime=regime, schedule__isnull=True
-    ).order_by('display_order')
-    unassigned_sections = Section.objects.filter(
-        regime__isnull=True, schedule__isnull=True
-    ).order_by('section_id')
-    schedules = Schedule.objects.filter(regime=regime).order_by('display_order')
-
-    if schedules.exists():
-        inferred_pattern = 'C'
-    elif direct_sections.count() == 1:
-        inferred_pattern = 'A'
-    elif direct_sections.count() > 1:
-        inferred_pattern = 'B'
-    else:
-        inferred_pattern = None
-
-    # Session state for nav wizard (reuses tools_navigation_regime keys)
-    session_key_pattern = f'nav_{regime_id}_pattern'
-    session_key_step    = f'nav_{regime_id}_step'
-    chosen_pattern = request.session.get(session_key_pattern)
-    nav_step       = request.session.get(session_key_step, 1)
-
-    # Routing validation for all sections in this regime
-    all_sections = Section.objects.filter(
-        Q(regime=regime) | Q(schedule__regime=regime)
+    # Review panel data — fetch as lists for renumbering
+    direct_sections = list(
+        Section.objects.filter(regime=regime, schedule__isnull=True)
+        .order_by('display_order', 'section_id')
     )
-    section_validations = {}
-    any_invalid = False
-    for s in all_sections:
-        result = validate_section_routing(s)
-        section_validations[s.section_id] = result
-        if not result['valid']:
-            any_invalid = True
+    schedules = list(
+        Schedule.objects.filter(regime=regime).order_by('display_order', 'schedule_id')
+    )
 
-    # Review panel: schedules with (section, routing_count) rows
+    # Renumber top-level items on every visit
+    if schedules:
+        _renumber(schedules)
+    else:
+        _renumber(direct_sections)
+
+    # Flat ordered list for the arrow table in the template
+    if schedules:
+        top_level_items = [
+            {'item_id': sch.schedule_id, 'item_name': sch.schedule_name, 'routing_count': None}
+            for sch in schedules
+        ]
+    else:
+        top_level_items = [
+            {'item_id': s.section_id, 'item_name': s.section_name,
+             'routing_count': Routing.objects.filter(section=s).count()}
+            for s in direct_sections
+        ]
+
     schedules_with_sections = []
     for sch in schedules:
-        sch_sections = Section.objects.filter(
-            schedule=sch
-        ).order_by('display_order')
+        sch_sections = list(
+            Section.objects.filter(schedule=sch).order_by('display_order', 'section_id')
+        )
         section_rows = [
             (s, Routing.objects.filter(section=s).count())
             for s in sch_sections
@@ -1090,10 +1239,6 @@ def tools_regime_edit_composite(request, regime_id):
             'schedule': sch,
             'section_rows': section_rows,
         })
-    direct_section_rows = [
-        (s, Routing.objects.filter(section=s).count())
-        for s in direct_sections
-    ]
 
     updated = request.GET.get('updated')
 
@@ -1101,16 +1246,8 @@ def tools_regime_edit_composite(request, regime_id):
         'regime':                  regime,
         'errors':                  errors,
         'updated':                 updated,
-        'direct_sections':         direct_sections,
-        'unassigned_sections':     unassigned_sections,
-        'schedules':               schedules,
-        'inferred_pattern':        inferred_pattern,
-        'chosen_pattern':          chosen_pattern,
-        'nav_step':                nav_step,
-        'section_validations':     section_validations,
-        'any_invalid':             any_invalid,
+        'top_level_items':         top_level_items,
         'schedules_with_sections': schedules_with_sections,
-        'direct_section_rows':     direct_section_rows,
     })
 
 
@@ -2403,7 +2540,10 @@ def tools_schedule_edit(request, schedule_id):
                 + '?updated=details'
             )
 
-    members   = Section.objects.filter(schedule=schedule).order_by('display_order')
+    members = list(
+        Section.objects.filter(schedule=schedule).order_by('display_order', 'section_id')
+    )
+    _renumber(members)
     available = Section.objects.exclude(schedule=schedule).order_by('section_id')
     updated   = request.GET.get('updated')
     routing_warning_id   = request.GET.get('routing_warning', '')

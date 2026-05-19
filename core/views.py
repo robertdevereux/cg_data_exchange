@@ -1,3 +1,4 @@
+from django.contrib.auth import logout as auth_logout
 from django.shortcuts import render
 
 from .models import Department, Regime
@@ -7,7 +8,10 @@ def root_landing(request):
     """
     Root landing page — lists all non-platform departments and their regimes.
     No login required; serves as the entry point for the whole platform.
+    Logs out any authenticated user so every visit starts a fresh session.
     """
+    if request.user.is_authenticated:
+        auth_logout(request)
     depts = Department.objects.exclude(dept_id='PLATFORM').order_by('dept_id')
     dept_data = []
     for dept in depts:

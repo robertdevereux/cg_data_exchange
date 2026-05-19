@@ -58,13 +58,15 @@ def regime_home(request, regime_id):
     entry_url = call_regime(request, regime, actor, user)
 
     # Map core /regime/... entry URLs to HMRC-namespaced equivalents.
+    # Pattern C (schedules): /regime/<id>/schedules/ → dept_hmrc:regime_schedules
+    # Pattern B (sections):  /regime/<id>/sections/ — not registered under /hmrc/;
+    #                        HMRC regimes are Pattern A or C only, so this is unreachable
+    #                        in practice, but left unmapped rather than producing a 404.
     if entry_url.startswith('/regime/') and entry_url.endswith('/schedules/'):
         entry_url = reverse(
             'dept_hmrc:regime_schedules',
             kwargs={'regime_id': regime.regime_id},
         )
-    elif entry_url.startswith('/regime/'):
-        entry_url = '/hmrc' + entry_url
 
     # Completion status
     permitted = get_permitted_sections(actor, user).filter(

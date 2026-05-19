@@ -1,0 +1,46 @@
+{% extends "core/base.html" %}
+
+{% block title %}Switch department — Configuration tools{% endblock %}
+
+{% block content %}
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-two-thirds">
+
+      <a href="{% url 'core:tools_index' %}" class="govuk-back-link">Configuration tools</a>
+
+      <h1 class="govuk-heading-l govuk-!-margin-top-4">Switch department</h1>
+
+      <form method="post">
+        {% csrf_token %}
+        <div class="govuk-form-group">
+          <fieldset class="govuk-fieldset">
+            <legend class="govuk-fieldset__legend govuk-fieldset__legend--m">
+              Select a department
+            </legend>
+            <div class="govuk-radios" data-module="govuk-radios">
+              {% for dept in depts %}
+              <div class="govuk-radios__item">
+                <input class="govuk-radios__input"
+                       id="dept_{{ dept.dept_id }}"
+                       name="dept_id"
+                       type="radio"
+                       value="{{ dept.dept_id }}"
+                       {% if dept.dept_id == current %}checked{% endif %}>
+                <label class="govuk-label govuk-radios__label" for="dept_{{ dept.dept_id }}">
+                  {{ dept.dept_name }}
+                </label>
+              </div>
+              {% endfor %}
+            </div>
+          </fieldset>
+        </div>
+
+        <button type="submit" class="govuk-button">Switch</button>
+        <a href="{% url 'core:tools_index' %}" class="govuk-link govuk-!-margin-left-3">Cancel</a>
+      </form>
+
+    </div>
+  </div>
+
+{% endblock %}

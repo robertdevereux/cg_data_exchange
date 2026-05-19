@@ -16,6 +16,10 @@ urlpatterns = [
          views_admin_tools.tools_home,
          name='tools_index'),
 
+    path('switch-dept/',
+         views_admin_tools.tools_switch_dept,
+         name='tools_switch_dept'),
+
     path('questions/',
          views_admin_tools.tools_questions_list,
          name='tools_questions_list'),
@@ -51,6 +55,22 @@ urlpatterns = [
     path('regimes/create/',
          views_admin_tools.tools_regime_create,
          name='tools_regime_create'),
+
+    path('regimes/<str:regime_id>/move-up/',
+         views_admin_tools.tools_regime_move_up,
+         name='tools_regime_move_up'),
+
+    path('regimes/<str:regime_id>/move-down/',
+         views_admin_tools.tools_regime_move_down,
+         name='tools_regime_move_down'),
+
+    path('regimes/<str:regime_id>/item/<str:item_id>/move-up/',
+         views_admin_tools.tools_regime_item_move_up,
+         name='tools_regime_item_move_up'),
+
+    path('regimes/<str:regime_id>/item/<str:item_id>/move-down/',
+         views_admin_tools.tools_regime_item_move_down,
+         name='tools_regime_item_move_down'),
 
     path('regimes/<str:regime_id>/delete/',
          views_admin_tools.tools_regime_delete,
@@ -131,6 +151,14 @@ urlpatterns = [
     path('schedules/<str:schedule_id>/sections/add/',
          views_admin_tools.tools_schedule_section_add,
          name='tools_schedule_section_add'),
+
+    path('schedules/<str:schedule_id>/sections/<str:section_id>/move-up/',
+         views_admin_tools.tools_schedule_section_move_up,
+         name='tools_schedule_section_move_up'),
+
+    path('schedules/<str:schedule_id>/sections/<str:section_id>/move-down/',
+         views_admin_tools.tools_schedule_section_move_down,
+         name='tools_schedule_section_move_down'),
 
     path('schedules/<str:schedule_id>/sections/remove/',
          views_admin_tools.tools_schedule_section_remove,

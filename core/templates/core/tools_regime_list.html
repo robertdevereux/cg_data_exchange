@@ -74,11 +74,11 @@
         </caption>
         <thead class="govuk-table__head">
           <tr class="govuk-table__row">
-            <th scope="col" class="govuk-table__header" style="width:25%">Regime ID</th>
-            <th scope="col" class="govuk-table__header" style="width:35%">Name</th>
-            <th scope="col" class="govuk-table__header" style="width:15%">Sections</th>
-            <th scope="col" class="govuk-table__header" style="width:15%">Schedules</th>
-            <th scope="col" class="govuk-table__header" style="width:15%">
+            <th scope="col" class="govuk-table__header" style="width:22%">Regime ID</th>
+            <th scope="col" class="govuk-table__header" style="width:38%">Name</th>
+            <th scope="col" class="govuk-table__header" style="width:10%">Sections</th>
+            <th scope="col" class="govuk-table__header" style="width:10%">Schedules</th>
+            <th scope="col" class="govuk-table__header" style="width:20%">
               <span class="govuk-visually-hidden">Actions</span>
             </th>
           </tr>
@@ -92,7 +92,26 @@
             <td class="govuk-table__cell">{{ r.regime_name }}</td>
             <td class="govuk-table__cell">{{ r.section_count }}</td>
             <td class="govuk-table__cell">{{ r.schedule_count }}</td>
-            <td class="govuk-table__cell">
+            <td class="govuk-table__cell" style="white-space: nowrap;">
+              {% if not forloop.first %}
+              <form method="post" action="{% url 'core:tools_regime_move_up' r.regime_id %}" style="display:inline">
+                {% csrf_token %}
+                <button type="submit" class="govuk-link"
+                        style="background:none;border:none;padding:0;cursor:pointer;font-size:0.875rem">↑</button>
+              </form>
+              {% else %}
+              <span style="display:inline-block;width:1em">&nbsp;</span>
+              {% endif %}
+              {% if not forloop.last %}
+              <form method="post" action="{% url 'core:tools_regime_move_down' r.regime_id %}" style="display:inline">
+                {% csrf_token %}
+                <button type="submit" class="govuk-link"
+                        style="background:none;border:none;padding:0;cursor:pointer;font-size:0.875rem">↓</button>
+              </form>
+              {% else %}
+              <span style="display:inline-block;width:1em">&nbsp;</span>
+              {% endif %}
+              &nbsp;
               <a href="{% url 'core:tools_regime_edit_composite' r.regime_id %}"
                  class="govuk-link">Edit</a>
               &nbsp;

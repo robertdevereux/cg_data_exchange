@@ -9,6 +9,7 @@ generic template.
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, render
+from django.urls import reverse
 
 from core.interfaces import call_regime
 from core.models import Regime, SectionStatus
@@ -34,11 +35,19 @@ def regime_generic_home(request, regime_id):
 
     entry_url = call_regime(request, regime, actor, user)
 
-    # Remap Pattern B section-list URLs to /dwp/ prefix.
-    # Pattern C schedule-list URLs (/regime/.../schedules/) are served by core
-    # at the root path and must NOT be remapped.
-    if entry_url.startswith('/regime/') and entry_url.endswith('/sections/'):
-        entry_url = '/dwp' + entry_url
+    # Map core /regime/... entry URLs to DWP-namespaced equivalents.
+    # Pattern C (schedules): /regime/<id>/schedules/ → dept_dwp:regime_schedules
+    # Pattern B (sections):  /regime/<id>/sections/ → dept_dwp:select_section
+    if entry_url.startswith('/regime/') and entry_url.endswith('/schedules/'):
+        entry_url = reverse(
+            'dept_dwp:regime_schedules',
+            kwargs={'regime_id': regime.regime_id},
+        )
+    elif entry_url.startswith('/regime/') and entry_url.endswith('/sections/'):
+        entry_url = reverse(
+            'dept_dwp:select_section',
+            kwargs={'regime_id': regime.regime_id},
+        )
 
     # Set breadcrumbs and regime_home_url in session for core Pattern C views.
     # call_regime() does not set these, so we add them here.

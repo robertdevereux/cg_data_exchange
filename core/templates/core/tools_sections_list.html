@@ -60,12 +60,10 @@
         </caption>
         <thead class="govuk-table__head">
           <tr class="govuk-table__row">
-            <th scope="col" class="govuk-table__header" style="width:18%">Section ID</th>
-            <th scope="col" class="govuk-table__header" style="width:22%">Name</th>
-            <th scope="col" class="govuk-table__header" style="width:12%">Type</th>
-            <th scope="col" class="govuk-table__header" style="width:18%">Regime / Schedule</th>
-            <th scope="col" class="govuk-table__header" style="width:8%">Order</th>
-            <th scope="col" class="govuk-table__header" style="width:8%">Routing rows</th>
+            <th scope="col" class="govuk-table__header" style="width:25%">Section ID</th>
+            <th scope="col" class="govuk-table__header" style="width:30%">Name</th>
+            <th scope="col" class="govuk-table__header" style="width:15%">Type</th>
+            <th scope="col" class="govuk-table__header" style="width:10%">Routing rows</th>
             <th scope="col" class="govuk-table__header" style="width:20%">
               <span class="govuk-visually-hidden">Actions</span>
             </th>
@@ -79,16 +77,6 @@
             </td>
             <td class="govuk-table__cell">{{ s.section_name }}</td>
             <td class="govuk-table__cell">{{ s.get_section_type_display }}</td>
-            <td class="govuk-table__cell govuk-hint" style="margin:0">
-              {% if s.schedule %}
-                {{ s.schedule.schedule_id }}
-              {% elif s.regime %}
-                {{ s.regime.regime_id }}
-              {% else %}
-                <strong class="govuk-tag govuk-tag--grey">Unassigned</strong>
-              {% endif %}
-            </td>
-            <td class="govuk-table__cell">{{ s.display_order }}</td>
             <td class="govuk-table__cell">{{ s.routing_count }}</td>
             <td class="govuk-table__cell">
               <a href="{% url 'core:tools_section_edit' s.section_id %}"
@@ -100,7 +88,7 @@
           </tr>
           {% empty %}
           <tr class="govuk-table__row">
-            <td class="govuk-table__cell" colspan="7">No sections found.</td>
+            <td class="govuk-table__cell" colspan="5">No sections found.</td>
           </tr>
           {% endfor %}
         </tbody>
