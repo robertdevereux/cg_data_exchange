@@ -130,6 +130,51 @@
                     {% if field.hint %}aria-describedby="field-{{ field.question_id }}-hint"{% endif %}
                     {% if field.error %}aria-describedby="field-{{ field.question_id }}-error{% if field.hint %} field-{{ field.question_id }}-hint{% endif %}"{% endif %}>{% if field.current_answer %}{{ field.current_answer }}{% endif %}</textarea>
 
+          {% elif field.question_type == "date" %}
+          <label class="govuk-label" for="field-{{ field.question_id }}">
+            {{ field.question_text }}
+          </label>
+
+          {% if field.hint %}
+          <div class="govuk-hint" id="field-{{ field.question_id }}-hint">{{ field.hint }}</div>
+          {% endif %}
+
+          {% if field.error %}
+          <p class="govuk-error-message" id="field-{{ field.question_id }}-error">
+            <span class="govuk-visually-hidden">Error:</span> {{ field.error }}
+          </p>
+          {% endif %}
+
+          <div class="govuk-date-input" id="field-{{ field.question_id }}">
+            <div class="govuk-date-input__item">
+              <div class="govuk-form-group">
+                <label class="govuk-label govuk-date-input__label" for="{{ field.question_id }}_day">Day</label>
+                <input class="govuk-input govuk-date-input__input govuk-input--width-2{% if field.error %} govuk-input--error{% endif %}"
+                       id="{{ field.question_id }}_day" name="{{ field.question_id }}_day"
+                       type="text" inputmode="numeric"
+                       value="{{ field.date_parts.day|default:'' }}">
+              </div>
+            </div>
+            <div class="govuk-date-input__item">
+              <div class="govuk-form-group">
+                <label class="govuk-label govuk-date-input__label" for="{{ field.question_id }}_month">Month</label>
+                <input class="govuk-input govuk-date-input__input govuk-input--width-2{% if field.error %} govuk-input--error{% endif %}"
+                       id="{{ field.question_id }}_month" name="{{ field.question_id }}_month"
+                       type="text" inputmode="numeric"
+                       value="{{ field.date_parts.month|default:'' }}">
+              </div>
+            </div>
+            <div class="govuk-date-input__item">
+              <div class="govuk-form-group">
+                <label class="govuk-label govuk-date-input__label" for="{{ field.question_id }}_year">Year</label>
+                <input class="govuk-input govuk-date-input__input govuk-input--width-4{% if field.error %} govuk-input--error{% endif %}"
+                       id="{{ field.question_id }}_year" name="{{ field.question_id }}_year"
+                       type="text" inputmode="numeric"
+                       value="{{ field.date_parts.year|default:'' }}">
+              </div>
+            </div>
+          </div>
+
           {% elif field.question_type == "number" %}
           <label class="govuk-label" for="field-{{ field.question_id }}">
             {{ field.question_text }}

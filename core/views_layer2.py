@@ -556,7 +556,17 @@ def section_review(request, section_id):
             for m in set_meta.get('members', []):
                 qid    = m['question_id']
                 answer = basic_answers.get(qid)
-                if isinstance(answer, list):
+                if isinstance(answer, dict) and all(k in answer for k in ('day', 'month', 'year')):
+                    _months = ['January', 'February', 'March', 'April', 'May', 'June',
+                               'July', 'August', 'September', 'October', 'November', 'December']
+                    try:
+                        mon = int(answer['month'])
+                        display_answer = f"{answer['day']} {_months[mon - 1]} {answer['year']}"
+                    except (ValueError, IndexError):
+                        display_answer = (
+                            f"{answer.get('day', '')} {answer.get('month', '')} {answer.get('year', '')}"
+                        )
+                elif isinstance(answer, list):
                     display_answer = ', '.join(answer)
                 else:
                     display_answer = answer or '—'
@@ -1133,16 +1143,31 @@ def section_set_page(request, section_id, set_id):
     for m in set_meta['members']:
         qid = m['question_id']
         options = [o.strip() for o in m['options'].split(';') if o.strip()]
-        fields.append({
+        current = basic_answers.get(qid)
+        field_dict = {
             'question_id':    qid,
             'question_text':  m['question_text'],
             'question_type':  m['question_type'],
             'hint':           m['hint'],
             'options':        options,
             'required':       m['required'],
-            'current_answer': basic_answers.get(qid),
+            'current_answer': current,
             'error':          None,
-        })
+        }
+        if m['question_type'] == 'date':
+            parsed = current
+            if isinstance(parsed, str):
+                try:
+                    import json
+                    parsed = json.loads(parsed)
+                except (ValueError, TypeError):
+                    parsed = {}
+            field_dict['date_parts'] = {
+                'day':   parsed.get('day', '') if isinstance(parsed, dict) else '',
+                'month': parsed.get('month', '') if isinstance(parsed, dict) else '',
+                'year':  parsed.get('year', '') if isinstance(parsed, dict) else '',
+            }
+        fields.append(field_dict)
 
     context = {
         'section':     section,
@@ -1172,6 +1197,12 @@ def _process_set_answer(request, section, section_id, set_id, set_meta, pss):
         qid = m['question_id']
         if m['question_type'] == 'checkbox':
             value = request.POST.getlist(qid)
+        elif m['question_type'] == 'date':
+            value = {
+                'day':   request.POST.get(f'{qid}_day', '').strip(),
+                'month': request.POST.get(f'{qid}_month', '').strip(),
+                'year':  request.POST.get(f'{qid}_year', '').strip(),
+            }
         else:
             value = request.POST.get(qid, '').strip()
         if m['required'] and not value and value != 0:
@@ -1194,16 +1225,24 @@ def _process_set_answer(request, section, section_id, set_id, set_meta, pss):
         for m in set_meta['members']:
             qid = m['question_id']
             options = [o.strip() for o in m['options'].split(';') if o.strip()]
-            fields.append({
+            current = field_values.get(qid)
+            field_dict = {
                 'question_id':    qid,
                 'question_text':  m['question_text'],
                 'question_type':  m['question_type'],
                 'hint':           m['hint'],
                 'options':        options,
                 'required':       m['required'],
-                'current_answer': field_values.get(qid),
+                'current_answer': current,
                 'error':          field_errors.get(qid),
-            })
+            }
+            if m['question_type'] == 'date':
+                field_dict['date_parts'] = {
+                    'day':   current.get('day', '') if isinstance(current, dict) else '',
+                    'month': current.get('month', '') if isinstance(current, dict) else '',
+                    'year':  current.get('year', '') if isinstance(current, dict) else '',
+                }
+            fields.append(field_dict)
 
         error_summary = [
             {'qid': qid, 'message': msg}

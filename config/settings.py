@@ -103,12 +103,20 @@ DATABASES = {
         'PASSWORD': os.environ.get('DB_PASSWORD'),
         'HOST': os.environ.get('DB_HOST'),
         'PORT': os.environ.get('DB_PORT'),
-        'OPTIONS': {
-            'sslmode': 'require',
-            'channel_binding': 'require',
-            }
-    }
+        'OPTIONS': {'sslmode': 'require', 'channel_binding': 'require'},
+    },
+    'platform': {
+        'ENGINE': 'config.db_backend',
+        'NAME': os.environ.get('PLATFORM_DB_NAME', os.environ.get('DB_NAME')),
+        'USER': os.environ.get('PLATFORM_DB_USER', os.environ.get('DB_USER')),
+        'PASSWORD': os.environ.get('PLATFORM_DB_PASSWORD', os.environ.get('DB_PASSWORD')),
+        'HOST': os.environ.get('PLATFORM_DB_HOST', os.environ.get('DB_HOST')),
+        'PORT': os.environ.get('PLATFORM_DB_PORT', os.environ.get('DB_PORT')),
+        'OPTIONS': {'sslmode': 'require', 'channel_binding': 'require'},
+    },
 }
+
+DATABASE_ROUTERS = ['config.routers.PlatformRouter']
 
 
 # Password validation

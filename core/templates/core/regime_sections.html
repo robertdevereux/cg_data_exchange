@@ -10,28 +10,24 @@
       <h1 class="govuk-heading-l">{{ regime.regime_name }}</h1>
 
       {% if sections %}
-      <ul class="govuk-task-list">
+      <div>
         {% for item in sections %}
-        <li class="govuk-task-list__item govuk-task-list__item--with-link">
-          <div class="govuk-task-list__name-and-hint">
-            <a class="govuk-link govuk-task-list__link"
-               href="{{ item.action_url }}"
-               aria-describedby="status-{{ forloop.counter }}">
-              {{ item.section.section_name }}
-            </a>
+        <div style="display:flex; align-items:center; gap:1rem; padding:0.75rem 0; border-bottom:1px solid #b1b4b6;">
+          <div style="flex:1; min-width:0;">
+            <a class="govuk-link" href="{{ item.action_url }}" style="word-wrap:break-word;">{{ item.section.section_name }}</a>
           </div>
-          <div class="govuk-task-list__status" id="status-{{ forloop.counter }}">
+          <div style="flex-shrink:0; width:120px;">
             {% if item.status == 'complete' %}
             <strong class="govuk-tag">Completed</strong>
             {% elif item.status == 'in_progress' %}
             <strong class="govuk-tag govuk-tag--blue">In progress</strong>
             {% else %}
-            <span class="govuk-task-list__status--cannot-start-yet">Not yet started</span>
+            <span class="govuk-hint" style="margin-bottom:0;">Not yet started</span>
             {% endif %}
           </div>
-        </li>
+        </div>
         {% endfor %}
-      </ul>
+      </div>
       {% else %}
         <p class="govuk-body">No sections available.</p>
       {% endif %}
