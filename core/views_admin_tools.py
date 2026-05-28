@@ -31,6 +31,7 @@ from django.conf import settings
 from django.contrib.auth.decorators import user_passes_test
 from django.db import models
 from django.db.models import Count, F, Max, Q
+from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
@@ -145,9 +146,16 @@ def tools_switch_dept(request):
 
 @staff_required
 def tools_questions_list(request):
-    """Read-only listing of all Question records ordered by question_id."""
-    questions = list(Question.objects.filter(is_platform=False))
-    questions.sort(key=lambda q: int(re.search(r'\d+', q.question_id).group()) if re.search(r'\d+', q.question_id) else 0)
+    """Read-only listing of Question records filtered by user type."""
+    if request.user.is_superuser:
+        questions = list(Question.objects.filter(is_platform=True))
+    else:
+        active_dept = request.session.get('active_dept', settings.ACTIVE_DEPT)
+        questions = list(Question.objects.filter(
+            is_platform=False,
+            question_id__startswith=f'{active_dept}_',
+        ))
+    questions.sort(key=_question_sort_key)
     return render(request, 'core/tools_questions_list.html', {
         'questions': questions,
     })
@@ -159,8 +167,21 @@ def tools_questions_list(request):
 
 @staff_required
 def tools_sets_list(request):
-    """Read-only listing of all QuestionSet records with their members."""
-    sets = list(QuestionSet.objects.prefetch_related('members__question').all())
+    """Read-only listing of QuestionSet records, filtered by active dept for staff."""
+    if request.user.is_superuser:
+        qs = QuestionSet.objects.prefetch_related('members__question').all()
+    else:
+        active_dept = request.session.get('active_dept', settings.ACTIVE_DEPT)
+        dept_question_ids = Question.objects.filter(
+            question_id__startswith=f'{active_dept}_',
+        ).values_list('question_id', flat=True)
+        qs = (
+            QuestionSet.objects
+            .filter(members__question_id__in=dept_question_ids)
+            .distinct()
+            .prefetch_related('members__question')
+        )
+    sets = list(qs)
     sets.sort(key=lambda s: int(re.search(r'\d+', s.set_id).group()) if re.search(r'\d+', s.set_id) else 0)
     return render(request, 'core/tools_sets_list.html', {
         'sets': sets,
@@ -171,12 +192,28 @@ def tools_sets_list(request):
 # 0d. ADD QUESTION
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _next_question_id():
+def _question_sort_key(q):
+    """Sort questions by prefix alphabetically, then by number numerically.
+
+    Handles IDs like P_1, M_10, TEST_2, O_3 correctly.
+    Falls back to plain string sort for non-matching IDs.
+    """
+    m = re.match(r'^(.*?)(\d+)$', q.question_id)
+    if m:
+        return (m.group(1), int(m.group(2)))
+    return (q.question_id, 0)
+
+
+def _next_question_id(prefix=None, request=None):
+    if prefix is None:
+        active_dept = request.session.get('active_dept', settings.ACTIVE_DEPT)
+        prefix = f'{active_dept}_'
+    pattern = rf'^{re.escape(prefix)}\d+$'
     existing = Question.objects.filter(
-        question_id__regex=r'^Q\d+$'
+        question_id__regex=pattern
     ).values_list('question_id', flat=True)
     nums = [int(re.search(r'\d+', q).group()) for q in existing]
-    return f'Q{max(nums) + 1 if nums else 1}'
+    return f'{prefix}{max(nums) + 1 if nums else 1}'
 
 
 @staff_required
@@ -184,10 +221,20 @@ def tools_question_add(request):
     """Form to create a new Question record."""
     errors = {}
     post = {}
+    is_superuser = request.user.is_superuser
 
     if request.method == 'POST':
         post = request.POST
-        question_id   = _next_question_id()
+        if is_superuser:
+            raw_prefix = post.get('prefix', 'P').upper()
+            if raw_prefix not in ('P', 'O'):
+                raw_prefix = 'P'
+            prefix = f'{raw_prefix}_'   # → 'P_' or 'O_'
+            is_platform = True
+            question_id = _next_question_id(prefix=prefix)
+        else:
+            is_platform = False
+            question_id = _next_question_id(request=request)
         question_text = post.get('question_text', '').strip()
         question_type = post.get('question_type', '').strip()
         hint          = post.get('hint', '').strip() or None
@@ -208,14 +255,16 @@ def tools_question_add(request):
                 hint=hint,
                 guidance=guidance,
                 options=options,
+                is_platform=is_platform,
             )
             return redirect(f'/tools/questions/?added={question_id}')
 
     context = {
         'errors':                errors,
         'post':                  post,
-        'next_question_id':      _next_question_id(),
+        'next_question_id':      _next_question_id(prefix='P_') if is_superuser else _next_question_id(request=request),
         'question_type_choices': Question.QUESTION_TYPE_CHOICES,
+        'is_superuser':          is_superuser,
     }
     return render(request, 'core/tools_question_add.html', context)
 
@@ -237,7 +286,7 @@ def tools_set_add(request):
     """Form to create a new QuestionSet with member questions."""
     errors = {}
     post = {}
-    all_questions = Question.objects.all().order_by('question_id')
+    all_questions = sorted(Question.objects.all(), key=_question_sort_key)
 
     if request.method == 'POST':
         post = request.POST
@@ -458,12 +507,19 @@ def tools_section_delete(request, section_id):
     section = get_object_or_404(Section, section_id=section_id)
 
     if request.method == 'POST':
-        # Explicitly remove routing and status records first (CASCADE would
-        # handle them, but being explicit matches the documented behaviour).
+        # Safe deletion order for a section:
+        #   1. core_sectionstatus
+        #   2. core_routing
+        #   3. core_answer
+        #   4. core_answerhistory
+        #   5. core_answertable
+        #   6. core_answertablehistory
+        #   7. core_permission
+        #   8. core_section  ← now safe
+        # Steps 3–7 cascade automatically via the section FK.
+        # Steps 1–2 are deleted explicitly as a belt-and-braces measure.
         Routing.objects.filter(section=section).delete()
         SectionStatus.objects.filter(section=section).delete()
-        # Delete the section itself — Answer/AnswerHistory/AnswerTable rows
-        # with non-nullable section FKs will cascade-delete automatically.
         section.delete()
         return redirect(
             reverse('core:tools_sections_list') + f'?deleted={section_id}'
@@ -1929,7 +1985,10 @@ def tools_section_routing(request, section_id):
     )
 
     # Build available_nodes from all Questions + QuestionSets not already in routing
-    questions = Question.objects.exclude(question_id__in=existing_node_ids).order_by('question_id')
+    questions = sorted(
+        Question.objects.exclude(question_id__in=existing_node_ids),
+        key=_question_sort_key,
+    )
     sets = QuestionSet.objects.exclude(set_id__in=existing_node_ids).order_by('set_id')
 
     available_nodes = (
@@ -2096,8 +2155,11 @@ def tools_routing_insert(request, section_id):
         .values_list('current_node', flat=True)
         .distinct()
     )
-    questions = Question.objects.exclude(question_id__in=existing_node_ids).order_by('question_id')
-    sets      = QuestionSet.objects.exclude(set_id__in=existing_node_ids).order_by('set_id')
+    questions = sorted(
+        Question.objects.exclude(question_id__in=existing_node_ids),
+        key=_question_sort_key,
+    )
+    sets = QuestionSet.objects.exclude(set_id__in=existing_node_ids).order_by('set_id')
 
     # Build options map for radio/checkbox questions only
     question_options = {}
@@ -2752,6 +2814,11 @@ def tools_viewer(request):
 def tools_question_edit(request, question_id):
     question = get_object_or_404(Question, question_id=question_id)
 
+    if question.is_platform and not request.user.is_superuser:
+        return HttpResponseForbidden("Platform questions can only be edited by super admins.")
+    if not question.is_platform and request.user.is_superuser:
+        return HttpResponseForbidden("Department questions are managed by department admins.")
+
     if request.method == 'POST':
         back         = request.POST.get('back', '')
         back_regime   = request.POST.get('back_regime', '')
@@ -2828,10 +2895,9 @@ def tools_set_edit(request, set_id):
 
     # Questions not already in this set, for the "add member" dropdown
     existing_q_ids = qs.members.values_list('question_id', flat=True)
-    available_questions = (
-        Question.objects
-        .exclude(question_id__in=existing_q_ids)
-        .order_by('question_id')
+    available_questions = sorted(
+        Question.objects.exclude(question_id__in=existing_q_ids),
+        key=_question_sort_key,
     )
     max_order = (
         qs.members.order_by('-display_order')
@@ -2958,7 +3024,7 @@ def tools_create(request):
             user=request.user,
             case=case,
             section=meta_section,
-            question_id='Q53',
+            question_id='M_21',
         )
         target_regime_id = ans.answer.strip()
     except (Section.DoesNotExist, Answer.DoesNotExist):

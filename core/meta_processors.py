@@ -58,9 +58,9 @@ def process_meta_regime(case, user):
         a.question_id: a.answer
         for a in Answer.objects.filter(user=user, case=case, section=section)
     }
-    regime_id   = answers.get('Q53', '').strip()
-    regime_name = answers.get('Q54', '').strip()
-    dept_id     = answers.get('Q55', '').strip()
+    regime_id   = answers.get('M_21', '').strip()
+    regime_name = answers.get('M_22', '').strip()
+    dept_id     = answers.get('M_23', '').strip()
 
     if not regime_id or not regime_name:
         logger.warning('process_meta_regime: missing regime_id or regime_name')
@@ -125,9 +125,9 @@ def process_meta_schedules(case, user):
     """Read META_ADD_SCHEDULES rows and write to Schedule table."""
     rows = _get_table_rows(case, user, 'META_ADD_SCHEDULES')
     for row in rows:
-        schedule_id   = (row.get('Q50') or '').strip()
-        schedule_name = (row.get('Q51') or '').strip()
-        display_order = row.get('Q52', 0)
+        schedule_id   = (row.get('M_18') or '').strip()
+        schedule_name = (row.get('M_19') or '').strip()
+        display_order = row.get('M_20', 0)
         if not schedule_id or not schedule_name:
             continue
         # Regime must already exist (process_meta_regime runs first)
@@ -156,10 +156,10 @@ def process_meta_sections(case, user):
     if not regime:
         return
     for row in rows:
-        section_id       = (row.get('Q46') or '').strip()
-        section_name     = (row.get('Q47') or '').strip()
-        section_type_str = (row.get('Q48') or 'Standard').strip()
-        schedule_id      = (row.get('Q49') or '').strip()
+        section_id       = (row.get('M_14') or '').strip()
+        section_name     = (row.get('M_15') or '').strip()
+        section_type_str = (row.get('M_16') or 'Standard').strip()
+        schedule_id      = (row.get('M_17') or '').strip()
         if not section_id or not section_name:
             continue
         section_type = 1 if section_type_str == 'Table' else 0
@@ -186,12 +186,12 @@ def process_meta_questions(case, user):
     """Read META_ADD_QUESTIONS rows and write to Question table."""
     rows = _get_table_rows(case, user, 'META_ADD_QUESTIONS')
     for row in rows:
-        question_id   = (row.get('Q33') or '').strip()
-        question_text = (row.get('Q34') or '').strip()
-        question_type = (row.get('Q35') or 'text').strip()
-        hint          = (row.get('Q36') or '').strip() or None
-        guidance      = (row.get('Q37') or '').strip() or None
-        options       = (row.get('Q38') or '').strip() or None
+        question_id   = (row.get('M_1') or '').strip()
+        question_text = (row.get('M_2') or '').strip()
+        question_type = (row.get('M_3') or 'text').strip()
+        hint          = (row.get('M_4') or '').strip() or None
+        guidance      = (row.get('M_5') or '').strip() or None
+        options       = (row.get('M_6') or '').strip() or None
         if not question_id or not question_text:
             continue
         Question.objects.update_or_create(
@@ -210,9 +210,9 @@ def process_meta_sets(case, user):
     """Read META_ADD_SETS rows and write to QuestionSet table."""
     rows = _get_table_rows(case, user, 'META_ADD_SETS')
     for row in rows:
-        set_id    = (row.get('Q39') or '').strip()
-        set_title = (row.get('Q40') or '').strip()
-        set_hint  = (row.get('Q41') or '').strip() or None
+        set_id    = (row.get('M_7') or '').strip()
+        set_title = (row.get('M_8') or '').strip()
+        set_hint  = (row.get('M_9') or '').strip() or None
         if not set_id or not set_title:
             continue
         QuestionSet.objects.update_or_create(
@@ -228,10 +228,10 @@ def process_meta_setmembers(case, user):
     """Read META_ADD_SETMEMBERS rows and write to QuestionSetMember table."""
     rows = _get_table_rows(case, user, 'META_ADD_SETMEMBERS')
     for row in rows:
-        set_id        = (row.get('Q42') or '').strip()
-        question_id   = (row.get('Q43') or '').strip()
-        display_order = row.get('Q44', 0)
-        required_str  = (row.get('Q45') or 'Yes').strip()
+        set_id        = (row.get('M_10') or '').strip()
+        question_id   = (row.get('M_11') or '').strip()
+        display_order = row.get('M_12', 0)
+        required_str  = (row.get('M_13') or 'Yes').strip()
         if not set_id or not question_id:
             continue
         try:
@@ -267,16 +267,16 @@ def process_meta_routing(case, user):
         return
 
     # Collect affected section IDs and delete their existing routing
-    section_ids = list({(row.get('Q56') or '').strip() for row in rows})
+    section_ids = list({(row.get('M_24') or '').strip() for row in rows})
     section_ids = [s for s in section_ids if s]
     from .models import Routing
     Routing.objects.filter(section__section_id__in=section_ids).delete()
 
     for order, row in enumerate(rows, start=1):
-        section_id   = (row.get('Q56') or '').strip()
-        current_node = (row.get('Q57') or '').strip()
-        answer_value = (row.get('Q58') or '').strip() or None
-        next_node    = (row.get('Q59') or '').strip() or None
+        section_id   = (row.get('M_24') or '').strip()
+        current_node = (row.get('M_25') or '').strip()
+        answer_value = (row.get('M_26') or '').strip() or None
+        next_node    = (row.get('M_27') or '').strip() or None
 
         if not section_id or not current_node:
             continue
@@ -352,7 +352,7 @@ def _get_target_regime(case, user):
     try:
         section = Section.objects.get(section_id='META_ADD_REGIME')
         answer  = Answer.objects.get(
-            user=user, case=case, section=section, question_id='Q53'
+            user=user, case=case, section=section, question_id='M_21'
         )
         return Regime.objects.get(regime_id=answer.answer.strip())
     except (Section.DoesNotExist, Answer.DoesNotExist, Regime.DoesNotExist):

@@ -175,6 +175,112 @@
             </div>
           </div>
 
+          {% elif field.question_type == "personal_name" %}
+          <label class="govuk-label">{{ field.question_text }}</label>
+
+          {% if field.hint %}
+          <div class="govuk-hint" id="field-{{ field.question_id }}-hint">{{ field.hint }}</div>
+          {% endif %}
+
+          {% if field.error %}
+          <p class="govuk-error-message" id="field-{{ field.question_id }}-error">
+            <span class="govuk-visually-hidden">Error:</span> {{ field.error }}
+          </p>
+          {% endif %}
+
+          <div class="govuk-form-group">
+            <label class="govuk-label" for="personal_name_title_{{ field.question_id }}">Title <span class="govuk-hint" style="display:inline">(optional)</span></label>
+            <input class="govuk-input govuk-input--width-10{% if field.error %} govuk-input--error{% endif %}"
+                   type="text"
+                   id="personal_name_title_{{ field.question_id }}"
+                   name="personal_name_title_{{ field.question_id }}"
+                   autocomplete="honorific-prefix"
+                   value="{{ field.name_parts.title|default:'' }}">
+          </div>
+          <div class="govuk-form-group">
+            <label class="govuk-label" for="personal_name_first_name_{{ field.question_id }}">First name</label>
+            <input class="govuk-input govuk-input--width-20{% if field.error %} govuk-input--error{% endif %}"
+                   type="text"
+                   id="personal_name_first_name_{{ field.question_id }}"
+                   name="personal_name_first_name_{{ field.question_id }}"
+                   value="{{ field.name_parts.first_name|default:'' }}">
+          </div>
+          <div class="govuk-form-group">
+            <label class="govuk-label" for="personal_name_middle_name_{{ field.question_id }}">Middle names</label>
+            <input class="govuk-input govuk-input--width-20{% if field.error %} govuk-input--error{% endif %}"
+                   type="text"
+                   id="personal_name_middle_name_{{ field.question_id }}"
+                   name="personal_name_middle_name_{{ field.question_id }}"
+                   value="{{ field.name_parts.middle_name|default:'' }}">
+          </div>
+          <div class="govuk-form-group">
+            <label class="govuk-label" for="personal_name_last_name_{{ field.question_id }}">Last name</label>
+            <input class="govuk-input govuk-input--width-20{% if field.error %} govuk-input--error{% endif %}"
+                   type="text"
+                   id="personal_name_last_name_{{ field.question_id }}"
+                   name="personal_name_last_name_{{ field.question_id }}"
+                   value="{{ field.name_parts.last_name|default:'' }}">
+          </div>
+
+          {% elif field.question_type == "address" %}
+          <label class="govuk-label">{{ field.question_text }}</label>
+
+          {% if field.hint %}
+          <div class="govuk-hint" id="field-{{ field.question_id }}-hint">{{ field.hint }}</div>
+          {% endif %}
+
+          {% if field.error %}
+          <p class="govuk-error-message" id="field-{{ field.question_id }}-error">
+            <span class="govuk-visually-hidden">Error:</span> {{ field.error }}
+          </p>
+          {% endif %}
+
+          <div class="govuk-form-group">
+            <label class="govuk-label" for="address_line1_{{ field.question_id }}">Address line 1</label>
+            <input class="govuk-input govuk-input--width-20{% if field.error %} govuk-input--error{% endif %}"
+                   type="text"
+                   id="address_line1_{{ field.question_id }}"
+                   name="address_line1_{{ field.question_id }}"
+                   autocomplete="address-line1"
+                   value="{{ field.address_parts.line1|default:'' }}">
+          </div>
+          <div class="govuk-form-group">
+            <label class="govuk-label" for="address_line2_{{ field.question_id }}">Address line 2 (optional)</label>
+            <input class="govuk-input govuk-input--width-20{% if field.error %} govuk-input--error{% endif %}"
+                   type="text"
+                   id="address_line2_{{ field.question_id }}"
+                   name="address_line2_{{ field.question_id }}"
+                   autocomplete="address-line2"
+                   value="{{ field.address_parts.line2|default:'' }}">
+          </div>
+          <div class="govuk-form-group">
+            <label class="govuk-label" for="address_city_{{ field.question_id }}">Town or city</label>
+            <input class="govuk-input govuk-input--width-20{% if field.error %} govuk-input--error{% endif %}"
+                   type="text"
+                   id="address_city_{{ field.question_id }}"
+                   name="address_city_{{ field.question_id }}"
+                   autocomplete="address-level2"
+                   value="{{ field.address_parts.city|default:'' }}">
+          </div>
+          <div class="govuk-form-group">
+            <label class="govuk-label" for="address_county_{{ field.question_id }}">County (optional)</label>
+            <input class="govuk-input govuk-input--width-20{% if field.error %} govuk-input--error{% endif %}"
+                   type="text"
+                   id="address_county_{{ field.question_id }}"
+                   name="address_county_{{ field.question_id }}"
+                   autocomplete="address-level1"
+                   value="{{ field.address_parts.county|default:'' }}">
+          </div>
+          <div class="govuk-form-group">
+            <label class="govuk-label" for="address_postcode_{{ field.question_id }}">Postcode</label>
+            <input class="govuk-input govuk-input--width-10{% if field.error %} govuk-input--error{% endif %}"
+                   type="text"
+                   id="address_postcode_{{ field.question_id }}"
+                   name="address_postcode_{{ field.question_id }}"
+                   autocomplete="postal-code"
+                   value="{{ field.address_parts.postcode|default:'' }}">
+          </div>
+
           {% elif field.question_type == "number" %}
           <label class="govuk-label" for="field-{{ field.question_id }}">
             {{ field.question_text }}

@@ -363,6 +363,31 @@ def section_question(request, section_id, question_id):
             'year':  source.get('year', '') if source else '',
         }
 
+    name_parts = None
+    if q_meta['question_type'] == 'personal_name':
+        source = current_answer if isinstance(current_answer, dict) else (
+            suggestion if isinstance(suggestion, dict) else None
+        )
+        name_parts = {
+            'title':       source.get('title', '')       if source else '',
+            'first_name':  source.get('first_name', '')  if source else '',
+            'middle_name': source.get('middle_name', '') if source else '',
+            'last_name':   source.get('last_name', '')   if source else '',
+        }
+
+    address_parts = None
+    if q_meta['question_type'] == 'address':
+        source = current_answer if isinstance(current_answer, dict) else (
+            suggestion if isinstance(suggestion, dict) else None
+        )
+        address_parts = {
+            'line1':    source.get('line1', '')    if source else '',
+            'line2':    source.get('line2', '')    if source else '',
+            'city':     source.get('city', '')     if source else '',
+            'county':   source.get('county', '')   if source else '',
+            'postcode': source.get('postcode', '') if source else '',
+        }
+
     context = {
         'section':        section,
         'question_id':    question_id,
@@ -373,6 +398,8 @@ def section_question(request, section_id, question_id):
         'options':        options,
         'current_answer': current_answer,
         'date_parts':     date_parts,
+        'name_parts':     name_parts,
+        'address_parts':  address_parts,
         'suggestion':     suggestion,
         'provenance':     provenance,
         'back_url':       back_url,
@@ -382,9 +409,11 @@ def section_question(request, section_id, question_id):
     }
 
     template_map = {
-        'radio':    'core/question_radio.html',
-        'checkbox': 'core/question_checkbox.html',
-        'date':     'core/question_date.html',
+        'radio':         'core/question_radio.html',
+        'checkbox':      'core/question_checkbox.html',
+        'date':          'core/question_date.html',
+        'personal_name': 'core/question_personal_name.html',
+        'address':       'core/question_address.html',
     }
     template = template_map.get(q_meta['question_type'], 'core/question_text.html')
     return render(request, template, context)
@@ -400,6 +429,21 @@ def _process_answer(request, section, section_id, question_id, q_meta, pss):
         month = request.POST.get('date_month', '').strip()
         year  = request.POST.get('date_year', '').strip()
         answer = {'day': day, 'month': month, 'year': year}
+    elif q_meta['question_type'] == 'personal_name':
+        answer = {
+            'title':       request.POST.get('personal_name_title', '').strip(),
+            'first_name':  request.POST.get('personal_name_first_name', '').strip(),
+            'middle_name': request.POST.get('personal_name_middle_name', '').strip(),
+            'last_name':   request.POST.get('personal_name_last_name', '').strip(),
+        }
+    elif q_meta['question_type'] == 'address':
+        answer = {
+            'line1':    request.POST.get('address_line1', '').strip(),
+            'line2':    request.POST.get('address_line2', '').strip(),
+            'city':     request.POST.get('address_city', '').strip(),
+            'county':   request.POST.get('address_county', '').strip(),
+            'postcode': request.POST.get('address_postcode', '').strip(),
+        }
     else:
         answer = request.POST.get('answer', '').strip()
 
@@ -446,6 +490,86 @@ def _process_answer(request, section, section_id, question_id, q_meta, pss):
                 'acting_for':     get_acting_for_name(pss),
             }
             return render(request, 'core/question_date.html', context)
+
+    # ── personal_name validation ──────────────────────────────────────────────
+    if q_meta['question_type'] == 'personal_name':
+        errors = []
+        if not answer.get('first_name'):
+            errors.append('Enter a first name')
+        if not answer.get('last_name'):
+            errors.append('Enter a last name')
+        if errors:
+            asked_ids = pss.get('asked_ids', [question_id])
+            if len(asked_ids) > 1 and question_id == asked_ids[-1]:
+                prev_node = asked_ids[-2]
+                _set_table = pss.get('set_table', {})
+                if prev_node in _set_table:
+                    back_url = f'/section/{section_id}/set/{prev_node}/'
+                else:
+                    back_url = f'/section/{section_id}/question/{prev_node}/'
+            else:
+                back_url = f'/section/{section_id}/start/'
+            name_parts = answer
+            context = {
+                'section':        section,
+                'question_id':    question_id,
+                'question_text':  q_meta['question_text'],
+                'guidance':       q_meta['guidance'],
+                'hint':           q_meta['hint'],
+                'question_type':  q_meta['question_type'],
+                'options':        [],
+                'current_answer': answer,
+                'name_parts':     name_parts,
+                'suggestion':     None,
+                'provenance':     None,
+                'back_url':       back_url,
+                'asked_ids':      asked_ids,
+                'error':          ' / '.join(errors),
+                'breadcrumbs':    _build_crumbs(pss, section.section_name),
+                'acting_for':     get_acting_for_name(pss),
+            }
+            return render(request, 'core/question_personal_name.html', context)
+
+    # ── address validation ────────────────────────────────────────────────────
+    if q_meta['question_type'] == 'address':
+        errors = []
+        if not answer.get('line1'):
+            errors.append('Enter the first line of the address')
+        if not answer.get('city'):
+            errors.append('Enter a town or city')
+        if not answer.get('postcode'):
+            errors.append('Enter a postcode')
+        if errors:
+            asked_ids = pss.get('asked_ids', [question_id])
+            if len(asked_ids) > 1 and question_id == asked_ids[-1]:
+                prev_node = asked_ids[-2]
+                _set_table = pss.get('set_table', {})
+                if prev_node in _set_table:
+                    back_url = f'/section/{section_id}/set/{prev_node}/'
+                else:
+                    back_url = f'/section/{section_id}/question/{prev_node}/'
+            else:
+                back_url = f'/section/{section_id}/start/'
+            address_parts = answer
+            context = {
+                'section':        section,
+                'question_id':    question_id,
+                'question_text':  q_meta['question_text'],
+                'guidance':       q_meta['guidance'],
+                'hint':           q_meta['hint'],
+                'question_type':  q_meta['question_type'],
+                'options':        [],
+                'current_answer': answer,
+                'address_parts':  address_parts,
+                'suggestion':     None,
+                'provenance':     None,
+                'back_url':       back_url,
+                'asked_ids':      asked_ids,
+                'error':          ' / '.join(errors),
+                'breadcrumbs':    _build_crumbs(pss, section.section_name),
+                'acting_for':     get_acting_for_name(pss),
+            }
+            return render(request, 'core/question_address.html', context)
 
     # ── Basic non-empty validation for non-date types ─────────────────────────
     elif not answer and answer != 0:
@@ -566,6 +690,21 @@ def section_review(request, section_id):
                         display_answer = (
                             f"{answer.get('day', '')} {answer.get('month', '')} {answer.get('year', '')}"
                         )
+                elif isinstance(answer, dict) and 'first_name' in answer:
+                    display_answer = ' '.join(filter(None, [
+                        answer.get('title', ''),
+                        answer.get('first_name', ''),
+                        answer.get('middle_name', ''),
+                        answer.get('last_name', ''),
+                    ])) or '—'
+                elif isinstance(answer, dict) and 'line1' in answer:
+                    display_answer = '\n'.join(filter(None, [
+                        answer.get('line1', ''),
+                        answer.get('line2', ''),
+                        answer.get('city', ''),
+                        answer.get('county', ''),
+                        answer.get('postcode', ''),
+                    ])) or '—'
                 elif isinstance(answer, list):
                     display_answer = ', '.join(answer)
                 else:
@@ -596,6 +735,20 @@ def section_review(request, section_id):
                     display_answer = (
                         f"{answer.get('day', '')} {answer.get('month', '')} {answer.get('year', '')}"
                     )
+            elif isinstance(answer, dict) and 'first_name' in answer:
+                display_answer = ' '.join(filter(None, [
+                    answer.get('first_name', ''),
+                    answer.get('middle_name', ''),
+                    answer.get('last_name', ''),
+                ])) or '—'
+            elif isinstance(answer, dict) and 'line1' in answer:
+                display_answer = '\n'.join(filter(None, [
+                    answer.get('line1', ''),
+                    answer.get('line2', ''),
+                    answer.get('city', ''),
+                    answer.get('county', ''),
+                    answer.get('postcode', ''),
+                ])) or '—'
             elif isinstance(answer, list):
                 display_answer = ', '.join(answer)
             else:
@@ -1167,6 +1320,23 @@ def section_set_page(request, section_id, set_id):
                 'month': parsed.get('month', '') if isinstance(parsed, dict) else '',
                 'year':  parsed.get('year', '') if isinstance(parsed, dict) else '',
             }
+        if m['question_type'] == 'personal_name':
+            src = current if isinstance(current, dict) else {}
+            field_dict['name_parts'] = {
+                'title':       src.get('title', ''),
+                'first_name':  src.get('first_name', ''),
+                'middle_name': src.get('middle_name', ''),
+                'last_name':   src.get('last_name', ''),
+            }
+        if m['question_type'] == 'address':
+            src = current if isinstance(current, dict) else {}
+            field_dict['address_parts'] = {
+                'line1':    src.get('line1', ''),
+                'line2':    src.get('line2', ''),
+                'city':     src.get('city', ''),
+                'county':   src.get('county', ''),
+                'postcode': src.get('postcode', ''),
+            }
         fields.append(field_dict)
 
     context = {
@@ -1203,10 +1373,44 @@ def _process_set_answer(request, section, section_id, set_id, set_meta, pss):
                 'month': request.POST.get(f'{qid}_month', '').strip(),
                 'year':  request.POST.get(f'{qid}_year', '').strip(),
             }
+        elif m['question_type'] == 'personal_name':
+            value = {
+                'title':       request.POST.get(f'personal_name_title_{qid}', '').strip(),
+                'first_name':  request.POST.get(f'personal_name_first_name_{qid}', '').strip(),
+                'middle_name': request.POST.get(f'personal_name_middle_name_{qid}', '').strip(),
+                'last_name':   request.POST.get(f'personal_name_last_name_{qid}', '').strip(),
+            }
+        elif m['question_type'] == 'address':
+            value = {
+                'line1':    request.POST.get(f'address_line1_{qid}', '').strip(),
+                'line2':    request.POST.get(f'address_line2_{qid}', '').strip(),
+                'city':     request.POST.get(f'address_city_{qid}', '').strip(),
+                'county':   request.POST.get(f'address_county_{qid}', '').strip(),
+                'postcode': request.POST.get(f'address_postcode_{qid}', '').strip(),
+            }
         else:
             value = request.POST.get(qid, '').strip()
-        if m['required'] and not value and value != 0:
-            field_errors[qid] = 'Enter ' + m['question_text'].lower().rstrip('?').rstrip('.')
+        if m['required']:
+            if m['question_type'] == 'personal_name':
+                sub_errors = []
+                if not value.get('first_name'):
+                    sub_errors.append('Enter a first name')
+                if not value.get('last_name'):
+                    sub_errors.append('Enter a last name')
+                if sub_errors:
+                    field_errors[qid] = ' / '.join(sub_errors)
+            elif m['question_type'] == 'address':
+                sub_errors = []
+                if not value.get('line1'):
+                    sub_errors.append('Enter the first line of the address')
+                if not value.get('city'):
+                    sub_errors.append('Enter a town or city')
+                if not value.get('postcode'):
+                    sub_errors.append('Enter a postcode')
+                if sub_errors:
+                    field_errors[qid] = ' / '.join(sub_errors)
+            elif not value and value != 0:
+                field_errors[qid] = 'Enter ' + m['question_text'].lower().rstrip('?').rstrip('.')
         field_values[qid] = value
 
     # ── Re-render with errors if any field failed ─────────────────────────────
@@ -1241,6 +1445,22 @@ def _process_set_answer(request, section, section_id, set_id, set_meta, pss):
                     'day':   current.get('day', '') if isinstance(current, dict) else '',
                     'month': current.get('month', '') if isinstance(current, dict) else '',
                     'year':  current.get('year', '') if isinstance(current, dict) else '',
+                }
+            if m['question_type'] == 'personal_name':
+                src = current if isinstance(current, dict) else {}
+                field_dict['name_parts'] = {
+                    'first_name':  src.get('first_name', ''),
+                    'middle_name': src.get('middle_name', ''),
+                    'last_name':   src.get('last_name', ''),
+                }
+            if m['question_type'] == 'address':
+                src = current if isinstance(current, dict) else {}
+                field_dict['address_parts'] = {
+                    'line1':    src.get('line1', ''),
+                    'line2':    src.get('line2', ''),
+                    'city':     src.get('city', ''),
+                    'county':   src.get('county', ''),
+                    'postcode': src.get('postcode', ''),
                 }
             fields.append(field_dict)
 

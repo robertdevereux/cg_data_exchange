@@ -113,6 +113,7 @@ DATABASES = {
         'HOST': os.environ.get('PLATFORM_DB_HOST', os.environ.get('DB_HOST')),
         'PORT': os.environ.get('PLATFORM_DB_PORT', os.environ.get('DB_PORT')),
         'OPTIONS': {'sslmode': 'require', 'channel_binding': 'require'},
+        'TEST': {'MIRROR': 'default'},
     },
 }
 
@@ -170,12 +171,12 @@ LOGOUT_REDIRECT_URL = '/'
 
 _hmrc_base  = os.environ.get('HMRC_BASE_URL',  '')
 _dwp_base   = os.environ.get('DWP_BASE_URL',   '')
-_demo_base  = os.environ.get('DEMO_BASE_URL',  '')
+_test_base  = os.environ.get('TEST_BASE_URL',  '')
 _defra_base = os.environ.get('DEFRA_BASE_URL', '')
 
 DEPT_BASE_URLS = {
     'HMRC':  _hmrc_base,
     'DWP':   _dwp_base,
-    'DEMO':  _demo_base,
+    'TEST':  _test_base,
     'DEFRA': _defra_base,
 }

@@ -30,10 +30,12 @@
   <div class="govuk-grid-row">
     <div class="govuk-grid-column-full">
 
-      <h1 class="govuk-heading-xl">Configuration tools — {{ active_dept }}</h1>
+      <h1 class="govuk-heading-xl">Configuration tools{% if not request.user.is_superuser %} — {{ active_dept }}{% endif %}</h1>
+      {% if not request.user.is_superuser %}
       <p class="govuk-body-s">
         <a href="{% url 'core:tools_switch_dept' %}" class="govuk-link">Switch department</a>
       </p>
+      {% endif %}
 
       {# ── LAYER 1 — Questions and their collections ───────────────────────── #}
       <section class="config-layer">
@@ -47,8 +49,13 @@
           <div class="govuk-grid-column-one-half">
             <div class="config-card">
               <h3 class="govuk-heading-s">Questions</h3>
+              {% if request.user.is_superuser %}
+              <p class="govuk-body-s">Platform questions (P / O series).</p>
+              <a class="govuk-link" href="{% url 'core:tools_questions_list' %}">Manage platform questions (P / O series)</a>
+              {% else %}
               <p class="govuk-body-s">The shared question bank.</p>
               <a class="govuk-link" href="{% url 'core:tools_questions_list' %}">Manage questions</a>
+              {% endif %}
             </div>
           </div>
           <div class="govuk-grid-column-one-half">
@@ -62,6 +69,7 @@
       </section>
 
       {# ── LAYER 2 — Sections and their collections ────────────────────────── #}
+      {% if not request.user.is_superuser %}
       <section class="config-layer">
         <h2 class="govuk-heading-m config-layer__heading">
           Sections and schedules
@@ -108,6 +116,7 @@
           </div>
         </div>
       </section>
+      {% endif %}
 
     </div>
   </div>

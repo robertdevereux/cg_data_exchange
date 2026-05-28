@@ -15,6 +15,7 @@
           {{ item.dept.dept_name }}
         </a>
       </h2>
+      {% if item.regimes %}
       <ul class="govuk-list govuk-list--bullet">
         {% for regime in item.regimes %}
         <li>
@@ -24,6 +25,7 @@
         </li>
         {% endfor %}
       </ul>
+      {% endif %}
       {% endfor %}
     {% else %}
       <p class="govuk-body">No services are currently available.</p>

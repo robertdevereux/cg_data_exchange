@@ -30,21 +30,21 @@ class TestSimpleS1YesBranch(TestCase):
         self.assertEqual(r.status_code, 302)
         self.assertIn('/set/S1/', r['Location'])
 
-        # ── Post S1 set page (title, first name, last name) ───────────────────
+        # ── Post S1 set page (first name, last name) ──────────────────────────
         r = self.client.post('/section/SIMPLE_S1/set/S1/', {
-            'Q22': 'Alice', 'Q23': 'Johnson',
+            'TEST_22': 'Alice', 'TEST_23': 'Johnson',
         })
         self.assertEqual(r.status_code, 302, 'POST S1 returned unexpected status')
 
         # ── Post all Yes-branch questions in routing order ────────────────────
         posts = [
-            ('Q2',  {'date_day': '15', 'date_month': '6', 'date_year': '1975'}),
-            ('Q3',  {'answer': 'Yes'}),
-            ('Q4',  {'answer': 'QQ123456C'}),
-            ('Q7',  {'answer': 'I am a retired teacher living in Bristol.'}),
-            ('Q8',  {'answer': 'Yes'}),
-            ('Q10', {'answer': ['Red', 'Blue']}),
-            ('Q11', {'answer': '2'}),
+            ('TEST_2',  {'date_day': '15', 'date_month': '6', 'date_year': '1975'}),
+            ('TEST_3',  {'answer': 'Yes'}),
+            ('TEST_4',  {'answer': 'QQ123456C'}),
+            ('TEST_7',  {'answer': 'I am a retired teacher living in Bristol.'}),
+            ('TEST_8',  {'answer': 'Yes'}),
+            ('TEST_10', {'answer': ['Red', 'Blue']}),
+            ('TEST_11', {'answer': '2'}),
         ]
         for qid, data in posts:
             r = self.client.post(f'/section/SIMPLE_S1/question/{qid}/', data)
@@ -62,15 +62,15 @@ class TestSimpleS1YesBranch(TestCase):
         # ── Assertions ────────────────────────────────────────────────────────
         alice = User.objects.get(username='alice')
 
-        # Yes branch: S1 members (Q22/Q23) + Q2/Q3/Q4/Q7/Q8/Q10/Q11 = 9
+        # Yes branch: S1 members (TEST_22/TEST_23) + TEST_2/TEST_3/TEST_4/TEST_7/TEST_8/TEST_10/TEST_11 = 9
         self.assertEqual(
             Answer.objects.filter(user=alice, section__section_id='SIMPLE_S1').count(),
             9,
-            'Expected 9 answers: S1 members Q22/Q23 + Q2/Q3/Q4/Q7/Q8/Q10/Q11',
+            'Expected 9 answers: S1 members TEST_22/TEST_23 + TEST_2/TEST_3/TEST_4/TEST_7/TEST_8/TEST_10/TEST_11',
         )
         self.assertFalse(
-            Answer.objects.filter(user=alice, question_id='Q9').exists(),
-            'Q9 (simple_why) should not be present when Q8=Yes',
+            Answer.objects.filter(user=alice, question_id='TEST_9').exists(),
+            'TEST_9 (simple_why) should not be present when TEST_8=Yes',
         )
         self.assertEqual(
             SectionStatus.objects.get(user=alice, section__section_id='SIMPLE_S1').status,
@@ -90,36 +90,42 @@ class TestBacktrack(TestCase):
         self.client.login(username='alice', password='testpass123')
 
     def test_backtrack_prunes_nino_value(self):
-        # ── Start ─────────────────────────────────────────────────────────────
+        # ── Start — first node is the S1 set page ────────────────────────────
         self.client.get('/section/SIMPLE_S1/start/')
 
-        # ── Walk Yes branch as far as Q_nino_value ────────────────────────────
-        self.client.post('/section/SIMPLE_S1/question/Q_full_name/', {'answer': 'Alice Johnson'})
-        self.client.post('/section/SIMPLE_S1/question/Q_dob/',       {'answer': '1975-06-15'})
-        self.client.post('/section/SIMPLE_S1/question/Q_nino_yn/',   {'answer': 'Yes'})
-        self.client.post('/section/SIMPLE_S1/question/Q_nino_value/', {'answer': 'QQ123456C'})
+        # ── Post S1 set page ──────────────────────────────────────────────────
+        self.client.post('/section/SIMPLE_S1/set/S1/', {
+            'TEST_22': 'Alice', 'TEST_23': 'Johnson',
+        })
 
-        # ── Backtrack: GET Q_nino_yn truncates asked_ids to that point ────────
-        self.client.get('/section/SIMPLE_S1/question/Q_nino_yn/')
+        # ── Walk Yes branch as far as TEST_4 (NI number value) ───────────────
+        self.client.post('/section/SIMPLE_S1/question/TEST_2/',
+                         {'date_day': '15', 'date_month': '6', 'date_year': '1975'})
+        self.client.post('/section/SIMPLE_S1/question/TEST_3/', {'answer': 'Yes'})
+        self.client.post('/section/SIMPLE_S1/question/TEST_4/', {'answer': 'QQ123456C'})
 
-        # ── Change to No — routing jumps straight to Q_simple_about ──────────
-        self.client.post('/section/SIMPLE_S1/question/Q_nino_yn/', {'answer': 'No'})
+        # ── Backtrack: GET TEST_3 truncates asked_ids to that point ──────────
+        self.client.get('/section/SIMPLE_S1/question/TEST_3/')
+
+        # ── Change to No — routing jumps straight to TEST_7 ──────────────────
+        self.client.post('/section/SIMPLE_S1/question/TEST_3/', {'answer': 'No'})
 
         # ── Complete the No branch ────────────────────────────────────────────
-        self.client.post('/section/SIMPLE_S1/question/Q_simple_about/', {'answer': 'I changed my mind about NINO.'})
-        self.client.post('/section/SIMPLE_S1/question/Q_simple_agree/', {'answer': 'Yes'})
-        self.client.post('/section/SIMPLE_S1/question/Q_simple_colour/', {'answer': ['Green']})
-        self.client.post('/section/SIMPLE_S1/question/Q_simple_count/', {'answer': '1'})
+        self.client.post('/section/SIMPLE_S1/question/TEST_7/',
+                         {'answer': 'I changed my mind about NINO.'})
+        self.client.post('/section/SIMPLE_S1/question/TEST_8/', {'answer': 'Yes'})
+        self.client.post('/section/SIMPLE_S1/question/TEST_10/', {'answer': ['Green']})
+        self.client.post('/section/SIMPLE_S1/question/TEST_11/', {'answer': '1'})
 
         # ── Confirm ───────────────────────────────────────────────────────────
         r = self.client.post('/section/SIMPLE_S1/confirm/')
         self.assertEqual(r.status_code, 302)
 
-        # ── Assertion: Q_nino_value must have been pruned ─────────────────────
+        # ── Assertion: TEST_4 must have been pruned ───────────────────────────
         alice = User.objects.get(username='alice')
         self.assertFalse(
-            Answer.objects.filter(user=alice, question_id='Q_nino_value').exists(),
-            'Q_nino_value must be pruned when backtrack changes Q_nino_yn to No',
+            Answer.objects.filter(user=alice, question_id='TEST_4').exists(),
+            'TEST_4 must be pruned when backtrack changes TEST_3 to No',
         )
 
 
@@ -189,7 +195,7 @@ class TestSolicitor1Flow(TestCase):
         self.assertIn('/demo/regimes/', final_url)
         # Step 2: follow into the Financial Information schedule section list (core URL)
         r2 = self.client.get(
-            '/regime/DEMO_SCHEDULES/schedule/SCHED_FINANCES/sections/',
+            '/regime/TEST_SCHEDULES/schedule/SCHED_FINANCES/sections/',
             follow=True,
         )
         self.assertEqual(r2.status_code, 200)
@@ -258,8 +264,8 @@ class TestQuestionSetFlow(TestCase):
     def test_set_page_post_missing_required_field_rerenders(self):
         """POST with a required field blank re-renders the set page (200, not 302)."""
         r = self.client.post(f'/section/{self.section_id}/set/S1/', {
-            'Q22': '',      # first name — required, left blank
-            'Q23': 'Smith',
+            'TEST_22': '',      # first name — required, left blank
+            'TEST_23': 'Smith',
         })
         self.assertEqual(r.status_code, 200)
         self.assertTemplateUsed(r, 'core/question_set.html')
@@ -267,16 +273,16 @@ class TestQuestionSetFlow(TestCase):
     def test_set_page_post_missing_required_field_shows_error_summary(self):
         """Error summary appears when a required field is blank."""
         r = self.client.post(f'/section/{self.section_id}/set/S1/', {
-            'Q22': '',
-            'Q23': 'Smith',
+            'TEST_22': '',
+            'TEST_23': 'Smith',
         })
         self.assertContains(r, 'govuk-error-summary')
 
     def test_set_page_post_missing_required_field_shows_field_error(self):
         """Per-field error class appears on the blank required field."""
         r = self.client.post(f'/section/{self.section_id}/set/S1/', {
-            'Q22': '',
-            'Q23': 'Smith',
+            'TEST_22': '',
+            'TEST_23': 'Smith',
         })
         self.assertContains(r, 'govuk-form-group--error')
 
@@ -285,8 +291,8 @@ class TestQuestionSetFlow(TestCase):
     def test_set_page_post_all_required_filled_advances(self):
         """POST with all required fields non-empty redirects to the next node."""
         r = self.client.post(f'/section/{self.section_id}/set/S1/', {
-            'Q22': 'Alice',
-            'Q23': 'Jones',
+            'TEST_22': 'Alice',
+            'TEST_23': 'Jones',
         })
         self.assertEqual(r.status_code, 302)
 
@@ -294,15 +300,15 @@ class TestQuestionSetFlow(TestCase):
 
     def test_back_link_after_set_points_to_set_url(self):
         """
-        After submitting S1 and landing on Q2 (the next Q-node),
-        the back link on Q2 must point to the S1 set URL.
+        After submitting S1 and landing on TEST_2 (the next Q-node),
+        the back link on TEST_2 must point to the S1 set URL.
         """
         self.client.post(f'/section/{self.section_id}/set/S1/', {
-            'Q22': 'Alice',
-            'Q23': 'Jones',
+            'TEST_22': 'Alice',
+            'TEST_23': 'Jones',
         })
-        # Q2 is the first Q-node after S1 in SIMPLE_S1 routing
-        r = self.client.get(f'/section/{self.section_id}/question/Q2/')
+        # TEST_2 is the first Q-node after S1 in SIMPLE_S1 routing
+        r = self.client.get(f'/section/{self.section_id}/question/TEST_2/')
         self.assertContains(r, f'/section/{self.section_id}/set/S1/')
 
     # ── 5. Review page — set renders as grouped block ─────────────────────────
@@ -326,16 +332,16 @@ class TestQuestionSetFlow(TestCase):
         r = self.client.get(f'/section/{self.section_id}/review/')
         self.assertContains(r, f'/section/{self.section_id}/set/S1/')
         # Member questions must not each have their own Change link
-        self.assertNotContains(r, f'/section/{self.section_id}/question/Q22/')
+        self.assertNotContains(r, f'/section/{self.section_id}/question/TEST_22/')
 
     # ── 6. Confirm stores member answers as individual Answer records ──────────
 
     def test_confirm_stores_all_set_member_answers(self):
-        """Confirm writes one Answer record per set member question (Q22/Q23)."""
+        """Confirm writes one Answer record per set member question (TEST_22/TEST_23)."""
         alice = User.objects.get(username='alice')
         self._complete_section_to_review()
         self.client.post(f'/section/{self.section_id}/confirm/')
-        for qid in ('Q22', 'Q23'):
+        for qid in ('TEST_22', 'TEST_23'):
             self.assertTrue(
                 Answer.objects.filter(user=alice, question_id=qid).exists(),
                 msg=f'Expected Answer record for {qid} after confirm',
@@ -347,11 +353,11 @@ class TestQuestionSetFlow(TestCase):
         self._complete_section_to_review()
         self.client.post(f'/section/{self.section_id}/confirm/')
         self.assertEqual(
-            Answer.objects.get(user=alice, question_id='Q22').answer,
+            Answer.objects.get(user=alice, question_id='TEST_22').answer,
             'Alice',
         )
         self.assertEqual(
-            Answer.objects.get(user=alice, question_id='Q23').answer,
+            Answer.objects.get(user=alice, question_id='TEST_23').answer,
             'Jones',
         )
 
@@ -371,26 +377,26 @@ class TestQuestionSetFlow(TestCase):
         """
         Submit answers for the full SIMPLE_S1 Yes branch, ending on the review page.
 
-        Routing: S1 → Q2 → Q3=Yes → Q4 → Q7 → Q8=Yes → Q10 → Q11 → END (review)
+        Routing: S1 → TEST_2 → TEST_3=Yes → TEST_4 → TEST_7 → TEST_8=Yes → TEST_10 → TEST_11 → END (review)
         """
         # S1 set page (first name / last name)
         self.client.post(f'/section/{self.section_id}/set/S1/', {
-            'Q22': 'Alice',
-            'Q23': 'Jones',
+            'TEST_22': 'Alice',
+            'TEST_23': 'Jones',
         })
         # Remaining Q-nodes in routing order (Yes branch throughout)
-        self.client.post(f'/section/{self.section_id}/question/Q2/',
+        self.client.post(f'/section/{self.section_id}/question/TEST_2/',
                          {'date_day': '1', 'date_month': '4', 'date_year': '1980'})
-        self.client.post(f'/section/{self.section_id}/question/Q3/',
-                         {'answer': 'Yes'})    # → Q4
-        self.client.post(f'/section/{self.section_id}/question/Q4/',
+        self.client.post(f'/section/{self.section_id}/question/TEST_3/',
+                         {'answer': 'Yes'})    # → TEST_4
+        self.client.post(f'/section/{self.section_id}/question/TEST_4/',
                          {'answer': 'AB123456C'})
-        self.client.post(f'/section/{self.section_id}/question/Q7/',
+        self.client.post(f'/section/{self.section_id}/question/TEST_7/',
                          {'answer': 'Some text about me'})
-        self.client.post(f'/section/{self.section_id}/question/Q8/',
-                         {'answer': 'Yes'})    # → Q10
-        # Q10 is a checkbox — must supply a list so getlist() returns non-empty
-        self.client.post(f'/section/{self.section_id}/question/Q10/',
+        self.client.post(f'/section/{self.section_id}/question/TEST_8/',
+                         {'answer': 'Yes'})    # → TEST_10
+        # TEST_10 is a checkbox — must supply a list so getlist() returns non-empty
+        self.client.post(f'/section/{self.section_id}/question/TEST_10/',
                          {'answer': ['Blue']})
-        self.client.post(f'/section/{self.section_id}/question/Q11/',
+        self.client.post(f'/section/{self.section_id}/question/TEST_11/',
                          {'answer': '3'})      # → END → review

@@ -12,7 +12,7 @@ from core.nav_reference import _resolve_user, resolve_layer1_entry_url
 from core.permissions import get_permitted_sections
 from core.session import get_acting_for_name, get_session, update_session
 
-_REGIME_ID = 'DEMO_SIMPLE'
+_REGIME_ID = 'TEST_SIMPLE'
 _TEMPLATE  = 'dept_demo/regimes/simple_home.html'
 
 
@@ -48,7 +48,7 @@ def regime_simple_home(request):
         'case_id':         case.case_id,
         'return_url':      request.path,
         'regime_home_url': request.path,
-        'active_dept':     'DEMO',
+        'active_dept':     'TEST',
         'breadcrumbs': [
             {'label': 'HMRC',                 'url': '/demo/'},
             {'label': 'Personal Tax Account', 'url': '/demo/regimes/'},

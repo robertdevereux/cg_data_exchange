@@ -22,7 +22,7 @@
         <div class="govuk-summary-list__row">
           <dt class="govuk-summary-list__key">{{ mrow.question_text }}</dt>
           <dd class="govuk-summary-list__value">
-            {{ mrow.answer }}
+            {{ mrow.answer|linebreaksbr }}
             {% if mrow.history %}
             <details class="govuk-details" style="margin-top:8px">
               <summary class="govuk-details__summary">
@@ -57,7 +57,7 @@
             {{ row.question_text }}
           </dt>
           <dd class="govuk-summary-list__value">
-            {{ row.answer }}
+            {{ row.answer|linebreaksbr }}
             {% if row.history %}
             <details class="govuk-details" style="margin-top:8px">
               <summary class="govuk-details__summary">

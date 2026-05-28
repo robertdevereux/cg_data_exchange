@@ -1,0 +1,95 @@
+{% extends "core/base.html" %}
+{% load markdown_extras %}
+
+{% block title %}{{ question_text }} — PSS Demo{% endblock %}
+
+{% block content %}
+
+  <a href="{{ back_url }}" class="govuk-back-link">Back</a>
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-two-thirds">
+
+      {% if error %}
+      <div class="govuk-error-summary" data-module="govuk-error-summary">
+        <div role="alert">
+          <h2 class="govuk-error-summary__title">There is a problem</h2>
+          <div class="govuk-error-summary__body">
+            <p class="govuk-body">{{ error }}</p>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      <form method="post" action="">
+        {% csrf_token %}
+
+        {% if guidance %}
+        <div class="govuk-inset-text">{{ guidance|render_markdown }}</div>
+        {% endif %}
+
+        {% if provenance %}
+        <div class="govuk-inset-text" style="border-left-color:#1d70b8">
+          <p class="govuk-body-s">{{ provenance }}</p>
+        </div>
+        {% endif %}
+
+        <div class="govuk-form-group {% if error %}govuk-form-group--error{% endif %}">
+          <fieldset class="govuk-fieldset"
+                    aria-describedby="{% if hint %}name-hint {% endif %}{% if error %}name-error{% endif %}">
+            <legend class="govuk-fieldset__legend govuk-fieldset__legend--l">
+              <h1 class="govuk-fieldset__heading">{{ question_text }}</h1>
+            </legend>
+
+            {% if hint %}
+            <div id="name-hint" class="govuk-hint">{{ hint }}</div>
+            {% endif %}
+
+            {% if error %}
+            <p id="name-error" class="govuk-error-message">
+              <span class="govuk-visually-hidden">Error:</span> {{ error }}
+            </p>
+            {% endif %}
+
+            <div class="govuk-form-group">
+              <label class="govuk-label" for="personal_name_title">Title <span class="govuk-hint" style="display:inline">(optional)</span></label>
+              <input class="govuk-input govuk-input--width-10{% if error %} govuk-input--error{% endif %}"
+                     id="personal_name_title" name="personal_name_title" type="text"
+                     autocomplete="honorific-prefix"
+                     value="{{ name_parts.title|default:'' }}">
+            </div>
+
+            <div class="govuk-form-group">
+              <label class="govuk-label" for="personal_name_first_name">First name</label>
+              <input class="govuk-input govuk-input--width-20{% if error %} govuk-input--error{% endif %}"
+                     id="personal_name_first_name" name="personal_name_first_name" type="text"
+                     autocomplete="given-name"
+                     value="{{ name_parts.first_name|default:'' }}">
+            </div>
+
+            <div class="govuk-form-group">
+              <label class="govuk-label" for="personal_name_middle_name">Middle names</label>
+              <input class="govuk-input govuk-input--width-20{% if error %} govuk-input--error{% endif %}"
+                     id="personal_name_middle_name" name="personal_name_middle_name" type="text"
+                     autocomplete="additional-name"
+                     value="{{ name_parts.middle_name|default:'' }}">
+            </div>
+
+            <div class="govuk-form-group">
+              <label class="govuk-label" for="personal_name_last_name">Last name</label>
+              <input class="govuk-input govuk-input--width-20{% if error %} govuk-input--error{% endif %}"
+                     id="personal_name_last_name" name="personal_name_last_name" type="text"
+                     autocomplete="family-name"
+                     value="{{ name_parts.last_name|default:'' }}">
+            </div>
+
+          </fieldset>
+        </div>
+
+        <button class="govuk-button" data-module="govuk-button">Continue</button>
+      </form>
+
+    </div>
+  </div>
+
+{% endblock %}

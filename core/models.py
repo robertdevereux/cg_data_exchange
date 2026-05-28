@@ -166,6 +166,7 @@ class Question(models.Model):
         ('checkbox', 'Checkbox'),
         ('address', 'Address'),
         ('date', 'Date'),
+        ('personal_name', 'Personal name'),
     ]
     ANSWER_TYPE_CHOICES = [
         ('text', 'Text'),

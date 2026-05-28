@@ -160,14 +160,14 @@ class TestDWPRegimeHome(TestCase):
 
     def test_known_regime_renders(self):
         """
-        DEMO_SIMPLE exists in the fixture and is not excluded (dept_id='DEMO').
+        TEST_SIMPLE exists in the fixture and is not excluded (dept_id='TEST').
         dwp_alice (blanket perms) can reach its generic home page.
         """
-        r = self.client.get('/dwp/regime/DEMO_SIMPLE/')
+        r = self.client.get('/dwp/regime/TEST_SIMPLE/')
         self.assertEqual(r.status_code, 200)
 
     def test_regime_home_requires_login(self):
-        r = Client().get('/dwp/regime/DEMO_SIMPLE/')
+        r = Client().get('/dwp/regime/TEST_SIMPLE/')
         self.assertEqual(r.status_code, 302)
         self.assertIn('/accounts/login/', r['Location'])
 
@@ -188,8 +188,8 @@ class TestDWPNavViews(TestCase):
         self.client.login(username='dwp_alice', password='testpass123')
 
     def test_select_schedule_renders_for_schedules_regime(self):
-        """DEMO_SCHEDULES has two schedules; schedule list (now at core) should render 200."""
-        r = self.client.get('/regime/DEMO_SCHEDULES/schedules/')
+        """TEST_SCHEDULES has two schedules; schedule list (now at core) should render 200."""
+        r = self.client.get('/regime/TEST_SCHEDULES/schedules/')
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, 'Personal Information')
         self.assertContains(r, 'Financial Information')
@@ -199,8 +199,8 @@ class TestDWPNavViews(TestCase):
         self.assertEqual(r.status_code, 404)
 
     def test_select_section_renders_for_sections_regime(self):
-        """DEMO_SECTIONS has three direct sections; select_section should render 200."""
-        r = self.client.get('/dwp/regime/DEMO_SECTIONS/sections/')
+        """TEST_SECTIONS has three direct sections; select_section should render 200."""
+        r = self.client.get('/dwp/regime/TEST_SECTIONS/sections/')
         self.assertEqual(r.status_code, 200)
         for section_id in ('SECTIONS_S1', 'SECTIONS_S2', 'SECTIONS_S3'):
             self.assertContains(r, section_id,
@@ -209,7 +209,7 @@ class TestDWPNavViews(TestCase):
     def test_select_section_in_schedule_renders(self):
         """Filtered section list for a specific schedule renders 200 (now at core)."""
         r = self.client.get(
-            '/regime/DEMO_SCHEDULES/schedule/SCHED_PERSONAL/sections/'
+            '/regime/TEST_SCHEDULES/schedule/SCHED_PERSONAL/sections/'
         )
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, 'SCHED_S1')
@@ -222,5 +222,5 @@ class TestDWPNavViews(TestCase):
         """
         fresh = Client()
         fresh.login(username='dwp_alice', password='testpass123')
-        r = fresh.get('/dwp/regime/DEMO_SECTIONS/sections/')
+        r = fresh.get('/dwp/regime/TEST_SECTIONS/sections/')
         self.assertEqual(r.status_code, 200)

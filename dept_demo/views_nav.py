@@ -25,9 +25,9 @@ from core.session import get_acting_for_name, get_session, update_session
 # ── Regime slug map (regime_id → named URL) ───────────────────────────────────
 
 _REGIME_URL_NAMES = {
-    'DEMO_SIMPLE':    'dept_demo:regime_demo_simple',
-    'DEMO_SECTIONS':  'dept_demo:regime_demo_sections',
-    'DEMO_SCHEDULES': 'dept_demo:regime_demo_schedules',
+    'TEST_SIMPLE':    'dept_demo:regime_demo_simple',
+    'TEST_SECTIONS':  'dept_demo:regime_demo_sections',
+    'TEST_SCHEDULES': 'dept_demo:regime_demo_schedules',
 }
 
 
@@ -156,7 +156,7 @@ def regime_home(request, regime_id):
     Router: sends the citizen to the correct regime-specific home page.
     Unknown regime_ids fall back to choose_user (dept_demo:choose_user).
     """
-    request.session['active_dept'] = 'DEMO'
+    request.session['active_dept'] = 'TEST'
     url_name = _REGIME_URL_NAMES.get(regime_id)
     if url_name:
         return redirect(reverse(url_name))

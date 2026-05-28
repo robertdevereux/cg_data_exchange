@@ -14,8 +14,8 @@ from core.permissions import get_permitted_regimes
 from core.session import get_acting_for_name, get_session
 
 # Regime classification — determines which section of the home page each appears in
-_CURRENT_REGIME_IDS = ['DEMO_SIMPLE', 'DEMO_SECTIONS']
-_OTHER_REGIME_IDS   = ['DEMO_SCHEDULES']
+_CURRENT_REGIME_IDS = ['TEST_SIMPLE', 'TEST_SECTIONS']
+_OTHER_REGIME_IDS   = ['TEST_SCHEDULES']
 
 
 def _build_regime_item(regime):
@@ -33,13 +33,13 @@ def dept_home(request):
     Reads the session user so intermediaries see the subject's regimes.
     Regimes are split into 'current' and 'other' groups for the HMRC-style layout.
     """
-    request.session['active_dept'] = 'DEMO'
+    request.session['active_dept'] = 'TEST'
     actor    = request.user
     pss      = get_session(request)
     user     = _resolve_user(pss, actor)
     is_agent = (actor.pk != user.pk)
 
-    permitted_regimes = get_permitted_regimes(actor, user, dept_id='DEMO')
+    permitted_regimes = get_permitted_regimes(actor, user, dept_id='TEST')
 
     acting_for = get_acting_for_name(pss)
 

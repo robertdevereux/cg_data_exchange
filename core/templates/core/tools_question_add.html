@@ -38,6 +38,29 @@
       <form method="post" novalidate>
         {% csrf_token %}
 
+        {# ── Prefix selector (superusers only) ───────────────────────────────── #}
+        {% if is_superuser %}
+        <div class="govuk-form-group">
+          <fieldset class="govuk-fieldset">
+            <legend class="govuk-fieldset__legend govuk-fieldset__legend--s">
+              Question series
+            </legend>
+            <div class="govuk-radios govuk-radios--inline">
+              <div class="govuk-radios__item">
+                <input class="govuk-radios__input" id="prefix-p" name="prefix" type="radio" value="P"
+                       {% if post.prefix != 'O' %}checked{% endif %}>
+                <label class="govuk-label govuk-radios__label" for="prefix-p">P — Platform (person)</label>
+              </div>
+              <div class="govuk-radios__item">
+                <input class="govuk-radios__input" id="prefix-o" name="prefix" type="radio" value="O"
+                       {% if post.prefix == 'O' %}checked{% endif %}>
+                <label class="govuk-label govuk-radios__label" for="prefix-o">O — Platform (organisation)</label>
+              </div>
+            </div>
+          </fieldset>
+        </div>
+        {% endif %}
+
         {# ── Guidance ─────────────────────────────────────────────────────────── #}
         <div class="govuk-form-group">
           <label class="govuk-label govuk-label--s" for="guidance">
@@ -45,6 +68,7 @@
           </label>
           <textarea class="govuk-textarea" id="guidance" name="guidance"
                     rows="3">{{ post.guidance|default:'' }}</textarea>
+          <div class="govuk-hint">Markdown supported: ## Heading, **bold**, - bullet list, [link text](url)</div>
         </div>
 
         {# ── Question text ─────────────────────────────────────────────────────── #}
