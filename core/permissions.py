@@ -19,15 +19,28 @@ from django.db.models import Q
 from .models import Permission, Regime, Section
 
 
-def get_permitted_sections(actor, user):
+def get_permitted_sections(actor, user, case_id=None):
     """
     Return a distinct QuerySet[Section] of all sections actor may access
     on user's behalf, after expanding the three grant scopes.
+
+    case_id (optional): when provided, permissions that are scoped to a
+    specific case (permission.case is not null) are only included when
+    that case's case_id matches.  When case_id is None all permissions are
+    included regardless of their case field (backward-compatible default).
     """
     perms = Permission.objects.filter(actor=actor, user=user)
 
     if not perms.exists():
         return Section.objects.none()
+
+    # ── Case filter: drop case-scoped permissions that don't match ────────────
+    if case_id is not None:
+        perms = perms.filter(
+            Q(case__isnull=True) | Q(case_id=case_id)
+        )
+        if not perms.exists():
+            return Section.objects.none()
 
     # ── Scope 3: all-regime grant (both regime and section are null) ──────────
     if perms.filter(regime__isnull=True, section__isnull=True).exists():
@@ -37,9 +50,10 @@ def get_permitted_sections(actor, user):
     # permissions is the related_name from Permission.section FK to Section.
     # Filtering via this reverse relation only matches Permission rows where
     # permission.section points to this section (i.e. section is not null).
+    perm_ids = list(perms.values_list('pk', flat=True))
     scope1 = Section.objects.filter(
-        permissions__actor=actor,
-        permissions__user=user,
+        permissions__pk__in=perm_ids,
+        permissions__section__isnull=False,
     )
 
     # ── Scope 2: regime-level grants (section=None, regime set) ───────────────

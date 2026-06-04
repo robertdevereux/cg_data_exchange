@@ -22,5 +22,10 @@ urlpatterns = [
          views.regime_schedule_sections,
          name='regime_schedule_sections'),
 
+    # IHT post-confirmation matching
+    path('iht/matching/<str:case_id>/',
+         views.iht_matching_result,
+         name='iht_matching_result'),
+
     path('tools/',                  include('core.urls_tools')),
 ]

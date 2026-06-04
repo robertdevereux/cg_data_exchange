@@ -10,7 +10,7 @@
       <a href="{% url 'core:tools_actors' %}" class="govuk-back-link">Actor arrangements</a>
 
       <h1 class="govuk-heading-l govuk-!-margin-top-4">Set up a new actor</h1>
-      <p class="govuk-body-s govuk-hint">Step {{ step }} of 4</p>
+      <p class="govuk-body-s govuk-hint">Step {{ display_step }} of {{ total_steps }}</p>
 
       {# ═══════════════════════════════════════════════════════════════════════ #}
       {# STEP 1 — Choose or create actor                                        #}
@@ -249,9 +249,51 @@
         </form>
 
       {# ═══════════════════════════════════════════════════════════════════════ #}
-      {# STEP 4 — Confirm and save                                              #}
+      {# STEP 4 — Case selection (partial grants only)                          #}
       {# ═══════════════════════════════════════════════════════════════════════ #}
       {% elif step == 4 %}
+
+        <p class="govuk-body">
+          Actor: <strong>{{ actor.username }}</strong>
+        </p>
+        <p class="govuk-body-s govuk-hint">
+          Optionally limit each grant to a specific case for that user.
+        </p>
+
+        <form method="post" novalidate>
+          {% csrf_token %}
+          <input type="hidden" name="action" value="set_cases">
+
+          {% for csu in case_step_users %}
+          <div style="border-left:4px solid #b1b4b6; padding:12px 16px; margin-bottom:24px;">
+            <h3 class="govuk-heading-s govuk-!-margin-bottom-2">{{ csu.user.username }}</h3>
+            <div class="govuk-form-group">
+              <label class="govuk-label" for="case-{{ csu.user.pk }}">
+                Limit to a specific case?
+              </label>
+              <select class="govuk-select" id="case-{{ csu.user.pk }}" name="case_{{ csu.user.pk }}">
+                <option value="">No — grant applies to all cases</option>
+                {% for c in csu.cases %}
+                <option value="{{ c.pk }}">
+                  {{ c.regime.regime_name }} — started {{ c.started_at|date:"j N Y" }}{% if c.reference %} — {{ c.reference }}{% endif %}
+                </option>
+                {% empty %}
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          {% endfor %}
+
+          <div class="govuk-button-group">
+            <button type="submit" class="govuk-button">Continue</button>
+          </div>
+
+        </form>
+
+      {# ═══════════════════════════════════════════════════════════════════════ #}
+      {# STEP 5 — Confirm and save                                              #}
+      {# ═══════════════════════════════════════════════════════════════════════ #}
+      {% elif step == 5 %}
 
         <dl class="govuk-summary-list govuk-!-margin-bottom-6">
 
@@ -271,6 +313,11 @@
                 <li>{{ s.section_id }} — {{ s.section_name }}</li>
                 {% endfor %}
               </ul>
+              {% endif %}
+              {% if gs.case %}
+              <p class="govuk-body-s govuk-!-margin-top-1 govuk-!-margin-bottom-0">
+                Case: {{ gs.case.regime.regime_name }} — started {{ gs.case.started_at|date:"j N Y" }}{% if gs.case.reference %} — {{ gs.case.reference }}{% endif %}
+              </p>
               {% endif %}
             </dd>
           </div>

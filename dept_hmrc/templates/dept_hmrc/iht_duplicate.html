@@ -1,0 +1,49 @@
+{% extends "core/base.html" %}
+
+{% block title %}Possible duplicate return — HMRC Inheritance Tax{% endblock %}
+
+{% block content %}
+<div class="govuk-grid-row">
+  <div class="govuk-grid-column-two-thirds">
+
+    <h1 class="govuk-heading-xl">A return for this estate may already exist</h1>
+
+    <p class="govuk-body">
+      Our records suggest a return is already in progress for an estate with the
+      same deceased name and date of death.
+    </p>
+
+    {% if duplicate_case.reference %}
+    <p class="govuk-body">
+      The existing reference number is:
+      <strong>{{ duplicate_case.reference }}</strong>
+    </p>
+    {% endif %}
+
+    <h2 class="govuk-heading-m">What you can do</h2>
+
+    <ul class="govuk-list govuk-list--bullet">
+      <li>
+        If you are the lead executor, contact the person who started the original
+        return and ask them to add you as an authorised person.
+      </li>
+      <li>
+        If you believe this is an error and the returns relate to different
+        individuals, <a href="#" class="govuk-link">use the dispute process</a>
+        to request a review.
+      </li>
+      <li>
+        <a href="{% url 'dept_hmrc:regime_home' regime_id='HMRC_IHT' %}"
+           class="govuk-link">Return to Inheritance Tax</a>
+      </li>
+    </ul>
+
+    <p class="govuk-body govuk-!-margin-top-6">
+      <a href="{% url 'dept_hmrc:dept_home' %}" class="govuk-link">
+        Back to HMRC services
+      </a>
+    </p>
+
+  </div>
+</div>
+{% endblock %}

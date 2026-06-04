@@ -333,6 +333,13 @@ class Case(models.Model):
         related_name='cases',
     )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    reference = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        help_text='Assigned reference number (e.g. IHT-XXXXXXXXX). '
+                  'Null until assigned or if submission is unverified.',
+    )
     started_at = models.DateTimeField(auto_now_add=True)
     submitted_at = models.DateTimeField(blank=True, null=True)
 
@@ -454,6 +461,13 @@ class Permission(models.Model):
         blank=True,
         related_name='permissions',
     )
+    case = models.ForeignKey(
+        'Case',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='permissions',
+    )
     can_delegate = models.BooleanField(default=False)
     granted_by = models.ForeignKey(
         User,
@@ -468,7 +482,7 @@ class Permission(models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=['actor', 'user', 'regime', 'section'],
+                fields=['actor', 'user', 'regime', 'section', 'case'],
                 name='unique_permission',
             )
         ]

@@ -1207,6 +1207,13 @@ def section_done(request, section_id):
     section = get_object_or_404(Section, section_id=section_id)
     pss = get_session(request)
 
+    # ── Post-confirm hook: dept views can redirect to a bespoke handler ───────
+    # Set request.session['post_confirm_redirect'] = '/path/' before entering
+    # the section journey; it is popped here so it fires exactly once.
+    post_confirm_redirect = request.session.pop('post_confirm_redirect', None)
+    if post_confirm_redirect:
+        return redirect(post_confirm_redirect)
+
     user_id           = pss.get('user_id')
     regime_id         = pss.get('regime_id')
     schedule_id       = pss.get('schedule_id')

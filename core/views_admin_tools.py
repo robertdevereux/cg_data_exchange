@@ -36,7 +36,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
-from .interfaces import bootstrap_section_statuses, get_or_create_case
+from .interfaces import bootstrap_section_statuses, get_cases, get_or_create_case
 from .models import (
     Answer,
     AnswerTable,
@@ -2443,9 +2443,10 @@ def tools_actor_create(request):
     SK_ACTOR    = 'actor_create_actor_id'
     SK_USERS    = 'actor_create_user_ids'
     SK_GRANTS   = 'actor_create_grants'    # {user_id: 'full' | [section_id, ...]}
+    SK_CASE     = 'actor_create_case'      # {user_id: case_id | None}
 
     def _clear_session():
-        for k in (SK_STEP, SK_ACTOR, SK_USERS, SK_GRANTS):
+        for k in (SK_STEP, SK_ACTOR, SK_USERS, SK_GRANTS, SK_CASE):
             request.session.pop(k, None)
 
     errors = {}
@@ -2498,6 +2499,7 @@ def tools_actor_create(request):
         elif action == 'set_grants':
             user_ids = request.session.get(SK_USERS, [])
             grants = {}
+            any_partial = False
             for uid in user_ids:
                 scope = request.POST.get(f'scope_{uid}', 'full')
                 if scope == 'full':
@@ -2505,15 +2507,30 @@ def tools_actor_create(request):
                 else:
                     selected = request.POST.getlist(f'sections_{uid}')
                     grants[str(uid)] = selected
+                    any_partial = True
             request.session[SK_GRANTS] = grants
-            request.session[SK_STEP]   = 4
+            request.session[SK_STEP]   = 4 if any_partial else 5
             return redirect('core:tools_actor_create')
 
-        # ── Step 4: save ─────────────────────────────────────────────────────
+        # ── Step 4: case selection (partial grants only) ──────────────────────
+        elif action == 'set_cases':
+            user_ids = request.session.get(SK_USERS, [])
+            grants   = request.session.get(SK_GRANTS, {})
+            cases = {}
+            for uid in user_ids:
+                if grants.get(str(uid), 'full') != 'full':
+                    raw = request.POST.get(f'case_{uid}', '')
+                    cases[str(uid)] = int(raw) if raw else None
+            request.session[SK_CASE] = cases
+            request.session[SK_STEP] = 5
+            return redirect('core:tools_actor_create')
+
+        # ── Step 5: save ──────────────────────────────────────────────────────
         elif action == 'save':
             actor_id = request.session.get(SK_ACTOR)
             user_ids = request.session.get(SK_USERS, [])
             grants   = request.session.get(SK_GRANTS, {})
+            cases    = request.session.get(SK_CASE, {})
             try:
                 actor = User.objects.get(pk=actor_id)
             except (User.DoesNotExist, TypeError):
@@ -2531,10 +2548,17 @@ def tools_actor_create(request):
                     for regime in all_regimes:
                         Permission.objects.get_or_create(
                             actor=actor, user=target_user,
-                            regime=regime, section=None,
+                            regime=regime, section=None, case=None,
                             defaults={'can_delegate': False, 'granted_by': None},
                         )
                 else:
+                    case_id = cases.get(str(uid))
+                    case_obj = None
+                    if case_id is not None:
+                        try:
+                            case_obj = Case.objects.get(pk=case_id)
+                        except Case.DoesNotExist:
+                            pass
                     for section_id in scope:
                         try:
                             section = Section.objects.get(section_id=section_id)
@@ -2542,7 +2566,7 @@ def tools_actor_create(request):
                             continue
                         Permission.objects.get_or_create(
                             actor=actor, user=target_user,
-                            regime=None, section=section,
+                            regime=None, section=section, case=case_obj,
                             defaults={'can_delegate': False, 'granted_by': None},
                         )
 
@@ -2559,6 +2583,7 @@ def tools_actor_create(request):
     actor_id = request.session.get(SK_ACTOR)
     user_ids = request.session.get(SK_USERS, [])
     grants   = request.session.get(SK_GRANTS, {})
+    cases    = request.session.get(SK_CASE, {})
 
     actor = None
     if actor_id:
@@ -2583,7 +2608,31 @@ def tools_actor_create(request):
         if secs:
             regimes_with_sections.append({'regime': regime, 'sections': secs})
 
-    # Resolve grants for step 4 summary
+    # Determine if any grants are partial (regime/section-scoped, not full)
+    any_partial   = any(v != 'full' for v in grants.values())
+    total_steps   = 5 if any_partial else 4
+    # Map internal step to a contiguous display number for the user
+    display_step  = step if total_steps == 5 else (step if step <= 3 else step - 1)
+
+    # Step 4 (case selection): list of {user, cases} for partial-scope users only
+    case_step_users = []
+    if any_partial:
+        for uid in user_ids:
+            if grants.get(str(uid), 'full') != 'full':
+                try:
+                    u = User.objects.get(pk=uid)
+                except User.DoesNotExist:
+                    continue
+                # Find all cases for this user across all non-platform regimes
+                user_cases = list(
+                    Case.objects.filter(user=u)
+                    .exclude(regime__dept_id='PLATFORM')
+                    .select_related('regime')
+                    .order_by('-started_at')
+                )
+                case_step_users.append({'user': u, 'cases': user_cases})
+
+    # Resolve grants for step 5 summary
     grant_summary = []
     for uid in user_ids:
         try:
@@ -2592,17 +2641,27 @@ def tools_actor_create(request):
             continue
         scope = grants.get(str(uid), 'full')
         if scope == 'full':
-            grant_summary.append({'user': u, 'scope': 'Full access (all regimes)', 'sections': []})
+            grant_summary.append({'user': u, 'scope': 'Full access (all regimes)', 'sections': [], 'case': None})
         else:
-            secs = list(Section.objects.filter(section_id__in=scope).order_by('section_id'))
-            grant_summary.append({'user': u, 'scope': 'Partial', 'sections': secs})
+            secs     = list(Section.objects.filter(section_id__in=scope).order_by('section_id'))
+            case_id  = cases.get(str(uid))
+            case_obj = None
+            if case_id is not None:
+                try:
+                    case_obj = Case.objects.get(pk=case_id)
+                except Case.DoesNotExist:
+                    pass
+            grant_summary.append({'user': u, 'scope': 'Partial', 'sections': secs, 'case': case_obj})
 
     context = {
         'step':                  step,
+        'display_step':          display_step,
+        'total_steps':           total_steps,
         'actor':                 actor,
         'candidate_users':       candidate_users,
         'selected_users':        selected_users,
         'regimes_with_sections': regimes_with_sections,
+        'case_step_users':       case_step_users,
         'grant_summary':         grant_summary,
         'errors':                errors,
     }

@@ -1,0 +1,13 @@
+
+Object	Purpose	Key fields	Relationships
+Regime	Configuration record for a single public service	Name, identifier, owning department	References Schedules and/or Sections as an ordered list of top-level navigation items
+Schedule	Named grouping of Sections within a Regime. Optional — not all regimes use Schedules	Name, display order	Belongs to Regime; references Sections
+Section	Unit of citizen interaction: a coherent block of questions on one subject	Name, section type (standard or table), display order	May belong to a Schedule or directly to a Regime; references Questions via Routing
+Question	A single question, defined once and reusable across regimes. A government asset.	Question text, type (radio, text, number, checkbox, date), hint text, answer options (for radio/checkbox), validation rules	Referenced by Routing records and QuestionSetMembers
+Question Set	A named grouping of related Questions presented on a single page. Defined once and reused across regimes. A government asset.	Set identifier, set title, optional hint	Contains QuestionSetMembers; referenced by Routing records
+Question Set Member	Associates a Question with a Question Set, defining display order and whether the field is required	Set, Question, display order, required flag	Belongs to a Question Set; references a Question
+Routing	Conditional logic: given this Section and node, if the answer matches this condition, the next node is this	Section, current node (Q- or S-prefixed), answer condition (optional; may group multiple answer values), next node (or end marker), first node marker (Boolean)	References Section and Question or Set; forms the complete question-flow graph for a Section
+Answer	A citizen’s confirmed response to a Question, with full provenance	Question, Case, User, Actor, answer value, timestamp; history records on amendment	Belongs to a Case; references Question, User and Actor
+Permission	A grant by a User to a named Actor to complete specific Sections on their behalf	User, Actor, Section(s) covered, grant date, delegation rights (yes/no), granted by (for delegation chain)	References User, Actor and Section; linked to parent Permission for delegation chain
+Case	A citizen’s instance of a regime — the container for all answers given in a single engagement with a regime	Case identifier, User, Regime, status (draft/submitted/lapsed), started date	Belongs to User and Regime; referenced by all Answer records
+Department	A participating government department, providing the scope within which its Regimes are defined and its citizen data is stored	Department identifier, department name	Referenced by Regime

@@ -43,13 +43,51 @@ SESSION_KEYS = {
 
 # ── Case bootstrap ────────────────────────────────────────────────────────────
 
+def create_case(user, regime):
+    """
+    Always create a fresh draft Case for this user/regime.
+
+    Use this (not get_or_create_case) when starting a new submission.
+
+    Args:
+        user:   User instance (the subject, not the actor)
+        regime: Regime instance
+    Returns:
+        New Case instance (status=Case.DRAFT)
+    """
+    return Case.objects.create(
+        case_id=str(uuid.uuid4()),
+        user=user,
+        regime=regime,
+        status=Case.DRAFT,
+    )
+
+
+def get_cases(user, regime, status=None):
+    """
+    Return a queryset of Case objects for this user + regime, most recent first.
+
+    Args:
+        user:   User instance (the subject)
+        regime: Regime instance
+        status: optional — one of Case.DRAFT, Case.SUBMITTED, Case.LAPSED;
+                if omitted all statuses are returned
+    Returns:
+        QuerySet of Case ordered by -started_at
+    """
+    qs = Case.objects.filter(user=user, regime=regime).order_by('-started_at')
+    if status is not None:
+        qs = qs.filter(status=status)
+    return qs
+
+
 def get_or_create_case(user, regime):
     """
     Find the most recent draft Case for this user/regime, or create one if
     none exists.
 
-    This is the only correct way for a department app to obtain a case_id
-    before entering Layer 2.
+    # DEPRECATED: use create_case() for new cases, get_cases() to find
+    # existing ones. Retained for TEST/demo backward compatibility only.
 
     Args:
         user:   User instance (the subject, not the actor)
@@ -136,7 +174,8 @@ def call_regime(request, regime, actor, user, url_prefix=''):
     from .nav_reference import resolve_layer1_entry_url
     from .session import update_session
 
-    permitted = get_permitted_sections(actor, user).filter(
+    session_case_id = request.session.get('case_id')
+    permitted = get_permitted_sections(actor, user, case_id=session_case_id).filter(
         Q(regime=regime) | Q(schedule__regime=regime)
     )
 
@@ -175,7 +214,8 @@ def call_schedules(request, regime, actor, user, schedule_ids, url_prefix=''):
     from .nav_reference import resolve_layer1_entry_url
     from .session import update_session
 
-    permitted = get_permitted_sections(actor, user).filter(
+    session_case_id = request.session.get('case_id')
+    permitted = get_permitted_sections(actor, user, case_id=session_case_id).filter(
         schedule__schedule_id__in=schedule_ids
     )
 
@@ -214,7 +254,8 @@ def call_sections(request, regime, actor, user, section_ids, url_prefix=''):
     from .nav_reference import resolve_layer1_entry_url
     from .session import update_session
 
-    permitted = get_permitted_sections(actor, user).filter(
+    session_case_id = request.session.get('case_id')
+    permitted = get_permitted_sections(actor, user, case_id=session_case_id).filter(
         section_id__in=section_ids
     )
 

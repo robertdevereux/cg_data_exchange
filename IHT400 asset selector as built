@@ -1,0 +1,98 @@
+Defining the types of assets in the estate, or which might give rise to Inheritance Tax liabilities
+
+Jointly owned assets
+
+Did the deceased jointly own assets with any other persons?
+
+Do not include foreign assets, or business partnership assets
+
+Yes / No (radio choice)
+
+Houses, land, buildings and interests in land
+
+Did the deceased own any houses, land or buildings or have rights over land in the UK in their sole name?
+
+Yes / No (radio choice)
+
+Bank and building society accounts
+
+Did the deceased hold any bank or building society accounts in their sole name, including cash ISAs, National Savings and Premium Bonds?
+
+Yes / No (radio choice)
+
+Household and personal goods
+
+Did the deceased own any household goods or personal possessions?
+
+Yes / No (radio choice)
+
+Stocks and shares
+
+Did the deceased own listed stocks, UK government and municipal securities, or shares ?
+
+Yes / No (radio choice)
+
+Pensions
+
+Did the deceased have a pension, or own a pension annuity?
+
+Yes / No (radio choice)
+
+	[If yes, then reveal further question
+
+	Did any payments under a pension scheme or personal pension policy continue after the deceased's death?
+
+	Yes / No (radio choice)
+
+		{If yes, then reveal a further question
+
+		Was a death benefit payable under a pension scheme of personal pension policy as a result of the deceased's death?
+
+		Yes / No (radio choice)
+
+			<If yes then reveal a further question
+
+			Did the deceased, within 2 years before they died, transfer, dispose or change any benefits payable under a pension scheme or personal pension policy?
+
+			Yes / No (radio choice)
+
+				(If yes, then reveal a further question
+
+				Did the deceased's employer make any contributions to a pension scheme within the 2 years before the date of death?
+
+				Yes / No (radio choice)
+
+			)
+		>
+	}
+]
+
+Life assurance and annuities
+
+Did the deceased pay premiums on any life assurance policies, annuities, or other products which are payable either to the estate, to another person, or which continue after death?
+
+Yes / No (radio choice)
+
+	[If yes, on a new page, 4 radio questions all to be displayed at once]
+
+	Life assurance and annuities
+
+	Were any sums payable by insurance companies to the estate as a result of the deceased's death?
+
+	Yes / No (radio choice)	
+
+	Was the deceased entitled to benefit from a life assurance policy on the life of another person, where the policy continues after death?
+
+	Yes / No (radio choice)	
+
+	Did any payments that were made under a purchased life annuity continue after the deceased's death?
+
+	Yes / No (radio choice)	
+
+	Was a lump sum payable under a purchased life annuity as a result of the deceased's death?
+
+	Yes / No (radio choice)	
+
+
+Once all these questions answered, return to estate homepage, and mark Estate Details as "In Progress"
+
