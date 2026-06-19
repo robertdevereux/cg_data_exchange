@@ -241,4 +241,5 @@ def select_section(request, regime_id, schedule_id=None):
         'schedule': schedule,
         'sections': section_data,
         'back_url': back_url,
+        'title':    regime.regime_name,
     })

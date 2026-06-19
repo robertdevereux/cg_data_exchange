@@ -125,8 +125,20 @@
           <label class="govuk-label govuk-label--s" for="options">
             Options <span class="govuk-hint" style="display:inline">(semicolon-delimited)</span>
           </label>
-          <input class="govuk-input" id="options" name="options" type="text"
-                 value="{{ post.options|default:'' }}">
+          <textarea class="govuk-textarea" id="options" name="options"
+                    rows="4">{{ post.options|default:'' }}</textarea>
+        </div>
+
+        {# ── Compound builder ─────────────────────────────────────────────────── #}
+        {# options field is reused to store the JSON; managed entirely by JS below #}
+        <div id="compound-builder" style="display:none">
+          <p class="govuk-label govuk-label--s govuk-!-margin-bottom-1">Components</p>
+          <p class="govuk-hint govuk-!-margin-bottom-3">
+            Each component becomes a labelled input on the question page.
+          </p>
+          <div id="compound-rows"></div>
+          <button type="button" class="govuk-button govuk-button--secondary govuk-!-margin-top-2"
+                  id="add-compound-component">Add component</button>
         </div>
 
         <div class="govuk-button-group govuk-!-margin-top-6">
@@ -141,17 +153,78 @@
 
   <script>
     (function () {
-      var typeSelect   = document.getElementById('id_question_type');
-      var optionsField = document.getElementById('options-field');
-      var typesWithOptions = ['radio', 'checkbox'];
+      var typeSelect      = document.getElementById('id_question_type');
+      var optionsField    = document.getElementById('options-field');
+      var compoundBuilder = document.getElementById('compound-builder');
+      var optionsInput    = document.getElementById('options');
+      var typesWithOptions  = ['radio', 'checkbox'];
+      var typesWithCompound = ['compound'];
+      var form = document.querySelector('form');
 
-      function toggleOptions() {
+      function toggleFields() {
         var val = typeSelect.value;
-        optionsField.style.display = typesWithOptions.indexOf(val) !== -1 ? '' : 'none';
+        optionsField.style.display    = typesWithOptions.indexOf(val)  !== -1 ? '' : 'none';
+        compoundBuilder.style.display = typesWithCompound.indexOf(val) !== -1 ? '' : 'none';
       }
 
-      typeSelect.addEventListener('change', toggleOptions);
-      toggleOptions();  // run on page load (handles POST re-render)
+      typeSelect.addEventListener('change', toggleFields);
+      toggleFields();
+
+      // ── Compound component builder ──────────────────────────────────────────
+      document.getElementById('add-compound-component').addEventListener('click', function () {
+        addCompoundRow(null);
+      });
+
+      function addCompoundRow(data) {
+        var container = document.getElementById('compound-rows');
+        var idx = container.children.length;
+        var row = document.createElement('div');
+        row.className = 'compound-component-row';
+        row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:8px;';
+
+        var labelInput = document.createElement('input');
+        labelInput.type = 'text';
+        labelInput.className = 'govuk-input compound-label';
+        labelInput.placeholder = 'Label (e.g. Year 1 — most recent year)';
+        labelInput.style.flex = '2';
+        labelInput.value = (data && data.label) ? data.label : '';
+
+        var typeSelect = document.createElement('select');
+        typeSelect.className = 'govuk-select compound-type';
+        typeSelect.style.flex = '0 0 auto';
+        ['text', 'number', 'date'].forEach(function (t) {
+          var opt = document.createElement('option');
+          opt.value = t;
+          opt.textContent = t.charAt(0).toUpperCase() + t.slice(1);
+          if (data && data.type === t) opt.selected = true;
+          typeSelect.appendChild(opt);
+        });
+
+        var removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.textContent = '✕';
+        removeBtn.className = 'govuk-button govuk-button--warning govuk-!-margin-bottom-0';
+        removeBtn.style.cssText = 'padding:4px 10px;font-size:0.875rem;flex-shrink:0;';
+        removeBtn.addEventListener('click', function () { row.remove(); });
+
+        row.appendChild(labelInput);
+        row.appendChild(typeSelect);
+        row.appendChild(removeBtn);
+        container.appendChild(row);
+      }
+
+      // Serialise components to JSON in the options field before form submit
+      form.addEventListener('submit', function () {
+        if (typeSelect.value === 'compound') {
+          var components = [];
+          document.querySelectorAll('.compound-component-row').forEach(function (row) {
+            var label = row.querySelector('.compound-label').value.trim();
+            var type  = row.querySelector('.compound-type').value;
+            if (label) components.push({ label: label, type: type });
+          });
+          optionsInput.value = JSON.stringify(components);
+        }
+      });
     })();
   </script>
 

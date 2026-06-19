@@ -40,11 +40,11 @@
         <input type="hidden" name="anchor_answer_value" value="{{ anchor_answer_value }}">
         <input type="hidden" name="branching"           value="no" id="branching-input">
 
-        {# ── Node type ────────────────────────────────────────────────────── #}
+        {# ── New node ─────────────────────────────────────────────────────── #}
         <div class="govuk-form-group">
           <fieldset class="govuk-fieldset">
             <legend class="govuk-fieldset__legend govuk-fieldset__legend--s">
-              Node type
+              New node
             </legend>
             <div class="govuk-radios govuk-radios--inline">
               <div class="govuk-radios__item">
@@ -68,18 +68,12 @@
         {# ── Question dropdown ────────────────────────────────────────────── #}
         <div class="govuk-form-group" id="q-group">
           <label class="govuk-label govuk-label--s" for="node-id-q">Question</label>
-          {% if questions %}
           <select class="govuk-select" id="node-id-q" name="node_id">
-            <option value="">— select —</option>
+            <option value="">— END (return to home page) —</option>
             {% for q in questions %}
             <option value="{{ q.question_id }}">{{ q.question_id }} — {{ q.question_text }}</option>
             {% endfor %}
           </select>
-          {% else %}
-          <p class="govuk-hint govuk-!-margin-bottom-0">
-            No questions available — all are already in this section's routing.
-          </p>
-          {% endif %}
         </div>
 
         {# ── Set dropdown ─────────────────────────────────────────────────── #}
@@ -99,44 +93,101 @@
           {% endif %}
         </div>
 
-        {# ── Branching choice (radio/checkbox questions only) ────────────── #}
+        {# ── Next node (non-branching) ─────────────────────────────────────── #}
+        <div id="single-dest-group" style="display:none">
+          <div class="govuk-form-group">
+            <fieldset class="govuk-fieldset">
+              <legend class="govuk-fieldset__legend govuk-fieldset__legend--s">
+                Next node
+              </legend>
+              <div class="govuk-radios govuk-radios--inline">
+                <div class="govuk-radios__item">
+                  <input class="govuk-radios__input" id="dest-type-q" name="dest_type"
+                         type="radio" value="question" checked>
+                  <label class="govuk-label govuk-radios__label" for="dest-type-q">
+                    Question
+                  </label>
+                </div>
+                <div class="govuk-radios__item">
+                  <input class="govuk-radios__input" id="dest-type-s" name="dest_type"
+                         type="radio" value="set">
+                  <label class="govuk-label govuk-radios__label" for="dest-type-s">
+                    Set
+                  </label>
+                </div>
+              </div>
+            </fieldset>
+          </div>
+          <div class="govuk-form-group" id="single-dest-q-group">
+            <label class="govuk-label govuk-label--s" for="single-dest-select">
+              Goes to
+            </label>
+            <select class="govuk-select" id="single-dest-select" name="single_dest">
+              <option value="">— END (return to home page) —</option>
+              {% for q in questions %}
+              <option value="{{ q.question_id }}">{{ q.question_id }} — {{ q.question_text }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="govuk-form-group" id="single-dest-s-group" style="display:none">
+            <label class="govuk-label govuk-label--s" for="single-dest-set-select">
+              Goes to
+            </label>
+            <select class="govuk-select" id="single-dest-set-select" name="single_dest" disabled>
+              <option value="">— END (return to home page) —</option>
+              {% for s in all_sets %}
+              <option value="{{ s.set_id }}">{{ s.set_id }} — {{ s.set_title }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        {# ── Branching choice (radio/checkbox questions only) ─────────────── #}
         <div id="branching-choice" style="display:none">
           <div class="govuk-form-group">
             <fieldset class="govuk-fieldset">
               <legend class="govuk-fieldset__legend govuk-fieldset__legend--s">
-                <h2 class="govuk-fieldset__heading">
-                  Do you want different answers to lead to different questions?
-                </h2>
+                Does this question lead to more than one different next step?
               </legend>
               <div class="govuk-radios govuk-radios--inline">
                 <div class="govuk-radios__item">
                   <input class="govuk-radios__input" id="wants-branch-yes"
                          name="wants_branch" type="radio" value="yes">
-                  <label class="govuk-label govuk-radios__label" for="wants-branch-yes">Yes</label>
+                  <label class="govuk-label govuk-radios__label"
+                         for="wants-branch-yes">Yes</label>
                 </div>
                 <div class="govuk-radios__item">
                   <input class="govuk-radios__input" id="wants-branch-no"
                          name="wants_branch" type="radio" value="no">
-                  <label class="govuk-label govuk-radios__label" for="wants-branch-no">No</label>
+                  <label class="govuk-label govuk-radios__label"
+                         for="wants-branch-no">No</label>
                 </div>
               </div>
             </fieldset>
           </div>
         </div>
 
-        {# ── Branch builder (shown when wants_branch = yes) ───────────────── #}
-        <div id="branch-builder" style="display:none">
+        {# ── Route builder (shown when wants_branch = yes) ────────────────── #}
+        <div id="route-builder" style="display:none">
           <hr class="govuk-section-break govuk-section-break--m govuk-section-break--visible">
-          <h2 class="govuk-heading-s">Branch builder</h2>
-          <p class="govuk-body-s">
-            This question has defined answer options. Assign each option to a branch.
-            Each branch will become a condition in the routing tree.
+          <h2 class="govuk-heading-s">Define routes</h2>
+
+          <p class="govuk-body-s govuk-!-margin-bottom-1">
+            <strong>Specific conditions</strong> — add a row for each answer that leads
+            somewhere different. Leave empty if all answers go the same way.
           </p>
-          <div id="branch-groups"></div>
-          <button type="button" class="govuk-button govuk-button--secondary govuk-!-margin-top-2"
-                  id="add-branch-btn" style="display:none">
-            Add another branch
-          </button>
+          <div id="specific-conditions"></div>
+          <button type="button" class="govuk-button govuk-button--secondary govuk-!-margin-bottom-4"
+                  id="add-condition-btn">+ Add specific condition</button>
+
+          <p class="govuk-body-s govuk-!-margin-bottom-1">
+            <strong>All other answers</strong>
+          </p>
+          <div class="govuk-form-group">
+            <select class="govuk-select" name="default_dest" id="default-dest-select">
+              <option value="">— Not set (no default route) —</option>
+            </select>
+          </div>
         </div>
 
         <div class="govuk-button-group govuk-!-margin-top-6">
@@ -153,146 +204,181 @@
 
   <script>
     const questionOptions = {{ question_options_json|safe }};
-    const MAX_BRANCHES = 5;
+    const ROUTING_NODES   = {{ routing_nodes_json|safe }};
 
-    (function () {
-      var radioQ  = document.getElementById('node-type-q');
-      var radioS  = document.getElementById('node-type-s');
-      var groupQ  = document.getElementById('q-group');
-      var groupS  = document.getElementById('s-group');
-      var selectQ = groupQ ? groupQ.querySelector('select') : null;
-      var selectS = groupS ? groupS.querySelector('select') : null;
+    function buildDestSelect(name) {
+      var sel = document.createElement('select');
+      sel.name = name;
+      sel.className = 'govuk-select';
+      sel.style.minWidth = '280px';
+      var endOpt = document.createElement('option');
+      endOpt.value = '';
+      endOpt.textContent = '\u2014 END (return to home page) \u2014';
+      sel.appendChild(endOpt);
+      ROUTING_NODES.forEach(function(rn) {
+        var o = document.createElement('option');
+        o.value = rn.id;
+        o.textContent = rn.label;
+        sel.appendChild(o);
+      });
+      return sel;
+    }
 
-      function toggle() {
-        var isQ = radioQ.checked;
-        groupQ.style.display = isQ ? '' : 'none';
-        groupS.style.display = isQ ? 'none' : '';
-        if (selectQ) selectQ.disabled = !isQ;
-        if (selectS) selectS.disabled =  isQ;
-        if (!isQ) {
-          hideAll();
-        } else if (selectQ) {
-          onQuestionChange();
-        }
+    function buildAnswerSelect(options, name) {
+      var sel = document.createElement('select');
+      sel.name = name;
+      sel.className = 'govuk-select';
+      sel.style.minWidth = '140px';
+      var blank = document.createElement('option');
+      blank.value = '';
+      blank.textContent = '\u2014 select \u2014';
+      sel.appendChild(blank);
+      options.forEach(function(opt) {
+        var o = document.createElement('option');
+        o.value = opt;
+        o.textContent = opt;
+        sel.appendChild(o);
+      });
+      return sel;
+    }
+
+    function addSpecificCondition(options, index) {
+      var container = document.getElementById('specific-conditions');
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex; gap:8px; align-items:center; margin-bottom:8px;';
+      row.id = 'cond-row-' + index;
+
+      row.appendChild(buildAnswerSelect(options, 'condition_' + index + '_value'));
+
+      var arrow = document.createElement('span');
+      arrow.textContent = '\u2192';
+      arrow.style.cssText = 'font-family:monospace; flex-shrink:0;';
+      row.appendChild(arrow);
+
+      row.appendChild(buildDestSelect('condition_' + index + '_dest'));
+
+      var removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.textContent = 'Remove';
+      removeBtn.className = 'govuk-button govuk-button--warning govuk-!-margin-bottom-0';
+      removeBtn.style.cssText = 'padding:4px 10px; font-size:0.875rem;';
+      removeBtn.addEventListener('click', function() { row.remove(); });
+      row.appendChild(removeBtn);
+
+      container.appendChild(row);
+    }
+
+    // Populate the default dest select with END + routing nodes
+    (function() {
+      var defSel = document.getElementById('default-dest-select');
+      if (defSel) {
+        var endOpt = document.createElement('option');
+        endOpt.value = '__END__';
+        endOpt.textContent = '\u2014 END (return to home page) \u2014';
+        defSel.appendChild(endOpt);
+        ROUTING_NODES.forEach(function(rn) {
+          var o = document.createElement('option');
+          o.value = rn.id;
+          o.textContent = rn.label;
+          defSel.appendChild(o);
+        });
       }
-
-      radioQ.addEventListener('change', toggle);
-      radioS.addEventListener('change', toggle);
-
-      if (selectQ) {
-        selectQ.addEventListener('change', onQuestionChange);
-      }
-
-      toggle();
     })();
 
+    // Show/hide single-dest vs branching-choice based on question selection
     function onQuestionChange() {
       var selectQ = document.querySelector('#q-group select');
       if (!selectQ) return;
       var qid = selectQ.value;
-      if (qid && questionOptions[qid]) {
-        // Radio/checkbox — show branching choice, hide branch builder until user decides
-        document.getElementById('branching-choice').style.display = '';
-        document.getElementById('branch-builder').style.display = 'none';
-        document.getElementById('add-branch-btn').style.display = 'none';
-        document.getElementById('branch-groups').innerHTML = '';
-        document.getElementById('branching-input').value = 'no';
-        document.querySelectorAll('input[name="wants_branch"]').forEach(function(r) {
-          r.checked = false;
-        });
-      } else {
-        hideAll();
-      }
-    }
+      var hasBranchableOptions = qid && questionOptions[qid] && questionOptions[qid].length > 0;
 
-    function showBranchBuilder(options) {
-      document.getElementById('branching-input').value = 'yes';
-      document.getElementById('branch-builder').style.display = '';
-      document.getElementById('add-branch-btn').style.display = '';
-      var container = document.getElementById('branch-groups');
-      container.innerHTML = '';
-      addBranchGroup(options, 0);
-      addBranchGroup(options, 1);
-    }
-
-    function hideAll() {
+      document.getElementById('single-dest-group').style.display = hasBranchableOptions ? 'none' : '';
+      document.getElementById('branching-choice').style.display  = hasBranchableOptions ? '' : 'none';
+      document.getElementById('route-builder').style.display     = 'none';
+      document.getElementById('specific-conditions').innerHTML   = '';
       document.getElementById('branching-input').value = 'no';
-      document.getElementById('branching-choice').style.display = 'none';
-      document.getElementById('branch-builder').style.display = 'none';
-      document.getElementById('add-branch-btn').style.display = 'none';
-      document.getElementById('branch-groups').innerHTML = '';
-      document.querySelectorAll('input[name="wants_branch"]').forEach(function(r) {
-        r.checked = false;
-      });
+      document.querySelectorAll('input[name="wants_branch"]').forEach(function(r) { r.checked = false; });
     }
 
+    // Branching yes/no toggle
     document.querySelectorAll('input[name="wants_branch"]').forEach(function(radio) {
       radio.addEventListener('change', function() {
         var selectQ = document.querySelector('#q-group select');
-        if (!selectQ) return;
-        var qid = selectQ.value;
+        var qid = selectQ ? selectQ.value : '';
+        var opts = questionOptions[qid] || [];
         if (this.value === 'yes') {
-          showBranchBuilder(questionOptions[qid] || []);
+          document.getElementById('branching-input').value = 'yes';
+          document.getElementById('route-builder').style.display = '';
+          document.getElementById('single-dest-group').style.display = 'none';
+          document.getElementById('specific-conditions').innerHTML = '';
+          addSpecificCondition(opts, 0); // start with one row
         } else {
           document.getElementById('branching-input').value = 'no';
-          document.getElementById('branch-builder').style.display = 'none';
-          document.getElementById('add-branch-btn').style.display = 'none';
-          document.getElementById('branch-groups').innerHTML = '';
+          document.getElementById('route-builder').style.display = 'none';
+          document.getElementById('single-dest-group').style.display = '';
+          document.getElementById('specific-conditions').innerHTML = '';
         }
       });
     });
 
-    function addBranchGroup(options, index) {
-      var container = document.getElementById('branch-groups');
-      if (index >= MAX_BRANCHES) return;
+    // Add condition button
+    document.getElementById('add-condition-btn').addEventListener('click', function() {
+      var selectQ = document.querySelector('#q-group select');
+      var qid = selectQ ? selectQ.value : '';
+      var opts = questionOptions[qid] || [];
+      var container = document.getElementById('specific-conditions');
+      addSpecificCondition(opts, container.children.length);
+    });
 
-      var div = document.createElement('div');
-      div.id = 'branch-group-' + index;
-      div.style.marginBottom = '1.5rem';
+    // Node type toggle (Q vs S)
+    var radioQ = document.getElementById('node-type-q');
+    var radioS = document.getElementById('node-type-s');
+    var groupQ = document.getElementById('q-group');
+    var groupS = document.getElementById('s-group');
 
-      var legend = document.createElement('p');
-      legend.className = 'govuk-body-s govuk-!-font-weight-bold govuk-!-margin-bottom-1';
-      legend.textContent = 'Branch ' + (index + 1);
-      div.appendChild(legend);
-
-      options.forEach(function(opt) {
-        var item = document.createElement('div');
-        item.className = 'govuk-checkboxes__item';
-
-        var cb = document.createElement('input');
-        cb.className = 'govuk-checkboxes__input';
-        cb.type = 'checkbox';
-        cb.name = 'branch_' + index;
-        cb.value = opt;
-        cb.id = 'branch-' + index + '-' + opt.replace(/\s+/g, '_');
-
-        var lbl = document.createElement('label');
-        lbl.className = 'govuk-label govuk-checkboxes__label';
-        lbl.setAttribute('for', cb.id);
-        lbl.textContent = opt;
-
-        item.appendChild(cb);
-        item.appendChild(lbl);
-        div.appendChild(item);
-      });
-
-      container.appendChild(div);
+    function toggleNodeType() {
+      var isQ = radioQ.checked;
+      groupQ.style.display = isQ ? '' : 'none';
+      groupS.style.display = isQ ? 'none' : '';
+      var selectQ = groupQ.querySelector('select');
+      var selectS = groupS.querySelector('select');
+      if (selectQ) selectQ.disabled = !isQ;
+      if (selectS) selectS.disabled =  isQ;
+      if (isQ) {
+        onQuestionChange();
+      } else {
+        // Sets are always non-branching
+        document.getElementById('single-dest-group').style.display = '';
+        document.getElementById('branching-choice').style.display  = 'none';
+        document.getElementById('route-builder').style.display     = 'none';
+        document.getElementById('branching-input').value = 'no';
+      }
     }
 
-    document.getElementById('add-branch-btn').addEventListener('click', function () {
-      var selectQ = document.querySelector('#q-group select');
-      if (!selectQ) return;
-      var qid = selectQ.value;
-      var opts = questionOptions[qid] || [];
-      var container = document.getElementById('branch-groups');
-      var nextIndex = container.children.length;
-      if (nextIndex < MAX_BRANCHES) {
-        addBranchGroup(opts, nextIndex);
-      }
-      if (nextIndex + 1 >= MAX_BRANCHES) {
-        document.getElementById('add-branch-btn').style.display = 'none';
-      }
-    });
+    radioQ.addEventListener('change', toggleNodeType);
+    radioS.addEventListener('change', toggleNodeType);
+    var selectQ = groupQ ? groupQ.querySelector('select') : null;
+    if (selectQ) selectQ.addEventListener('change', onQuestionChange);
+    toggleNodeType();
+
+    // Dest type toggle (Q vs S) within single-dest-group
+    var destTypeQ = document.getElementById('dest-type-q');
+    var destTypeS = document.getElementById('dest-type-s');
+    var singleDestQGroup = document.getElementById('single-dest-q-group');
+    var singleDestSGroup = document.getElementById('single-dest-s-group');
+
+    function toggleDestType() {
+      var isQ = destTypeQ.checked;
+      singleDestQGroup.style.display = isQ ? '' : 'none';
+      singleDestSGroup.style.display = isQ ? 'none' : '';
+      var selQ = document.getElementById('single-dest-select');
+      var selS = document.getElementById('single-dest-set-select');
+      if (selQ) selQ.disabled = !isQ;
+      if (selS) selS.disabled =  isQ;
+    }
+
+    if (destTypeQ) destTypeQ.addEventListener('change', toggleDestType);
+    if (destTypeS) destTypeS.addEventListener('change', toggleDestType);
   </script>
 
 {% endblock %}

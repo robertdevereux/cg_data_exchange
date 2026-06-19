@@ -169,4 +169,5 @@ def select_section(request, regime_id):
         'back_url':    back_url,
         'breadcrumbs': crumbs,
         'acting_for':  get_acting_for_name(pss),
+        'title':       regime.regime_name,
     })

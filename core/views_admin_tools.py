@@ -1507,6 +1507,7 @@ def tools_section_create(request):
                 column_question_ids=column_question_ids,
                 totals_question_ids=totals_question_ids,
                 copied_from=copy_from_id or None,
+                show_confirmation=post.get('show_confirmation') == 'on',
             )
 
             # Copy routing rows from the source section if requested
@@ -1650,50 +1651,55 @@ def _build_outgoing(rows):
 
 def build_routing_tree(section):
     """
-    Build and return an ordered list of display-node dicts for the routing
-    tree of *section*.
+    Build an ordered list of display-node dicts for the routing tree of *section*.
 
     Algorithm
     ---------
-    Pre-compute:
-      • rows        – all Routing rows sorted by order_in_section
-      • outgoing    – {node_id: [next_node, ...]}  (multiple entries = branching)
-      • row_map     – {(current_node, answer_value): Routing row}
-      • node_order  – distinct current_nodes in first-appearance order
-
-    The recursive helper _emit(node_id, indent, excluded):
-      1. If node_id is None, already visited, or in excluded → emit END / return.
-      2. Mark node_id as visited; look up its outgoing edges.
-      3. Non-branching (one edge): emit question node, recurse at same indent.
-      4. Branching (>1 edge):
-         a. For each condition row (in section order):
-            • branch_only_i = reachable(next_i) - reachable(every other next)
-            • emit 'condition' node at indent+1
-            • recurse into branch_only_i at indent+2, excluded = all other
-              branches' reachable sets ∪ outer excluded
-         b. Find convergence = first node in node_order that is in
-            intersection(reachable(all nexts)) and not yet visited.
-         c. Continue from convergence at same indent.
+    1. Load all routing rows ordered by order_in_section.
+    2. node_order = distinct current_nodes in first-appearance order.
+    3. convergence_nodes = nodes that appear as next_node from more than one
+       distinct current_node.
+    4. For each node in node_order:
+         - emit a 'question' node (is_convergence if in convergence_nodes)
+         - emit a 'condition' row for each specific condition (answer_value not None)
+         - emit an 'All other answers' row for the default row (answer_value=None)
+           if present
+    5. Emit a final END node.
 
     Display node dict keys
     ----------------------
-    type, node_id, label, indent, is_branching, conditions, answer_value,
-    next_node, routing_row_id, condition_empty
+    type, node_id, label, indent, depth, is_branching, is_convergence,
+    conditions, answer_value, next_node, routing_row_id, show_brackets
     """
     rows = list(
         Routing.objects.filter(section=section).order_by('order_in_section')
     )
 
     if not rows:
-        return [{'type': 'end', 'node_id': None, 'label': 'END', 'indent': 0, 'depth': 0,
-                 'is_branching': False, 'conditions': [], 'answer_value': None,
-                 'next_node': None, 'routing_row_id': None, 'condition_empty': False}]
+        return [{'type': 'end', 'node_id': None, 'label': 'END', 'indent': 0,
+                 'depth': 0, 'is_branching': False, 'is_convergence': False,
+                 'conditions': [], 'answer_value': None, 'next_node': None,
+                 'routing_row_id': None, 'show_brackets': False}]
 
-    outgoing = _build_outgoing(rows)
-    node_order = _node_first_order(rows)
+    # node_order: distinct current_nodes in first-appearance order
+    seen = set()
+    node_order = []
+    for r in rows:
+        if r.current_node not in seen:
+            seen.add(r.current_node)
+            node_order.append(r.current_node)
 
-    # Build label lookup for questions and sets
-    all_node_ids = set(r.current_node for r in rows)
+    # convergence_nodes: next_node values referenced from more than one
+    # distinct current_node
+    dest_sources = {}
+    for r in rows:
+        if r.next_node:
+            dest_sources.setdefault(r.next_node, set()).add(r.current_node)
+    convergence_nodes = {nid for nid, sources in dest_sources.items()
+                         if len(sources) > 1}
+
+    # Label lookups
+    all_node_ids = set(node_order)
     q_labels = {
         q.question_id: q.question_text
         for q in Question.objects.filter(question_id__in=all_node_ids)
@@ -1707,163 +1713,81 @@ def build_routing_tree(section):
         text = q_labels.get(node_id) or s_labels.get(node_id) or ''
         return f'{node_id}  {text}' if text else node_id
 
-    # row_map: (current_node, answer_value) → Routing row
-    row_map = {}
-    for row in rows:
-        row_map[(row.current_node, row.answer_value)] = row
-
-    visited = set()
     result = []
 
-    def _emit(node_id, indent, excluded):
-        if node_id is None:
+    for node_id in node_order:
+        node_rows = [r for r in rows if r.current_node == node_id]
+        cond_rows = sorted(
+            [r for r in node_rows if r.answer_value is not None],
+            key=lambda r: r.order_in_section,
+        )
+        default_row = next(
+            (r for r in node_rows if r.answer_value is None), None
+        )
+        is_branching = bool(cond_rows) or (
+            default_row is not None and len(node_rows) > 1
+        )
+        first_row = cond_rows[0] if cond_rows else default_row
+
+        # Question node
+        result.append({
+            'type': 'question',
+            'node_id': node_id,
+            'label': node_label(node_id),
+            'indent': 0,
+            'depth': 0,
+            'is_branching': is_branching,
+            'is_convergence': node_id in convergence_nodes,
+            'conditions': [r.answer_value for r in cond_rows],
+            'answer_value': None,
+            'next_node': None,
+            'routing_row_id': first_row.pk if first_row else None,
+            'show_brackets': False,
+        })
+
+        # Specific condition rows
+        for cond_row in cond_rows:
+            dest = cond_row.next_node
             result.append({
-                'type': 'end', 'node_id': None, 'label': 'END', 'indent': indent,
-                'depth': (indent + 1) // 2,
-                'is_branching': False, 'conditions': [], 'answer_value': None,
-                'next_node': None, 'routing_row_id': None, 'condition_empty': False,
-            })
-            return
-
-        if node_id in visited or node_id in excluded:
-            return
-
-        visited.add(node_id)
-
-        nexts = outgoing.get(node_id, [])   # list of next_node values (one per row)
-
-        if len(nexts) <= 1:
-            # Non-branching
-            next_node = nexts[0] if nexts else None
-            row = row_map.get((node_id, None)) or row_map.get((node_id, nexts[0] if nexts else None))
-            # Find the actual routing row for this node (unconditional)
-            actual_row = None
-            for row in rows:
-                if row.current_node == node_id:
-                    actual_row = row
-                    break
-            result.append({
-                'type': 'question',
+                'type': 'condition',
                 'node_id': node_id,
-                'label': node_label(node_id),
-                'indent': indent,
-                'depth': (indent + 1) // 2,
+                'label': cond_row.answer_value,
+                'indent': 1,
+                'depth': 1,
                 'is_branching': False,
+                'is_convergence': False,
+                'conditions': [],
+                'answer_value': cond_row.answer_value,
+                'next_node': dest,
+                'routing_row_id': cond_row.pk,
+                'show_brackets': dest is not None and dest in convergence_nodes,
+            })
+
+        # Default / fallback row
+        if default_row:
+            dest = default_row.next_node
+            result.append({
+                'type': 'condition',
+                'node_id': node_id,
+                'label': 'All other answers',
+                'indent': 1,
+                'depth': 1,
+                'is_branching': False,
+                'is_convergence': False,
                 'conditions': [],
                 'answer_value': None,
-                'next_node': next_node,
-                'routing_row_id': actual_row.pk if actual_row else None,
-                'condition_empty': False,
-            })
-            _emit(next_node, indent, excluded)
-        else:
-            # Branching: collect condition rows in section order
-            cond_rows = sorted(
-                [r for r in rows if r.current_node == node_id],
-                key=lambda r: r.order_in_section,
-            )
-            conditions_labels = [r.answer_value for r in cond_rows]
-
-            # Reachability for each branch
-            branch_reachable = [_reachable_from(outgoing, r.next_node) for r in cond_rows]
-
-            # Convergence = first node in node_order that is in ALL branches'
-            # reachable sets and not yet visited
-            if branch_reachable:
-                common = branch_reachable[0].copy()
-                for br in branch_reachable[1:]:
-                    common &= br
-            else:
-                common = set()
-            convergence = None
-            for nid in node_order:
-                if nid in common and nid not in visited and nid != node_id:
-                    convergence = nid
-                    break
-
-            # First routing row for this node (for routing_row_id)
-            first_row = cond_rows[0] if cond_rows else None
-
-            result.append({
-                'type': 'question',
-                'node_id': node_id,
-                'label': node_label(node_id),
-                'indent': indent,
-                'depth': (indent + 1) // 2,
-                'is_branching': True,
-                'conditions': conditions_labels,
-                'answer_value': None,
-                'next_node': None,
-                'routing_row_id': first_row.pk if first_row else None,
-                'condition_empty': False,
+                'next_node': dest,
+                'routing_row_id': default_row.pk,
+                'show_brackets': dest is not None,
             })
 
-            for i, cond_row in enumerate(cond_rows):
-                branch_next = cond_row.next_node
-                # branch_only = nodes reachable from this branch's start but
-                # NOT reachable from any other branch's start
-                other_reachable = set()
-                for j, br in enumerate(branch_reachable):
-                    if j != i:
-                        other_reachable |= br
-                branch_only = branch_reachable[i] - other_reachable
-                # Also exclude convergence from branch_only
-                if convergence:
-                    branch_only.discard(convergence)
-
-                branch_has_nodes = bool(branch_only - visited)
-
-                result.append({
-                    'type': 'condition',
-                    'node_id': node_id,
-                    'label': cond_row.answer_value or '(unconditional)',
-                    'indent': indent + 1,
-                    'depth': (indent + 2) // 2,
-                    'is_branching': False,
-                    'conditions': [],
-                    'answer_value': cond_row.answer_value,
-                    'next_node': branch_next,
-                    'routing_row_id': cond_row.pk,
-                    'condition_empty': not branch_has_nodes,
-                })
-
-                # Emit branch-only nodes at indent+2
-                new_excluded = excluded | (other_reachable - branch_only)
-                if convergence:
-                    new_excluded.add(convergence)
-                _emit(branch_next, indent + 2, new_excluded)
-
-            # Continue from convergence at same indent
-            if convergence:
-                _emit(convergence, indent, excluded)
-            else:
-                # All branches end (next_node=None) — emit END
-                result.append({
-                    'type': 'end', 'node_id': None, 'label': 'END', 'indent': indent,
-                    'is_branching': False, 'conditions': [], 'answer_value': None,
-                    'next_node': None, 'routing_row_id': None, 'condition_empty': False,
-                })
-
-    # Find entry node = first in node_order that is never a next_node of another
-    # (i.e. it has no predecessor inside this section)
-    all_nexts = set(r.next_node for r in rows if r.next_node is not None)
-    entry = None
-    for nid in node_order:
-        if nid not in all_nexts:
-            entry = nid
-            break
-    if entry is None:
-        entry = node_order[0] if node_order else None
-
-    _emit(entry, 0, set())
-
-    # If nothing emitted an END at the top level, add one
-    if not result or result[-1]['type'] != 'end':
-        result.append({
-            'type': 'end', 'node_id': None, 'label': 'END', 'indent': 0,
-            'is_branching': False, 'conditions': [], 'answer_value': None,
-            'next_node': None, 'routing_row_id': None, 'condition_empty': False,
-        })
+    # Final END node
+    result.append({
+        'type': 'end', 'node_id': None, 'label': 'END', 'indent': 0,
+        'depth': 0, 'is_branching': False, 'is_convergence': False,
+        'conditions': [], 'answer_value': None, 'next_node': None,
+        'routing_row_id': None, 'show_brackets': False,
+    })
 
     return result
 
@@ -1970,6 +1894,30 @@ def _renumber_routing(section):
         Routing.objects.bulk_update(updated, ['order_in_section'])
 
 
+# ── View: question type / options lookup (AJAX) ───────────────────────────────
+
+@staff_required
+def tools_question_type_info(request, question_id):
+    """JSON: return question_type and options for a given question_id.
+
+    Used by the routing admin UI to show the appropriate condition input
+    (answer-value vs. scalar comparator) based on question type.
+    """
+    from django.http import JsonResponse
+    try:
+        q = Question.objects.get(question_id=question_id)
+        return JsonResponse({
+            'question_id':   question_id,
+            'question_type': q.question_type,
+            'options':       q.options or '',
+        })
+    except Question.DoesNotExist:
+        return JsonResponse(
+            {'question_id': question_id, 'question_type': '', 'options': ''},
+            status=404,
+        )
+
+
 # ── View: section routing display ─────────────────────────────────────────────
 
 @staff_required
@@ -1996,11 +1944,48 @@ def tools_section_routing(request, section_id):
         + [{'id': s.set_id, 'label': f'{s.set_id}  {s.set_title}'} for s in sets]
     )
 
+    # Build question_data for C2 — type + options for each node currently in routing.
+    # Also build routing_nodes for C1 — the next_node dropdown in condition forms.
+    q_map = {
+        q.question_id: q
+        for q in Question.objects.filter(question_id__in=existing_node_ids)
+    }
+    qs_map = {
+        qs.set_id: qs
+        for qs in QuestionSet.objects.filter(set_id__in=existing_node_ids)
+    }
+    question_data = {}
+    routing_nodes = []
+    for node_id in sorted(existing_node_ids):
+        if node_id in q_map:
+            q = q_map[node_id]
+            question_data[node_id] = {'type': q.question_type, 'options': q.options or ''}
+            label = f'{node_id}  {q.question_text}'
+        elif node_id in qs_map:
+            qs = qs_map[node_id]
+            question_data[node_id] = {'type': 'set', 'options': ''}
+            label = f'{node_id}  {qs.set_title}'
+        else:
+            question_data[node_id] = {'type': '', 'options': ''}
+            label = node_id
+        routing_nodes.append({'id': node_id, 'label': label})
+
+    # node_conditions: {node_id: {answer_value: next_node}} for pre-population
+    # answer_value=None (default/catch-all) stored under key '__default__'
+    node_conditions = {}
+    for r in Routing.objects.filter(section=section):
+        key = r.answer_value if r.answer_value is not None else '__default__'
+        node_conditions.setdefault(r.current_node, {})[key] = r.next_node or ''
+
     return render(request, 'core/tools_section_routing.html', {
-        'section':            section,
-        'tree':               tree,
-        'available_nodes':    available_nodes,
-        'routing_validation': validate_section_routing(section),
+        'section':              section,
+        'tree':                 tree,
+        'available_nodes':      available_nodes,
+        'routing_nodes':        routing_nodes,
+        'question_data_json':   json.dumps(question_data),
+        'routing_nodes_json':   json.dumps(routing_nodes),
+        'node_conditions_json': json.dumps(node_conditions),
+        'routing_validation':   validate_section_routing(section),
     })
 
 
@@ -2028,9 +2013,29 @@ def tools_routing_insert(request, section_id):
         new_node_id         = request.POST.get('node_id', '').strip()
         branching           = request.POST.get('branching', 'no').strip()
 
-        # Validate node exists and is not already in this section's routing
+        # END selected — update the predecessor edge to None and stop.
         if not new_node_id:
+            if position == 'before' and anchor_node and anchor_node != '__END__':
+                Routing.objects.filter(
+                    section=section, next_node=anchor_node
+                ).update(next_node=None)
+            elif position == 'after' and anchor_node:
+                if anchor_answer_value is not None:
+                    Routing.objects.filter(
+                        section=section,
+                        current_node=anchor_node,
+                        answer_value=anchor_answer_value,
+                    ).update(next_node=None)
+                else:
+                    Routing.objects.filter(
+                        section=section,
+                        current_node=anchor_node,
+                        answer_value__isnull=True,
+                    ).update(next_node=None)
+            _renumber_routing(section)
             return _routing_redirect(section_id)
+
+        # Validate node exists and is not already in this section's routing
         if node_type == 'question':
             if not Question.objects.filter(question_id=new_node_id).exists():
                 return _routing_redirect(section_id)
@@ -2040,18 +2045,28 @@ def tools_routing_insert(request, section_id):
         if Routing.objects.filter(section=section, current_node=new_node_id).exists():
             return _routing_redirect(section_id)
 
-        # Collect branch answer values (branching == 'yes') or single unconditional
+        # Collect routes: specific conditions + default destination.
         if branching == 'yes':
-            branch_answer_values = []
-            for i in range(10):
-                key = f'branch_{i}'
-                if key not in request.POST:
+            specific_rows = []
+            for i in range(20):
+                val_key  = f'condition_{i}_value'
+                dest_key = f'condition_{i}_dest'
+                if val_key not in request.POST:
                     break
-                vals = request.POST.getlist(key)
-                joined = ';'.join(v for v in vals if v.strip())
-                branch_answer_values.append(joined if joined else None)
+                val  = request.POST.get(val_key, '').strip() or None
+                dest = request.POST.get(dest_key, '').strip() or None
+                if val is not None:
+                    specific_rows.append((val, dest))
+            default_dest_raw = request.POST.get('default_dest', '').strip()
+            if default_dest_raw == '__END__':
+                default_dest = None        # None = END in the routing engine
+            elif default_dest_raw:
+                default_dest = default_dest_raw
+            else:
+                default_dest = '__NOT_SET__'  # sentinel: don't create default row
         else:
-            branch_answer_values = [None]
+            specific_rows = []
+            default_dest = request.POST.get('single_dest', '').strip() or None
 
         max_order = (
             Routing.objects.filter(section=section)
@@ -2060,55 +2075,66 @@ def tools_routing_insert(request, section_id):
             .first()
         ) or 0
 
-        # ── Handle __END__ sentinel: treat as 'after' on last unconditional row ─
-        if position == 'before' and anchor_node == '__END__':
-            last_row = (
-                Routing.objects
-                .filter(section=section, next_node__isnull=True, answer_value__isnull=True)
-                .order_by('-order_in_section')
-                .first()
-            )
-            if last_row is not None:
-                last_row.next_node = new_node_id
-                last_row.save()
-            for av in branch_answer_values:
+        def _create_new_rows():
+            nonlocal max_order
+            if branching == 'yes':
+                for av, dest in specific_rows:
+                    Routing.objects.create(
+                        section=section,
+                        current_node=new_node_id,
+                        answer_value=av,
+                        next_node=dest,
+                        order_in_section=max_order + 10,
+                    )
+                    max_order += 10
+                # Default (unconditional) row — only when admin explicitly set one
+                if default_dest != '__NOT_SET__':
+                    Routing.objects.create(
+                        section=section,
+                        current_node=new_node_id,
+                        answer_value=None,
+                        next_node=default_dest,
+                        order_in_section=max_order + 10,
+                    )
+                    max_order += 10
+            else:
                 Routing.objects.create(
                     section=section,
                     current_node=new_node_id,
-                    answer_value=av,
-                    next_node=None,
+                    answer_value=None,
+                    next_node=default_dest,
                     order_in_section=max_order + 10,
                 )
                 max_order += 10
+
+        # ── Handle __END__ sentinel ────────────────────────────────────────────
+        if position == 'before' and anchor_node == '__END__':
+            if branching == 'no':
+                last_row = (
+                    Routing.objects
+                    .filter(section=section, next_node__isnull=True, answer_value__isnull=True)
+                    .order_by('-order_in_section')
+                    .first()
+                )
+                if last_row is not None:
+                    last_row.next_node = new_node_id
+                    last_row.save()
+            _create_new_rows()
 
         elif position == 'first':
-            for av in branch_answer_values:
-                Routing.objects.create(
-                    section=section,
-                    current_node=new_node_id,
-                    answer_value=av,
-                    next_node=None,
-                    order_in_section=10,
-                )
+            _create_new_rows()
 
         elif position == 'before' and anchor_node:
-            # All rows pointing to anchor_node → new_node_id
-            Routing.objects.filter(section=section, next_node=anchor_node).update(
-                next_node=new_node_id
-            )
-            for av in branch_answer_values:
-                Routing.objects.create(
-                    section=section,
-                    current_node=new_node_id,
-                    answer_value=av,
-                    next_node=anchor_node,
-                    order_in_section=max_order + 10,
+            if branching == 'no':
+                # All rows pointing to anchor_node → new_node_id (splice)
+                Routing.objects.filter(section=section, next_node=anchor_node).update(
+                    next_node=new_node_id
                 )
-                max_order += 10
+            _create_new_rows()
 
         elif position == 'after' and anchor_node:
             if anchor_answer_value is not None:
-                # Branch insert: find the specific condition row and splice in
+                # Branch insert: splice the specific condition row
                 try:
                     cond_row = Routing.objects.get(
                         section=section,
@@ -2117,11 +2143,10 @@ def tools_routing_insert(request, section_id):
                     )
                 except Routing.DoesNotExist:
                     return _routing_redirect(section_id)
-                z = cond_row.next_node
                 cond_row.next_node = new_node_id
                 cond_row.save()
-            else:
-                # Simple linear after: anchor has one unconditional row
+            elif branching == 'no':
+                # Simple linear after: splice the unconditional row
                 anchor_row = (
                     Routing.objects
                     .filter(section=section, current_node=anchor_node, answer_value__isnull=True)
@@ -2129,18 +2154,9 @@ def tools_routing_insert(request, section_id):
                 )
                 if anchor_row is None:
                     return _routing_redirect(section_id)
-                z = anchor_row.next_node
                 anchor_row.next_node = new_node_id
                 anchor_row.save()
-            for av in branch_answer_values:
-                Routing.objects.create(
-                    section=section,
-                    current_node=new_node_id,
-                    answer_value=av,
-                    next_node=z,
-                    order_in_section=max_order + 10,
-                )
-                max_order += 10
+            _create_new_rows()
 
         _renumber_routing(section)
         return _routing_redirect(section_id)
@@ -2169,14 +2185,28 @@ def tools_routing_insert(request, section_id):
             if opts:
                 question_options[q.question_id] = opts
 
+    # Build label list for destination dropdowns — all questions + sets, sorted
+    routing_node_labels = (
+        [
+            {'id': q.question_id, 'label': f'{q.question_id} — {q.question_text[:60]}'}
+            for q in sorted(Question.objects.all(), key=_question_sort_key)
+        ] + [
+            {'id': s.set_id, 'label': f'{s.set_id} — {s.set_title}'}
+            for s in QuestionSet.objects.order_by('set_id')
+        ]
+    )
+
     return render(request, 'core/tools_routing_insert.html', {
-        'section':              section,
-        'position':             position,
-        'anchor_node':          anchor_node,
-        'anchor_answer_value':  anchor_answer_value,
-        'questions':            questions,
-        'sets':                 sets,
+        'section':               section,
+        'position':              position,
+        'anchor_node':           anchor_node,
+        'anchor_answer_value':   anchor_answer_value,
+        'questions':             questions,
+        'sets':                  sets,
+        'all_sets':              QuestionSet.objects.order_by('set_id'),
         'question_options_json': json.dumps(question_options),
+        'routing_node_labels':   routing_node_labels,
+        'routing_nodes_json':    json.dumps(routing_node_labels),
     })
 
 
@@ -2391,11 +2421,44 @@ def tools_routing_add_condition(request, section_id):
     section = get_object_or_404(Section, section_id=section_id)
     routing_url = f'/tools/sections/{section_id}/routing/'
 
-    node_id      = request.POST.get('node_id', '').strip()
-    answer_value = request.POST.get('answer_value', '').strip() or None
+    node_id         = request.POST.get('node_id', '').strip()
+    answer_value    = request.POST.get('answer_value', '').strip() or None
+    comparator_raw  = request.POST.get('comparator', '').strip() or None
+    threshold_raw   = request.POST.get('threshold_value', '').strip() or None
+    next_node_raw   = request.POST.get('next_node', '').strip() or None
 
-    if not node_id or not answer_value:
+    if not node_id:
         return redirect(routing_url)
+
+    # Validate comparator / threshold pair
+    valid_comparators = ('=', '<', '<=', '>', '>=')
+    comparator = comparator_raw if comparator_raw in valid_comparators else None
+
+    threshold_value = None
+    if threshold_raw is not None:
+        try:
+            from decimal import Decimal, InvalidOperation
+            threshold_value = Decimal(threshold_raw)
+        except (InvalidOperation, ValueError):
+            threshold_value = None
+
+    # Must have either an answer_value (equality/set match) or a complete
+    # scalar pair (comparator + threshold_value)
+    scalar_routing = comparator is not None and threshold_value is not None
+    if not answer_value and not scalar_routing:
+        return redirect(routing_url)
+
+    # For scalar routing, use answer_value as a human-readable label if not
+    # supplied (e.g. ">= 325000") so the row has a unique answer_value key
+    if scalar_routing and not answer_value:
+        answer_value = f'{comparator} {threshold_value}'
+
+    # Validate next_node — must be an existing current_node in this section,
+    # or None/empty (meaning END)
+    if next_node_raw and Routing.objects.filter(section=section, current_node=next_node_raw).exists():
+        next_node_to_store = next_node_raw
+    else:
+        next_node_to_store = None
 
     max_order = (
         Routing.objects.filter(section=section)
@@ -2404,11 +2467,16 @@ def tools_routing_add_condition(request, section_id):
         .first()
     ) or 0
 
-    Routing.objects.get_or_create(
+    Routing.objects.update_or_create(
         section=section,
         current_node=node_id,
         answer_value=answer_value,
-        defaults={'next_node': None, 'order_in_section': max_order + 10},
+        defaults={
+            'next_node':        next_node_to_store,
+            'order_in_section': max_order + 10,
+            'comparator':       comparator,
+            'threshold_value':  threshold_value,
+        },
     )
 
     _renumber_routing(section)
@@ -2696,11 +2764,12 @@ def tools_section_edit(request, section_id):
         if not section_name:
             errors['section_name'] = 'Section name is required.'
         if not errors:
-            section.section_name      = section_name
-            section.section_type      = int(request.POST.get('section_type', 0))
-            section.section_guidance  = request.POST.get('section_guidance', '').strip() or None
+            section.section_name        = section_name
+            section.section_type        = int(request.POST.get('section_type', 0))
+            section.section_guidance    = request.POST.get('section_guidance', '').strip() or None
             section.column_question_ids = request.POST.get('column_question_ids', '').strip() or None
             section.totals_question_ids = request.POST.get('totals_question_ids', '').strip() or None
+            section.show_confirmation   = request.POST.get('show_confirmation') == 'on'
             section.save()
             return redirect(
                 reverse('core:tools_section_edit', kwargs={'section_id': section_id})
@@ -2711,6 +2780,35 @@ def tools_section_edit(request, section_id):
     routing_validation = validate_section_routing(section)
     updated            = request.GET.get('updated')
 
+    # Build routing_nodes / question_data for C2 condition forms
+    existing_node_ids = set(
+        Routing.objects.filter(section=section)
+        .values_list('current_node', flat=True)
+        .distinct()
+    )
+    q_map  = {q.question_id: q  for q in Question.objects.filter(question_id__in=existing_node_ids)}
+    qs_map = {qs.set_id: qs    for qs in QuestionSet.objects.filter(set_id__in=existing_node_ids)}
+    question_data = {}
+    routing_nodes = []
+    for node_id in sorted(existing_node_ids):
+        if node_id in q_map:
+            q = q_map[node_id]
+            question_data[node_id] = {'type': q.question_type, 'options': q.options or ''}
+            label = f'{node_id}  {q.question_text}'
+        elif node_id in qs_map:
+            qs = qs_map[node_id]
+            question_data[node_id] = {'type': 'set', 'options': ''}
+            label = f'{node_id}  {qs.set_title}'
+        else:
+            question_data[node_id] = {'type': '', 'options': ''}
+            label = node_id
+        routing_nodes.append({'id': node_id, 'label': label})
+
+    node_conditions = {}
+    for r in Routing.objects.filter(section=section):
+        key = r.answer_value if r.answer_value is not None else '__default__'
+        node_conditions.setdefault(r.current_node, {})[key] = r.next_node or ''
+
     return render(request, 'core/tools_section_edit.html', {
         'section':              section,
         'tree':                 tree,
@@ -2718,6 +2816,10 @@ def tools_section_edit(request, section_id):
         'errors':               errors,
         'updated':              updated,
         'section_type_choices': Section.SECTION_TYPE_CHOICES,
+        'routing_nodes':        routing_nodes,
+        'question_data_json':   json.dumps(question_data),
+        'routing_nodes_json':   json.dumps(routing_nodes),
+        'node_conditions_json': json.dumps(node_conditions),
     })
 
 

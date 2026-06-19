@@ -41,10 +41,20 @@ def regime_sections(request, regime_id):
     user   = _resolve_user(pss, actor)
     regime = get_object_or_404(Regime, regime_id=regime_id)
 
-    permitted = get_permitted_sections(actor, user).filter(
-        regime_id=regime_id,
-        schedule__isnull=True,
-    )
+    session_section_ids = pss.get('permitted_section_ids')
+    if session_section_ids:
+        # Dept-specified section list — filter to those IDs only.
+        # get_permitted_sections still enforces permissions; schedule filter
+        # is intentionally dropped since dept may specify schedule-assigned sections.
+        permitted = get_permitted_sections(actor, user).filter(
+            section_id__in=session_section_ids,
+        )
+    else:
+        permitted = get_permitted_sections(actor, user).filter(
+            regime_id=regime_id,
+            schedule__isnull=True,
+        )
+    title = pss.get('section_list_title') or regime.regime_name
 
     section_statuses = {
         ss.section_id: ss.status
@@ -84,6 +94,7 @@ def regime_sections(request, regime_id):
         'back_url':    regime_home_url,
         'breadcrumbs': breadcrumbs,
         'acting_for':  get_acting_for_name(pss),
+        'title':       title,
     })
 
 
@@ -236,4 +247,5 @@ def regime_schedule_sections(request, regime_id, schedule_id):
         'back_url':    schedule_list_url,
         'breadcrumbs': crumbs,
         'acting_for':  get_acting_for_name(pss),
+        'title':       schedule.schedule_name,
     })

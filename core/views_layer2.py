@@ -18,6 +18,7 @@ Responsibility boundary
 
 import logging
 import uuid
+from decimal import Decimal, InvalidOperation
 
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
@@ -60,8 +61,12 @@ def _evaluate_routing(routing_table, question_id, answer):
 
     Matching rules:
     - Conditional rows (answer_value not None) are checked first.
-      answer_value may be semicolon-delimited; any match is sufficient.
-      Comparison is case-insensitive.  answer may be a list (checkbox).
+      • If the row has a non-null comparator and threshold_value, the answer
+        is converted to Decimal and compared: decimal(answer) [comparator]
+        threshold_value.  If conversion fails, the row does not match.
+      • Otherwise answer_value may be semicolon-delimited; any match is
+        sufficient.  Comparison is case-insensitive.  answer may be a list
+        (checkbox).
     - If no conditional row matches, the unconditional row (answer_value
       None) is used as fallback.
     """
@@ -71,12 +76,38 @@ def _evaluate_routing(routing_table, question_id, answer):
     for row in routing_table:
         if row['current_node'] != question_id:
             continue
+
+        comparator    = row.get('comparator')
+        threshold_val = row.get('threshold_value')
+
         if row['answer_value'] is not None:
-            allowed = {v.strip().lower() for v in str(row['answer_value']).split(';')}
-            if isinstance(answer, list):
-                is_match = any(v.strip().lower() in allowed for v in answer)
+            if comparator and threshold_val is not None:
+                # Scalar comparison branch
+                try:
+                    numeric_answer = Decimal(str(answer).strip())
+                except (InvalidOperation, ValueError):
+                    is_match = False
+                else:
+                    if comparator == '=':
+                        is_match = numeric_answer == threshold_val
+                    elif comparator == '<':
+                        is_match = numeric_answer < threshold_val
+                    elif comparator == '<=':
+                        is_match = numeric_answer <= threshold_val
+                    elif comparator == '>':
+                        is_match = numeric_answer > threshold_val
+                    elif comparator == '>=':
+                        is_match = numeric_answer >= threshold_val
+                    else:
+                        is_match = False
             else:
-                is_match = str(answer).strip().lower() in allowed
+                # Standard equality / set-membership match
+                allowed = {v.strip().lower() for v in str(row['answer_value']).split(';')}
+                if isinstance(answer, list):
+                    is_match = any(v.strip().lower() in allowed for v in answer)
+                else:
+                    is_match = str(answer).strip().lower() in allowed
+
             if is_match:
                 conditional_next = row['next_node']
                 break   # first conditional match wins
@@ -157,9 +188,11 @@ def section_start(request, section_id):
     )
     routing_table = [
         {
-            'current_node': row.current_node,
-            'answer_value': row.answer_value,
-            'next_node':    row.next_node,   # None = END
+            'current_node':  row.current_node,
+            'answer_value':  row.answer_value,
+            'next_node':     row.next_node,   # None = END
+            'comparator':    row.comparator,
+            'threshold_value': row.threshold_value,
         }
         for row in routing_rows
     ]
@@ -388,6 +421,27 @@ def section_question(request, section_id, question_id):
             'postcode': source.get('postcode', '') if source else '',
         }
 
+    compound_parts = None
+    if q_meta['question_type'] == 'compound':
+        import json as _json
+        try:
+            components = _json.loads(q_meta['options']) if q_meta['options'] else []
+        except (ValueError, TypeError):
+            components = []
+        source = current_answer if isinstance(current_answer, dict) else (
+            suggestion if isinstance(suggestion, dict) else None
+        )
+        compound_parts = [
+            {
+                'index': i,
+                'label': comp.get('label', f'Component {i + 1}'),
+                'type':  comp.get('type', 'text'),
+                'value': source.get(comp.get('label', ''), '') if source else '',
+                'error': None,
+            }
+            for i, comp in enumerate(components)
+        ]
+
     context = {
         'section':        section,
         'question_id':    question_id,
@@ -400,6 +454,8 @@ def section_question(request, section_id, question_id):
         'date_parts':     date_parts,
         'name_parts':     name_parts,
         'address_parts':  address_parts,
+        'compound_parts': compound_parts,
+        'compound_errors': [],
         'suggestion':     suggestion,
         'provenance':     provenance,
         'back_url':       back_url,
@@ -410,10 +466,12 @@ def section_question(request, section_id, question_id):
 
     template_map = {
         'radio':         'core/question_radio.html',
+        'radio_inline':  'core/question_radio_inline.html',
         'checkbox':      'core/question_checkbox.html',
         'date':          'core/question_date.html',
         'personal_name': 'core/question_personal_name.html',
         'address':       'core/question_address.html',
+        'compound':      'core/question_compound.html',
     }
     template = template_map.get(q_meta['question_type'], 'core/question_text.html')
     return render(request, template, context)
@@ -421,6 +479,8 @@ def section_question(request, section_id, question_id):
 
 def _process_answer(request, section, section_id, question_id, q_meta, pss):
     """Handle POST for section_question — store answer, advance routing."""
+    import json as _json
+
     # ── Extract answer ────────────────────────────────────────────────────────
     if q_meta['question_type'] == 'checkbox':
         answer = request.POST.getlist('answer')
@@ -443,6 +503,15 @@ def _process_answer(request, section, section_id, question_id, q_meta, pss):
             'city':     request.POST.get('address_city', '').strip(),
             'county':   request.POST.get('address_county', '').strip(),
             'postcode': request.POST.get('address_postcode', '').strip(),
+        }
+    elif q_meta['question_type'] == 'compound':
+        try:
+            _components = _json.loads(q_meta['options']) if q_meta['options'] else []
+        except (ValueError, TypeError):
+            _components = []
+        answer = {
+            comp.get('label', f'Component {i + 1}'): request.POST.get(f'component_{i}', '').strip()
+            for i, comp in enumerate(_components)
         }
     else:
         answer = request.POST.get('answer', '').strip()
@@ -571,6 +640,62 @@ def _process_answer(request, section, section_id, question_id, q_meta, pss):
             }
             return render(request, 'core/question_address.html', context)
 
+    # ── Compound validation ───────────────────────────────────────────────────
+    if q_meta['question_type'] == 'compound':
+        try:
+            _components = _json.loads(q_meta['options']) if q_meta['options'] else []
+        except (ValueError, TypeError):
+            _components = []
+        compound_errors = []
+        compound_parts = []
+        for i, comp in enumerate(_components):
+            label = comp.get('label', f'Component {i + 1}')
+            ctype = comp.get('type', 'text')
+            val   = answer.get(label, '')
+            err   = None
+            if not val:
+                err = f'Enter {label}'
+                compound_errors.append(err)
+            elif ctype == 'number':
+                try:
+                    float(val)
+                except ValueError:
+                    err = f'{label} must be a number'
+                    compound_errors.append(err)
+            compound_parts.append({'index': i, 'label': label, 'type': ctype,
+                                   'value': val, 'error': err})
+        if compound_errors:
+            asked_ids = pss.get('asked_ids', [question_id])
+            if len(asked_ids) > 1 and question_id == asked_ids[-1]:
+                prev_node = asked_ids[-2]
+                _set_table = pss.get('set_table', {})
+                if prev_node in _set_table:
+                    back_url = f'/section/{section_id}/set/{prev_node}/'
+                else:
+                    back_url = f'/section/{section_id}/question/{prev_node}/'
+            else:
+                back_url = f'/section/{section_id}/start/'
+            context = {
+                'section':        section,
+                'question_id':    question_id,
+                'question_text':  q_meta['question_text'],
+                'guidance':       q_meta['guidance'],
+                'hint':           q_meta['hint'],
+                'question_type':  q_meta['question_type'],
+                'options':        [],
+                'current_answer': answer,
+                'compound_parts': compound_parts,
+                'compound_errors': compound_errors,
+                'suggestion':     None,
+                'provenance':     None,
+                'back_url':       back_url,
+                'asked_ids':      asked_ids,
+                'error':          compound_errors[0],
+                'breadcrumbs':    _build_crumbs(pss, section.section_name),
+                'acting_for':     get_acting_for_name(pss),
+            }
+            return render(request, 'core/question_compound.html', context)
+
     # ── Basic non-empty validation for non-date types ─────────────────────────
     elif not answer and answer != 0:
         # Re-render with error rather than accepting empty answer
@@ -602,7 +727,7 @@ def _process_answer(request, section, section_id, question_id, q_meta, pss):
             'breadcrumbs':    _build_crumbs(pss, section.section_name),
             'acting_for':     get_acting_for_name(pss),
         }
-        template_map = {'radio': 'core/question_radio.html', 'checkbox': 'core/question_checkbox.html'}
+        template_map = {'radio': 'core/question_radio.html', 'radio_inline': 'core/question_radio_inline.html', 'checkbox': 'core/question_checkbox.html'}
         template = template_map.get(q_meta['question_type'], 'core/question_text.html')
         return render(request, template, context)
 
@@ -632,6 +757,10 @@ def _process_answer(request, section, section_id, question_id, q_meta, pss):
 
     if next_qid is None:
         # END
+        if not section.show_confirmation:
+            _commit_section_answers(request, section)
+            clear_section_session(request)
+            return redirect('core:section_done', section_id=section_id)
         return redirect('core:section_review', section_id=section_id)
 
     if next_qid in pss.get('set_table', {}):
@@ -680,7 +809,11 @@ def section_review(request, section_id):
             for m in set_meta.get('members', []):
                 qid    = m['question_id']
                 answer = basic_answers.get(qid)
-                if isinstance(answer, dict) and all(k in answer for k in ('day', 'month', 'year')):
+                if m.get('question_type') == 'compound' and isinstance(answer, dict):
+                    display_answer = '\n'.join(
+                        f'{k}: {v}' for k, v in answer.items() if v
+                    ) or '—'
+                elif isinstance(answer, dict) and all(k in answer for k in ('day', 'month', 'year')):
                     _months = ['January', 'February', 'March', 'April', 'May', 'June',
                                'July', 'August', 'September', 'October', 'November', 'December']
                     try:
@@ -725,7 +858,11 @@ def section_review(request, section_id):
         else:
             q_meta = question_table.get(node_id, {})
             answer  = basic_answers.get(node_id)
-            if isinstance(answer, dict) and all(k in answer for k in ('day', 'month', 'year')):
+            if q_meta.get('question_type') == 'compound' and isinstance(answer, dict):
+                display_answer = '\n'.join(
+                    f'{k}: {v}' for k, v in answer.items() if v
+                ) or '—'
+            elif isinstance(answer, dict) and all(k in answer for k in ('day', 'month', 'year')):
                 _months = ['January', 'February', 'March', 'April', 'May', 'June',
                            'July', 'August', 'September', 'October', 'November', 'December']
                 try:
@@ -776,29 +913,28 @@ def section_review(request, section_id):
 # 5.  CONFIRM  (standard sections)
 # ─────────────────────────────────────────────────────────────────────────────
 
-@login_required
-@require_POST
-def section_confirm(request, section_id):
-    """Commit answers to DB with full audit trail.
+def _commit_section_answers(request, section):
+    """Persist session answers to DB with full audit trail.
 
-    Delta logic (mirrors confirm_section_single in the reference):
+    Shared by section_confirm (explicit review → confirm flow) and the
+    auto-save path triggered when section.show_confirmation is False.
+
+    Delta logic:
       changed_qids — in both old and new snapshots, value differs
       removed_qids — in old snapshot but not in new asked_ids
                      (abandoned branch that was previously confirmed)
 
-    All history writes, deletes and inserts happen inside a single
-    atomic transaction so a partial failure leaves no inconsistency.
+    All history writes, deletes and inserts are wrapped in a single
+    atomic transaction to prevent partial-failure inconsistency.
     """
-    section = get_object_or_404(Section, section_id=section_id)
-    pss     = get_session(request)
+    pss = get_session(request)
 
-    asked_ids     = pss.get('asked_ids', [])
-    raw_answers   = pss.get('basic_answers', {})
-    case_id       = pss.get('case_id')
-    actor_id      = pss.get('actor_id') or request.user.pk
-    regime_id     = pss.get('regime_id')
-
-    set_table = pss.get('set_table', {})
+    asked_ids   = pss.get('asked_ids', [])
+    raw_answers = pss.get('basic_answers', {})
+    case_id     = pss.get('case_id')
+    actor_id    = pss.get('actor_id') or request.user.pk
+    regime_id   = pss.get('regime_id')
+    set_table   = pss.get('set_table', {})
 
     # Build committed answer set — expand S-nodes to their member question IDs
     new_answers = {}
@@ -899,6 +1035,13 @@ def section_confirm(request, section_id):
         from .meta_processors import dispatch_meta_processor
         dispatch_meta_processor(section, case, actor)
 
+
+@login_required
+@require_POST
+def section_confirm(request, section_id):
+    """Commit answers to DB via the explicit check-your-answers flow."""
+    section = get_object_or_404(Section, section_id=section_id)
+    _commit_section_answers(request, section)
     clear_section_session(request)
     return redirect('core:section_done', section_id=section_id)
 

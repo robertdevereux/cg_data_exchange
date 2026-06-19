@@ -144,6 +144,23 @@
           </div>
         </div>
 
+        {# ── Show confirmation page ───────────────────────────────────────────── #}
+        <div class="govuk-form-group govuk-!-margin-top-6">
+          <div class="govuk-checkboxes govuk-checkboxes--small">
+            <div class="govuk-checkboxes__item">
+              <input class="govuk-checkboxes__input" id="show_confirmation"
+                     name="show_confirmation" type="checkbox" value="on"
+                     {% if post.show_confirmation != 'off' %}checked{% endif %}>
+              <label class="govuk-label govuk-checkboxes__label" for="show_confirmation">
+                Show confirmation page on completion
+              </label>
+              <div class="govuk-hint govuk-checkboxes__hint">
+                Uncheck for navigation sections that should auto-save and return immediately.
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="govuk-button-group govuk-!-margin-top-6">
           <button type="submit" class="govuk-button">Create section</button>
           <a href="{% url 'core:tools_sections_list' %}" class="govuk-link">Cancel</a>

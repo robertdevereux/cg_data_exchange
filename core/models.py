@@ -124,6 +124,14 @@ class Section(models.Model):
         null=True,
         help_text='Audit: section_id this section was copied from, if any',
     )
+    show_confirmation = models.BooleanField(
+        default=True,
+        help_text=(
+            'When True (default) the citizen sees a check-your-answers page '
+            'before answers are saved. Uncheck for navigation-only sections '
+            'that should auto-save and return to the regime home immediately.'
+        ),
+    )
 
     class Meta:
         ordering = ['display_order', 'section_name']
@@ -163,10 +171,12 @@ class Question(models.Model):
         ('textarea', 'Text Area'),
         ('number', 'Number'),
         ('radio', 'Radio'),
+        ('radio_inline', 'Radio inline'),
         ('checkbox', 'Checkbox'),
         ('address', 'Address'),
         ('date', 'Date'),
         ('personal_name', 'Personal name'),
+        ('compound', 'Compound'),
     ]
     ANSWER_TYPE_CHOICES = [
         ('text', 'Text'),
@@ -279,6 +289,26 @@ class Routing(models.Model):
         blank=True,
         null=True,
         help_text='Next screen node ID; null means END (proceed to check your answers)',
+    )
+    comparator = models.CharField(
+        max_length=2,
+        blank=True,
+        null=True,
+        choices=[
+            ('=',  'Equal to'),
+            ('<',  'Less than'),
+            ('<=', 'Less than or equal to'),
+            ('>',  'Greater than'),
+            ('>=', 'Greater than or equal to'),
+        ],
+        help_text='Scalar comparator for numeric routing; leave blank for equality matching on answer_value',
+    )
+    threshold_value = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        help_text='Threshold for scalar comparison; leave blank for standard answer_value matching',
     )
     order_in_section = models.PositiveIntegerField(default=0)
 

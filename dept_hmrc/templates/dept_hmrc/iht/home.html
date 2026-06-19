@@ -52,46 +52,37 @@
         </tr>
       </thead>
       <tbody class="govuk-table__body">
-
+        {% for action in actions %}
+        {% if action.flash_message %}
         <tr class="govuk-table__row">
-          <td class="govuk-table__cell">Deceased's details</td>
+          <td colspan="3" class="govuk-table__cell govuk-!-padding-top-3 govuk-!-padding-bottom-0">
+            <div class="govuk-inset-text govuk-!-margin-top-0 govuk-!-margin-bottom-3">
+              {{ action.flash_message }}
+            </div>
+          </td>
+        </tr>
+        {% endif %}
+        <tr class="govuk-table__row">
           <td class="govuk-table__cell">
-            {% if s1_status == 'complete' %}
-              <strong class="govuk-tag govuk-tag--green">Complete</strong>
-            {% elif s1_status == 'in_progress' %}
-              <strong class="govuk-tag govuk-tag--blue">In progress</strong>
-            {% else %}
-              <strong class="govuk-tag govuk-tag--grey">Not started</strong>
+            {{ action.label }}
+            {% if action.hint %}
+            <div class="govuk-hint govuk-!-font-size-16">{{ action.hint }}</div>
             {% endif %}
           </td>
           <td class="govuk-table__cell">
-            <a href="/section/HMRC_S1/start/" class="govuk-link">Change</a>
+            <strong class="govuk-tag govuk-tag--{{ action.status_colour }}">
+              {{ action.status_label }}
+            </strong>
+          </td>
+          <td class="govuk-table__cell">
+            {% if action.url and action.link_label %}
+              <a href="{{ action.url }}" class="govuk-link govuk-link--no-visited-state">
+                {{ action.link_label }}
+              </a>
+            {% endif %}
           </td>
         </tr>
-
-        <tr class="govuk-table__row">
-          <td class="govuk-table__cell">Estate details</td>
-          <td class="govuk-table__cell">
-            <strong class="govuk-tag govuk-tag--grey">Not started</strong>
-          </td>
-          <td class="govuk-table__cell">
-            <a href="#" class="govuk-link govuk-link--no-visited-state">Start</a>
-          </td>
-        </tr>
-
-        <tr class="govuk-table__row">
-          <td class="govuk-table__cell">
-            Make an Inheritance Tax payment
-            <div class="govuk-hint govuk-!-font-size-16">£0 paid to date</div>
-          </td>
-          <td class="govuk-table__cell">
-            <strong class="govuk-tag govuk-tag--grey">Not started</strong>
-          </td>
-          <td class="govuk-table__cell">
-            <a href="#" class="govuk-link govuk-link--no-visited-state">Start</a>
-          </td>
-        </tr>
-
+        {% endfor %}
       </tbody>
     </table>
 

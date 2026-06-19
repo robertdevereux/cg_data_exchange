@@ -38,7 +38,7 @@
         {% for field in fields %}
         <div class="govuk-form-group{% if field.error %} govuk-form-group--error{% endif %}">
 
-          {% if field.question_type == "radio" %}
+          {% if field.question_type == "radio" or field.question_type == "radio_inline" %}
           <fieldset class="govuk-fieldset">
             <legend class="govuk-fieldset__legend">
               <label class="govuk-label" for="field-{{ field.question_id }}-1">
@@ -56,7 +56,7 @@
             </p>
             {% endif %}
 
-            <div class="govuk-radios" data-module="govuk-radios">
+            <div class="govuk-radios{% if field.question_type == 'radio_inline' %} govuk-radios--inline{% endif %}" data-module="govuk-radios">
               {% for option in field.options %}
               <div class="govuk-radios__item">
                 <input class="govuk-radios__input"

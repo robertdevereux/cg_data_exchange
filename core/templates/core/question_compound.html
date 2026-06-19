@@ -1,0 +1,92 @@
+{% extends "core/base.html" %}
+{% load markdown_extras %}
+
+{% block title %}{{ question_text }} — PSS Demo{% endblock %}
+
+{% block content %}
+
+  <a href="{{ back_url }}" class="govuk-back-link">Back</a>
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-two-thirds">
+
+      {% if error %}
+      <div class="govuk-error-summary" data-module="govuk-error-summary">
+        <div role="alert">
+          <h2 class="govuk-error-summary__title">There is a problem</h2>
+          <div class="govuk-error-summary__body">
+            <ul class="govuk-list govuk-error-summary__list">
+              {% for err in compound_errors %}
+              <li><a href="#component_{{ forloop.counter0 }}">{{ err }}</a></li>
+              {% endfor %}
+              {% if not compound_errors %}
+              <li>{{ error }}</li>
+              {% endif %}
+            </ul>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      <form method="post" action="">
+        {% csrf_token %}
+
+        {% if guidance %}
+        <div class="govuk-inset-text">{{ guidance|render_markdown }}</div>
+        {% endif %}
+
+        {% if provenance %}
+        <div class="govuk-inset-text" style="border-left-color:#1d70b8">
+          <p class="govuk-body-s">{{ provenance }}</p>
+        </div>
+        {% endif %}
+
+        <h1 class="govuk-heading-l">{{ question_text }}</h1>
+
+        {% if hint %}
+        <div class="govuk-hint">{{ hint }}</div>
+        {% endif %}
+
+        {% for comp in compound_parts %}
+        <div class="govuk-form-group {% if comp.error %}govuk-form-group--error{% endif %}">
+          <label class="govuk-label govuk-label--s" for="component_{{ comp.index }}">
+            {{ comp.label }}
+          </label>
+          {% if comp.error %}
+          <p id="component_{{ comp.index }}-error" class="govuk-error-message">
+            <span class="govuk-visually-hidden">Error:</span> {{ comp.error }}
+          </p>
+          {% endif %}
+          {% if comp.type == 'number' %}
+          <input class="govuk-input govuk-input--width-10{% if comp.error %} govuk-input--error{% endif %}"
+                 id="component_{{ comp.index }}"
+                 name="component_{{ comp.index }}"
+                 type="text"
+                 inputmode="numeric"
+                 value="{{ comp.value|default:'' }}"
+                 {% if comp.error %}aria-describedby="component_{{ comp.index }}-error"{% endif %}>
+          {% elif comp.type == 'date' %}
+          <input class="govuk-input govuk-input--width-20{% if comp.error %} govuk-input--error{% endif %}"
+                 id="component_{{ comp.index }}"
+                 name="component_{{ comp.index }}"
+                 type="text"
+                 value="{{ comp.value|default:'' }}"
+                 {% if comp.error %}aria-describedby="component_{{ comp.index }}-error"{% endif %}>
+          {% else %}
+          <input class="govuk-input{% if comp.error %} govuk-input--error{% endif %}"
+                 id="component_{{ comp.index }}"
+                 name="component_{{ comp.index }}"
+                 type="text"
+                 value="{{ comp.value|default:'' }}"
+                 {% if comp.error %}aria-describedby="component_{{ comp.index }}-error"{% endif %}>
+          {% endif %}
+        </div>
+        {% endfor %}
+
+        <button class="govuk-button" data-module="govuk-button">Continue</button>
+      </form>
+
+    </div>
+  </div>
+
+{% endblock %}

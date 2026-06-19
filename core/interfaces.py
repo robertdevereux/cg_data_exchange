@@ -240,7 +240,7 @@ def call_schedules(request, regime, actor, user, schedule_ids, url_prefix=''):
     return entry_url
 
 
-def call_sections(request, regime, actor, user, section_ids, url_prefix=''):
+def call_sections(request, regime, actor, user, section_ids, url_prefix='', title=None):
     """
     Section-filtered entry point.
 
@@ -249,9 +249,9 @@ def call_sections(request, regime, actor, user, section_ids, url_prefix=''):
     rather than the whole regime or schedule.
 
     url_prefix: see call_regime.
+    title: optional heading for the section list page (multiple sections only).
     """
     from .permissions import get_permitted_sections
-    from .nav_reference import resolve_layer1_entry_url
     from .session import update_session
 
     session_case_id = request.session.get('case_id')
@@ -269,12 +269,70 @@ def call_sections(request, regime, actor, user, section_ids, url_prefix=''):
         'actor_id':               actor.pk,
         'regime_id':              regime.regime_id,
         'case_id':                case.case_id,
-        'return_url':             request.path,
+        'return_url':             request.session.get('regime_home_url', request.path),
         'permitted_schedule_ids': permitted_schedule_ids,
         'permitted_section_ids':  permitted_section_ids,
     })
 
-    entry_url = resolve_layer1_entry_url(permitted, regime.regime_id)
-    if url_prefix and entry_url.startswith('/regime/'):
-        entry_url = '/' + url_prefix.strip('/') + entry_url
-    return entry_url
+    ordered = []
+    for sid in section_ids:
+        s = permitted.filter(section_id=sid).first()
+        if s:
+            ordered.append(s)
+
+    if not ordered:
+        return (
+            f'/{url_prefix.strip("/")}/regime/{regime.regime_id}/sections/'
+            if url_prefix else
+            f'/regime/{regime.regime_id}/sections/'
+        )
+
+    if len(ordered) == 1:
+        first = ordered[0]
+        if first.section_type in (1, 2):
+            return f'/section/{first.section_id}/table/'
+        return f'/section/{first.section_id}/start/'
+
+    # Multiple sections — store in session and route to filtered section list
+    update_session(request, {
+        'permitted_section_ids': [s.section_id for s in ordered],
+        'section_list_title':    title or regime.regime_name,
+    })
+    prefix = f'/{url_prefix.strip("/")}' if url_prefix else ''
+    return f'{prefix}/regime/{regime.regime_id}/sections/'
+
+
+# ── Answer utilities ──────────────────────────────────────────────────────────
+
+def get_answers(case, question_ids):
+    """
+    Return a dict of {question_id: answer} for the given case and question IDs.
+
+    Uses case.user for the user filter — the correct user for all answer
+    lookups within a case.
+
+    Returns None for any question_id not found.
+    """
+    from .models import Answer
+    rows = Answer.objects.filter(
+        user=case.user,
+        case=case,
+        question_id__in=question_ids,
+    )
+    result = {qid: None for qid in question_ids}
+    for row in rows:
+        result[row.question_id] = row.answer
+    return result
+
+
+def format_date(answer):
+    """
+    Format a date-type answer dict {day, month, year} as DD/MM/YYYY.
+    Returns empty string if answer is None or not a dict.
+    """
+    if not isinstance(answer, dict):
+        return str(answer) if answer else ''
+    day   = str(answer.get('day',   '')).zfill(2)
+    month = str(answer.get('month', '')).zfill(2)
+    year  = answer.get('year', '')
+    return f'{day}/{month}/{year}'

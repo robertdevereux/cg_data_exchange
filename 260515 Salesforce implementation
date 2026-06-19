@@ -1,0 +1,250 @@
+A New Operating Model for
+ 
+**Citizen–Government Data Exchange**
+ 
+**Salesforce Implementation Plan**
+ 
+*A two-phase approach to urgent first delivery and scalable platform build*
+ 
+Version 0.1  •  May 2026  •  DRAFT FOR DISCUSSION
+ 
+Companion to: Vision Paper • Functional Architecture • Implementation Options
+ 
+# **The Business Context**
+ 
+There is an urgent requirement to get a first regime live. A specific government department, on Salesforce, needs a working citizen data-gathering journey — one complete regime, end to end, accessible to real citizens — within three months. That is the immediate deliverable. It is not negotiable on timeline.
+ 
+But the first regime is not the destination. It is the proof of value that unlocks the full programme: many departments, many regimes, cross-department pre-population, and the network effects described in the Vision Paper. The architecture is explicitly designed to support that scale. The question this document addresses is how to get from the urgent first delivery to the scalable platform without wasting effort, losing momentum, or asking the programme to absorb a long gap between demonstrable value and full capability.
+ 
+The answer is a deliberate two-phase plan. Phase 1 delivers the first regime live in three months. Phase 2 converts that single-org implementation into a distributable managed package and completes the platform tooling, in a further three months. Together they deliver a full production platform in six months, with working citizen value demonstrated at month three.
+ 
+This document describes both phases in detail and then, critically, assesses the cost of acting in two phases rather than building the full platform in a single longer programme. The conclusion — argued in the Assessment section — is that the nugatory work involved is small, the risk reduction is significant, and the architecture is specifically designed to make two-phase delivery efficient.
+ 
+*This document should be read after the Vision Paper, Functional Architecture, and Implementation Options paper. It assumes familiarity with the three-tier model, the managed package architecture, and the Salesforce implementation pattern described in those documents.*
+ 
+**Phase 1***  —  First Regime Live — Three Months*
+ 
+## **What Phase 1 Delivers**
+ 
+Phase 1 delivers a single, complete, citizen-facing regime on Salesforce Experience Cloud, within a single department Salesforce org, accessible to real citizens within three months of the team starting work. Specifically:
+ 
+- One fully-configured regime, end to end: citizen login via GOV.UK One Login or equivalent; the complete question journey including conditional routing, question sets, and a check-your-answers confirmation page; answer storage with full history; and a confirmed submission.
+ 
+- Section status tracking and resumable journeys: a citizen who starts and does not finish can return and continue from where they left off.
+ 
+- Basic permission model: citizens can access their own regimes; agents can be granted access to act on behalf of a citizen.
+ 
+- Pre-population within the regime: where the citizen has previously answered a question in another section of the same regime, the answer is offered as a suggestion in the new context.
+ 
+- Accessibility to WCAG 2.1 AA on the core citizen journey: question pages, check your answers, confirmation.
+ 
+- A passing automated test suite covering the routing engine, answer storage, and permission logic.
+ 
+- A clean, well-documented single-org Salesforce codebase that is explicitly structured for managed package conversion in Phase 2.
+ 
+Phase 1 deliberately defers:
+ 
+- Managed package architecture, namespacing, and upgrade paths.
+ 
+- The Salesforce-based regime configuration wizard. Regime configuration in Phase 1 uses CSV/CLI tooling — a direct port of the proof-of-concept tooling — operated by the platform team on behalf of the department.
+ 
+- The full delegation chain model (citizen delegating to a colleague or professional intermediary). Basic agent access is included; the full chain-of-delegation audit is Phase 2.
+ 
+- Cross-department pre-population. The consent token mechanism and inter-org API call are designed but not implemented.
+ 
+- Table sections, if not required by the first regime. If the first regime requires repeating-row data entry, this is included; if not, it is deferred.
+ 
+*Phase 1 is not a prototype or a pilot. It is a production deployment of a real regime, used by real citizens. The deferrals are additive capabilities that do not exist yet; they do not remove or degrade anything that is built.*
+ 
+## **The Phase 1 Team**
+ 
+Phase 1 requires a dedicated team of four. All four must be available full-time for the three months; part-time or shared resources are not compatible with this timeline.
+ 
+| **Role** | **Key competencies required** | **Primary responsibilities** |
+| --- | --- | --- |
+| **Senior Salesforce Architect** | Managed package architecture (for Phase 2 readiness); LWC component design; Apex service design; Platform Cache strategy; GOV.UK One Login integration; technical leadership | Overall technical direction; routing engine; session management; inter-component architecture; Phase 2 readiness decisions |
+| **Mid-level LWC Specialist** | Lightning Web Components; GDS/GOV.UK Frontend; sfGpsDsUkGov library (if Omnistudio available); WCAG 2.1 AA implementation; Experience Cloud configuration | Full LWC component library build; accessibility implementation; Experience Cloud site configuration |
+| **Apex and Data Developer** | Apex triggers and services; Custom Objects and Custom Metadata; SOQL optimisation; governor limit analysis; test class coverage | Answer storage and history service; permission model; section status tracking; CSV/CLI configuration tooling; test suite |
+| **Tester and Accessibility Specialist** | Manual and automated testing; WCAG 2.1 AA audit; screen reader testing; government service assessment criteria; UAT coordination | Test planning and execution from week 4; accessibility audit from week 8; UAT support; defect management |
+ 
+The architect must have prior experience with Salesforce managed package architecture, even though the package is not built in Phase 1. Decisions made in Phase 1 about namespacing conventions, object structure, and code organisation will either enable or impede Phase 2. An architect without managed package experience will make Phase 1 decisions that create avoidable Phase 2 rework.
+ 
+## **Phase 1 Work Programme**
+ 
+The following table describes the work packages, indicative size, owner, and key notes. Sizes are in weeks: S = 1–2 weeks, M = 2–4 weeks, L = 4–6 weeks.
+ 
+| **Work package** | **Size** | **Who** | **Notes** |
+| --- | --- | --- | --- |
+| **Org setup and data model** | S | Architect + Data | Scratch org configuration; Custom Objects (Answer, AnswerHistory, SectionStatus, Case, Permission); Custom Metadata Types (Regime, Schedule, Section, Question, QuestionSet, Routing). Naming conventions chosen for future namespacing. Must complete before other tracks start. |
+| **Routing engine (LWC, client-side)** | M | Architect | Full routing table loaded into LWC state at section start; next-node determination in JavaScript; path-state management including backtracking and branch invalidation. Platform Cache integration for routing metadata. Core logic ported from PoC. |
+| **LWC component library** | L | LWC Specialist | RegimeShell; ScheduleNav; SectionController; QuestionSingle (text, radio, checkbox, date, number, dropdown); QuestionSet page; ReviewSection (check your answers); ConfirmSection. GDS styling via sfGpsDsUkGov or direct GOV.UK Frontend CSS. Accessibility throughout, not as a final step. |
+| **Answer storage and history service** | M | Data Developer | Apex service: delta tracking on confirmation, AnswerHistory record creation, pre-population query by question_id and user_id. Bulkification for governor limit compliance. Ported from PoC. |
+| **Section status and case management** | S | Data Developer | SectionStatus__c records per citizen per section per case; status transitions (not_started → in_progress → complete); consistency check on login. Ported from PoC. |
+| **Permission model** | S–M | Data Developer | Regime-level and section-level permission records; agent-for-citizen grants; get_permitted_regimes and get_permitted_sections Apex equivalents. Basic model only; delegation chain deferred. |
+| **Session management** | S | Architect | Draft-per-question persistence model: unconfirmed answers written to draft Answer__c on each submission; confirmation step commits. Handles page refresh and session interruption without data loss. |
+| **GOV.UK One Login integration** | S | Architect | Experience Cloud authentication configuration; citizen identity token handling; verified identity stored against User record for future cross-department use. |
+| **CSV/CLI configuration tooling** | S | Data Developer | Port of PoC wizard output: CSV upload scripts for Regime, Schedule, Section, Question, QuestionSet, Routing records. Operated by platform team; not citizen-facing. |
+| **First regime configuration and testing** | S | Data Dev + Tester | Configure the first department’s regime via CSV tooling. End-to-end journey testing across all routing paths. Routing completeness verification. |
+| **Accessibility audit and remediation** | S–M | LWC + Tester | WCAG 2.1 AA audit of core citizen journey (question pages, check your answers, confirmation). Screen reader testing. Remediation sprint. Scoped to citizen journey only; admin tooling excluded. |
+| **UAT support and go-live** | S | All | UAT with department. Defect resolution. Performance profiling under realistic load. Go-live preparation and hypercare. |
+ 
+## **Phase 1 Timeline**
+ 
+The three tracks — routing engine, LWC component library, and Apex services — run in parallel from week 2, after the org setup and data model are complete. This parallelism is what makes three months achievable.
+ 
+- **Weeks 1–2: **Org setup, data model, naming conventions, Component design review. All four team members.
+ 
+- **Weeks 3–8: **Routing engine (Architect); LWC component library (LWC Specialist + Architect support); Apex services — answer, status, permission (Data Developer). Three parallel tracks.
+ 
+- **Weeks 7–9: **Session management and One Login integration (Architect); regime configuration (Data Developer); tester joins full-time.
+ 
+- **Weeks 9–11: **Integration, end-to-end testing, accessibility audit, remediation.
+ 
+- **Weeks 11–12: **UAT, performance profiling, go-live preparation.
+ 
+The critical path is the LWC component library. It is the largest single item and cannot be meaningfully parallelised beyond two people. If the sfGpsDsUkGov library is available and compatible with the host org’s Omnistudio version, the LWC track compresses from six weeks to three to four. Confirming Omnistudio availability is the first action for the team, before any other work begins.
+ 
+**Phase 2***  —  Managed Package and Full Platform — Three Further Months*
+ 
+## **What Phase 2 Delivers**
+ 
+Phase 2 converts the single-org Phase 1 implementation into a distributable Salesforce managed package and completes the platform capabilities deferred from Phase 1. At the end of Phase 2, the platform is ready for any participating department to install, configure their own regimes, and go live without bespoke build work.
+ 
+Specifically, Phase 2 delivers:
+ 
+- A Salesforce managed package containing the complete platform: data model, routing engine, Apex services, LWC component library, permission model, session management, and configuration tooling.
+ 
+- Namespace applied throughout, with upgrade path design and testing validated against at least two test orgs with different configurations.
+ 
+- A Salesforce-based regime configuration wizard: a staff-facing LWC application that guides a department through defining a new regime, granting permissions, and generating a working regime home page, without developer involvement.
+ 
+- The full delegation chain model: citizens delegating to professional intermediaries, with chain-of-delegation audit trail.
+ 
+- Cross-department pre-population: the consent token mechanism, the inter-org API call, and the central service registry of department endpoints and public keys.
+ 
+- Table sections, if deferred from Phase 1.
+ 
+- A second regime configured and live, demonstrating that the platform generalises beyond the first customer.
+ 
+- Complete documentation: installation guide for new departments, regime configuration guide, upgrade guide, and a technical reference for the Apex service layer.
+ 
+## **The Phase 2 Team**
+ 
+Phase 2 requires a dedicated team of three. The tester from Phase 1 continues part-time for upgrade testing; a full-time fourth seat is not required because the heavy UI build is complete.
+ 
+| **Role** | **Key competencies required** | **Primary responsibilities** |
+| --- | --- | --- |
+| **Senior Salesforce Architect** | Managed package architecture; namespacing; upgrade path design; inter-org API and consent token mechanism; central service design | Package conversion and namespacing; upgrade path design and testing; cross-department consent mechanism; central service API; technical documentation |
+| **Mid-level LWC Specialist** | LWC; GDS Frontend; configuration wizard UI; Experience Cloud | Regime configuration wizard (staff LWC); any Phase 1 LWC remediation from UAT; table section component if deferred; UI documentation |
+| **Apex and Data Developer** | Apex; managed package constraints; delegation chain logic; governor limit analysis at package scale | Delegation chain service; package-scale governor limit analysis; second regime configuration; upgrade testing scripts; installation guide |
+ 
+## **Phase 2 Work Programme**
+ 
+| **Work package** | **Size** | **Who** | **Notes** |
+| --- | --- | --- | --- |
+| **Managed package setup and namespacing** | M | Architect | Packaging org configuration; namespace prefix applied to all objects, fields, classes, components; dependency analysis; first package version build. Must complete before upgrade path work begins. |
+| **Upgrade path design and testing** | M | Architect + Data | Schema migration strategy for version increments; push vs pull upgrade model decision; upgrade tested against two orgs: one clean, one with existing customisations. This is the most complex Phase 2 item. |
+| **Cross-department consent mechanism** | M | Architect | Signed consent token generation (requesting dept) and verification (originating dept); inter-org API call design and implementation; central service registry API (Question/Set definitions, dept endpoints, public keys). Requires GOV.UK One Login verified identity as citizen key. |
+| **Regime configuration wizard** | M | LWC Specialist | Staff-facing LWC wizard: seven-step regime definition flow (regime identity, schedules, sections, questions, sets, set membership, routing); auto-permission grant on regime creation; generated regime home page HTML output. Equivalent of PoC Django wizard, rebuilt in LWC. |
+| **Full delegation chain** | S–M | Data Developer | Delegation records: citizen → agent → sub-agent chain; chain depth limit; delegation audit trail; Apex service for chain resolution and permission check. |
+| **Table section component** | S–M | LWC Specialist | Repeating-row data entry: add, edit, delete rows; row-level validation; table answer storage (one Answer per cell per row); check your answers display for table data. If not deferred from Phase 1, this item is omitted. |
+| **Second regime configuration** | S | Data Developer | Configure a second regime (different department or same department, second subject area) using the Phase 2 wizard. This is the proof that the platform generalises. |
+| **Host org compatibility testing** | S–M | All | Install package into two further test orgs with different configurations: one with existing Case object customisation, one with conflicting field names. Identify and resolve compatibility issues. |
+| **Documentation** | S | All | Installation guide; regime configuration guide; upgrade guide; Apex service layer technical reference. Written for a department’s own technical team, not for the platform build team. |
+| **Phase 2 test suite and go-live** | S | Architect + Tester | Automated tests for managed package constraints; upgrade regression suite; cross-department pre-population integration test (two orgs, one citizen, one consent). Package version released. |
+ 
+## **Phase 2 Timeline**
+ 
+Phase 2 begins immediately after Phase 1 go-live. The second regime can be configured from month four — while the package conversion work is in progress — because it is a data configuration exercise on the working Phase 1 platform, not a build task. This means the second regime is live before the managed package is complete.
+ 
+- **Weeks 13–16: **Package setup and namespacing (Architect); regime configuration wizard design and build begins (LWC Specialist); delegation chain service (Data Developer).
+ 
+- **Weeks 14–18: **Cross-department consent mechanism (Architect); wizard build continues (LWC Specialist); second regime configured and live (Data Developer).
+ 
+- **Weeks 17–20: **Upgrade path design and testing (Architect + Data); table section if deferred (LWC Specialist); host org compatibility testing begins.
+ 
+- **Weeks 21–24: **Documentation; full integration testing; package version release; go-live support.
+ 
+**Assessment***  —  The Cost of Acting in Two Phases*
+ 
+## **The Question**
+ 
+A sceptical programme director will ask: if you are going to build the managed package eventually, why not build it from the start and avoid rework? Is the two-phase approach a genuine optimisation, or is it simply deferring complexity and creating a more expensive programme overall?
+ 
+This section answers that question directly. The short answer is that the nugatory work — work done in Phase 1 that must be redone or discarded in Phase 2 — is small and bounded. The longer answer explains why the architecture makes this true, and what the real cost of the alternative would be.
+ 
+## **What Nugatory Work Exists**
+ 
+The following items represent genuine rework between phases:
+ 
+### **Namespacing**
+ 
+Every Custom Object, Custom Field, Apex class, and LWC component built in Phase 1 without a namespace prefix must have a namespace applied in Phase 2. This is mechanical work — find and replace, essentially — but it is not trivial. It requires careful execution, a full regression test, and redeployment. Estimated effort: one to two weeks of the architect’s time in Phase 2.
+ 
+This is the largest single item of nugatory work. It is unavoidable if Phase 1 is built without a namespace.
+ 
+**Mitigation: **The Phase 1 architect must apply namespace-ready naming conventions from day one — prefixing all internal references as if the namespace were already applied, even if it is not enforced. This does not eliminate the Phase 2 namespacing work, but it reduces the risk of naming conflicts and makes the mechanical work faster and more reliable.
+ 
+### **CSV/CLI configuration tooling**
+ 
+The Phase 1 CSV tooling is not the Phase 2 configuration wizard. It is replaced in Phase 2, not extended. However, it is small (one to two weeks of build effort) and it serves a real purpose in Phase 1: it allows regime configuration without a build dependency on the wizard. The replacement cost is acceptable.
+ 
+**Note: **The regime data configured via CSV tooling in Phase 1 is fully compatible with the Phase 2 wizard. No regime data needs to be migrated or reconfigured. The tooling is replaced; the data it created is not.
+ 
+## **What Is Not Nugatory Work**
+ 
+Everything else built in Phase 1 survives into Phase 2 without rework. This is the critical point. The architecture is designed so that the functional components — the routing engine, the answer model, the LWC component library, the Apex services, the permission model, the session management — are the same whether they live in a single org or in a managed package. The managed package is a distribution and upgrade mechanism; it does not change what the components do or how they are built.
+ 
+- **Routing engine: **Identical in Phase 1 and Phase 2. No rework.
+ 
+- **LWC component library: **The largest Phase 1 build item. Identical in Phase 2, subject only to namespace prefix application. No functional rework.
+ 
+- **Answer storage and history: **Identical. No rework.
+ 
+- **Permission model (basic): **Extended in Phase 2 with the delegation chain, but not replaced. The Phase 1 implementation is a valid subset of the Phase 2 model.
+ 
+- **Session management: **Identical. No rework.
+ 
+- **GOV.UK One Login integration: **Identical. Phase 2 adds the cross-department identity use of the verified identity token, but the integration itself is unchanged.
+ 
+- **Test suite: **Extended in Phase 2 for managed package constraints and upgrade regression. The Phase 1 tests are not discarded.
+ 
+- **First regime configuration and data: **Fully preserved. No migration required.
+ 
+## **The Alternative: One Phase, Full Package from the Start**
+ 
+What would it cost to build the full managed package, configuration wizard, cross-department mechanism, and delegation chain in a single phase, without the Phase 1 / Phase 2 split?
+ 
+The honest estimate is nine to twelve months with a team of four, assuming the sfGpsDsUkGov LWC library is available. Without it, twelve to fifteen months. The managed package architecture, the upgrade path design, the wizard build, and the cross-department consent mechanism collectively add significant complexity that cannot be meaningfully compressed.
+ 
+Against that baseline, the two-phase approach delivers:
+ 
+- A live citizen service at month three, demonstrating real value to a real department and its citizens.
+ 
+- A second regime live at month four or five, demonstrating that the platform generalises.
+ 
+- A full managed package at month six.
+ 
+- Total elapsed time to full platform: six months versus nine to twelve.
+ 
+- Nugatory work: approximately two to three weeks of the architect’s time for namespacing, plus the replacement of the CSV tooling with the wizard.
+ 
+*The two-phase approach delivers the full platform three to six months earlier than a single-phase build, at a cost of two to three weeks of rework. That is not a trade-off. It is the correct sequencing.*
+ 
+## **The Risk Argument**
+ 
+There is a further argument for two phases that is not about elapsed time or rework, but about risk.
+ 
+A twelve-month programme with no working citizen delivery until month twelve carries substantial risk: requirements drift, stakeholder fatigue, budget pressure, and the possibility that the architecture does not work as intended at scale. All of these risks are real in government digital programmes and all of them have caused expensive failures.
+ 
+A three-month Phase 1 with a live citizen delivery mitigates all of these risks. Requirements are validated against real usage. Stakeholders see value before the programme asks for more investment. The architecture is proven in production before the more complex Phase 2 work begins. If something is wrong, it is discovered at month three with three months of sunk cost, not at month twelve with twelve.
+ 
+The proof of concept demonstrates that the architecture works. Phase 1 proves it works in production on Salesforce, with real citizens. Phase 2 proves it distributes. Each phase is a controlled risk gate.
+ 
+## **Summary Assessment**
+ 
+The nugatory work in the two-phase approach is minimal: two to three weeks of namespacing and the replacement of a small configuration tool. Every significant component built in Phase 1 — the routing engine, the LWC library, the answer model, the services, the test suite — is carried forward without rework.
+ 
+The two-phase approach is not a compromise imposed by urgency. It is the right way to build a platform of this kind: deliver early, prove value, reduce risk, then scale. The architecture was designed to support exactly this sequencing. The first regime is not a prototype to be discarded; it is the foundation on which everything else is built.
+ 
+Salesforce Implementation Plan  •  Version 0.1  •  May 2026  •  DRAFT FOR DISCUSSION

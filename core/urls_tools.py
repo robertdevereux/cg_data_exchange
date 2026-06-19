@@ -28,6 +28,10 @@ urlpatterns = [
          views_admin_tools.tools_question_add,
          name='tools_question_add'),
 
+    path('questions/<str:question_id>/type/',
+         views_admin_tools.tools_question_type_info,
+         name='tools_question_type_info'),
+
     path('sets/',
          views_admin_tools.tools_sets_list,
          name='tools_sets_list'),
