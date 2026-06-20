@@ -27,6 +27,20 @@ _STATUS_LABEL = {
 }
 
 
+def _rollup_status(statuses):
+    """
+    Roll up a list of section/schedule status strings into a single status.
+    all complete → complete; any in_progress or complete → in_progress; else not_started.
+    """
+    if not statuses:
+        return 'not_started'
+    if all(s == 'complete' for s in statuses):
+        return 'complete'
+    if any(s in ('in_progress', 'complete') for s in statuses):
+        return 'in_progress'
+    return 'not_started'
+
+
 # ── Pattern B — direct section list (no schedule) ────────────────────────────
 
 @login_required
@@ -248,4 +262,102 @@ def regime_schedule_sections(request, regime_id, schedule_id):
         'breadcrumbs': crumbs,
         'acting_for':  get_acting_for_name(pss),
         'title':       schedule.schedule_name,
+    })
+
+
+# ── Top-level mixed items (schedules + bare sections) ────────────────────────
+
+@login_required
+def regime_top_level(request, regime_id):
+    """
+    Render a mixed list of schedules and bare sections drawn from
+    top_level_items (written by call_core).  Each schedule entry rolls up
+    the statuses of its child sections; each bare-section entry shows its
+    own status directly.
+    """
+    actor  = request.user
+    pss    = get_session(request)
+    user   = _resolve_user(pss, actor)
+    regime = get_object_or_404(Regime, regime_id=regime_id)
+
+    top_level_items = pss.get('top_level_items', [])
+    title           = pss.get('top_level_title') or regime.regime_name
+
+    schedule_ids_needed = [i['id'] for i in top_level_items if i['type'] == 'schedule']
+    section_ids_needed  = [i['id'] for i in top_level_items if i['type'] == 'section']
+
+    # Permitted sections (for both schedules and bare sections)
+    permitted = get_permitted_sections(actor, user).filter(
+        Q(schedule__schedule_id__in=schedule_ids_needed) |
+        Q(section_id__in=section_ids_needed)
+    ).select_related('schedule')
+
+    section_statuses = {
+        ss.section_id: ss.status
+        for ss in SectionStatus.objects.filter(
+            user=user, regime=regime, section__in=permitted,
+        )
+    }
+
+    # Pre-build schedule objects keyed by schedule_id
+    schedules_by_id = {
+        s.schedule_id: s
+        for s in Schedule.objects.filter(schedule_id__in=schedule_ids_needed)
+    }
+
+    items_data = []
+    for item in top_level_items:
+        if item['type'] == 'schedule':
+            sched = schedules_by_id.get(item['id'])
+            if not sched:
+                continue
+            sched_sections = permitted.filter(schedule_id=item['id'])
+            statuses = [section_statuses.get(s.section_id, 'not_started') for s in sched_sections]
+            status   = _rollup_status(statuses)
+            section_count = sched_sections.count()
+            url = reverse(
+                'core:regime_schedule_sections',
+                kwargs={'regime_id': regime_id, 'schedule_id': item['id']},
+            )
+            items_data.append({
+                'type':           'schedule',
+                'label':          sched.schedule_name,
+                'section_count':  section_count,
+                'status':         status,
+                'status_display': _STATUS_LABEL[status],
+                'url':            url,
+            })
+        else:
+            sect_qs = permitted.filter(section_id=item['id'])
+            if not sect_qs.exists():
+                continue
+            sect   = sect_qs.first()
+            status = section_statuses.get(sect.section_id, 'not_started')
+            if sect.section_type in (1, 2):
+                url = f'/section/{sect.section_id}/table/'
+            else:
+                url = f'/section/{sect.section_id}/start/'
+            items_data.append({
+                'type':           'section',
+                'label':          sect.section_name,
+                'status':         status,
+                'status_display': _STATUS_LABEL.get(status, 'Not started'),
+                'url':            url,
+            })
+
+    regime_home_url = pss.get('regime_home_url', '/')
+    breadcrumbs     = pss.get('breadcrumbs', [])
+
+    update_session(request, {
+        'regime_home_url': regime_home_url,
+        'breadcrumbs':     breadcrumbs,
+    })
+
+    return render(request, 'core/regime_top_level.html', {
+        'regime':      regime,
+        'items':       items_data,
+        'title':       title,
+        'back_url':    regime_home_url,
+        'breadcrumbs': breadcrumbs,
+        'acting_for':  get_acting_for_name(pss),
     })

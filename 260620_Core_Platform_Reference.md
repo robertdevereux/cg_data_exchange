@@ -26,8 +26,9 @@ core/
   models.py               — full data model (all 16+ models)
   interfaces.py           — documented platform interface for dept apps
   meta_processors.py      — meta processor system
-  views_layer1.py         — shared orchestration views (regime_schedules,
-                            regime_schedule_sections, regime_sections)
+  views_layer1.py         — shared orchestration views (regime_top_level,
+                            regime_schedules, regime_schedule_sections,
+                            regime_sections)
   views_layer2.py         — execution engine (section_start, question rendering,
                             section_confirm, section_done etc.)
   nav_reference.py        — navigation helpers (resolve_layer1_entry_url etc.)
@@ -193,47 +194,44 @@ user. Called when a citizen enters a regime. Safe to call multiple times
 (idempotent).
 
 ```python
-call_regime(request, regime, actor, user, url_prefix='')
+call_core(request, regime, actor, user, items, title=None, url_prefix='')
 ```
-Finds or creates a case, bootstraps section statuses, writes all session
-keys, and returns the Layer 1 entry URL. For selective section entry from
-a bespoke regime home page, use `call_sections` instead.
+Unified core entry point. `items` is an ordered list of dicts, each
+`{'type': 'schedule'|'section', 'id': str}`. Core intersects the list
+with the user's permissions, then routes:
+
+- Single section → direct to `section_start`
+- Single schedule → direct to `regime_schedule_sections`
+- Multiple items (mixed or not) → `regime_top_level` (mixed ordered list page)
+- Empty after filtering → empty section list fallback
+
+`title` sets the heading on the top-level list page.
+
+`url_prefix` prepends the dept namespace to any `/regime/...` URL.
+
+`return_url` is always set to `regime_home_url` from session.
 
 ```python
+call_regime(request, regime, actor, user, url_prefix='')
+call_schedules(request, regime, actor, user, schedule_ids, url_prefix='', title=None)
 call_sections(request, regime, actor, user, section_ids, url_prefix='', title=None)
 ```
-Selective section entry. Behaviour depends on number of section IDs:
-
-- **One section ID** — goes directly to that section's start (or table)
-  URL. Used when a dept action button sends the user into a specific section.
-
-- **Multiple section IDs** — writes `permitted_section_ids` and
-  `section_list_title` to session, then routes to `regime_sections` (the
-  core section list view). The user sees a filtered, titled list of those
-  sections with status badges and Start/Continue links.
-
-`call_sections` always sets `return_url = regime_home_url` (from session),
-not `request.path`. This ensures core always returns to the dept
-orchestrator (regime home) after section completion.
-
-`title` parameter: optional page heading for the section list (multiple
-sections only). Defaults to `regime.regime_name` if not supplied.
-
-```python
-call_schedules(request, regime, actor, user, schedule_ids, url_prefix='')
-```
-As `call_regime` but scoped to specified schedules. Currently always
-routes to the schedule list page — single-schedule shortcut behaviour
-not yet implemented (see D15 in backlog).
+Thin convenience wrappers around `call_core`. `call_regime` passes all
+schedules and bare sections defined in the regime, in display order.
+`call_schedules` and `call_sections` pass schedule-type or section-type
+items respectively. All three remain available but `call_core` is
+preferred for new dept code.
 
 ### Session keys used by the platform
 
 | Key | Set by | Consumed by | Purpose |
 |-----|--------|-------------|---------|
-| `return_url` | `call_sections` | `section_done` | Where to go after section completes |
-| `regime_home_url` | dept orchestrator (`_setup`) | `call_sections` | Used as `return_url` so core returns to dept home |
-| `permitted_section_ids` | `call_sections` (multiple) | `regime_sections` | Filter section list to dept-selected subset |
-| `section_list_title` | `call_sections` (multiple) | `regime_sections` | Page heading for filtered section list |
+| `return_url` | `call_core` | `section_done` | Where to go after section completes |
+| `regime_home_url` | dept orchestrator (`_setup`) | `call_core` | Used as `return_url` so core always returns to dept home |
+| `permitted_section_ids` | `call_core` | `regime_sections` | Filter section list to permitted subset |
+| `permitted_schedule_ids` | `call_core` | `regime_schedule_sections` | Filter schedule list to permitted subset |
+| `top_level_items` | `call_core` (multiple) | `regime_top_level` | Ordered mixed list for top-level page |
+| `top_level_title` | `call_core` (multiple) | `regime_top_level` | Page heading |
 | `post_confirm_redirect` | dept code (optional) | `section_done` | One-shot override: fires instead of `return_url` then clears itself |
 
 **`post_confirm_redirect` — optional dept interception**
@@ -328,11 +326,11 @@ within a regime) to be visible via `get_permitted_sections`. A section with
 no regime/schedule assignment will not appear in any section list. Always
 check regime assignment when debugging invisible sections.
 
-**`regime_sections` filtering:** When `call_sections` is called with
-multiple section IDs, `regime_sections` filters its queryset to
-`permitted_section_ids` from session, overriding the normal
-`schedule__isnull=True` filter. This allows dept code to surface
-schedule-assigned sections in a filtered list.
+**`regime_top_level`** — when `call_core` is called with multiple items,
+`regime_top_level` renders an ordered mixed list of schedules and bare
+sections in dept-specified order, with rollup status for each row.
+Schedule rows link to `regime_schedule_sections`; bare section rows link
+directly to `section_start`.
 
 ---
 
@@ -346,6 +344,7 @@ PLATFORM and TEST. Clicking a regime requires login (`?next=` mechanism).
 |-------------|------|-------|
 | `/<dept>/` | dept_home | |
 | `/<dept>/regime/<regime_id>/` | regime_home | Dept dispatcher |
+| `/regime/<id>/top/` | regime_top_level | Mixed ordered top-level list (call_core multiple items) |
 | `/section/<section_id>/start/` | section_start | Core execution engine |
 | `/section/<section_id>/review/` | section_review | |
 | `/section/<section_id>/done/` | section_done | |

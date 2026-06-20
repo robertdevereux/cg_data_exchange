@@ -34,7 +34,7 @@ from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
-from core.interfaces import call_sections, create_case, get_answers, get_cases
+from core.interfaces import call_core, create_case, get_answers, get_cases
 from core.models import Case, Regime, Routing, Section, SectionStatus
 from core.models import QuestionSetMember
 from core.nav_reference import _resolve_user
@@ -53,10 +53,21 @@ IHT_REGIME_ID = 'HMRC_IHT'
 TRIAGE_SECTION_IDS = ['HMRC_S4', 'HMRC_S5', 'HMRC_S6']
 
 TRIAGE_SETS = [
-    {'section_id': 'HMRC_S4', 'id': 'triage_common'},
-    {'section_id': 'HMRC_S5', 'id': 'triage_pensions'},
-    {'section_id': 'HMRC_S6', 'id': 'triage_other'},
+    {'section_id': 'HMRC_S4', 'id': 'triage_common',   'action': 'common'},
+    {'section_id': 'HMRC_S5', 'id': 'triage_pensions',  'action': 'pensions'},
+    {'section_id': 'HMRC_S6', 'id': 'triage_other',     'action': 'other'},
 ]
+
+QUESTION_SCHEDULE_MAP = {
+    'HMRC_16': 'HMRC_SCH2',
+    'HMRC_31': 'HMRC_SCH3',
+    'HMRC_17': 'HMRC_SCH4',
+    'HMRC_18': 'HMRC_SCH5',
+    'HMRC_19': 'HMRC_SCH6',
+    'HMRC_21': 'HMRC_SCH7',
+    'HMRC_22': 'HMRC_SCH8',
+    'HMRC_23': 'HMRC_SCH9',
+}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -80,6 +91,8 @@ def iht_orchestrate(request):
         _set_current_action(request, 'start')
         current_action = 'start'
 
+    active_items = _get_active_triage_items(verified_case)
+
     # ── ENTRY — send user into core ────────────────────────────────────────────
     if not returning_from_core:
         if current_action == 'start':
@@ -90,6 +103,9 @@ def iht_orchestrate(request):
             return _entry_reckoner(request, regime, actor, user, verified_case)
         if current_action == 'tailor':
             return _entry_tailor(request, regime, actor, user)
+        if current_action == 'common_assets':
+            return _entry_common_assets(request, regime, actor, user,
+                                        verified_case, active_items)
         # No current_action — fresh home page visit
         return _render_home(request, regime, actor, user, verified_case, crumbs)
 
@@ -105,6 +121,8 @@ def iht_orchestrate(request):
             return result
     if current_action == 'tailor':
         pass  # nothing to do on exit
+    if current_action == 'common_assets':
+        pass  # no post-processing needed
 
     # ── HOME ───────────────────────────────────────────────────────────────────
     _clear_current_action(request)
@@ -139,6 +157,14 @@ def iht_action_tailor(request):
                             kwargs={'regime_id': IHT_REGIME_ID}))
 
 
+@login_required
+def iht_action_common(request):
+    """Common assets — enter schedule list for Yes-answered S4 items."""
+    _set_current_action(request, 'common_assets')
+    return redirect(reverse('dept_hmrc:regime_home',
+                            kwargs={'regime_id': IHT_REGIME_ID}))
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # ENTRY FUNCTIONS — set iht_in_core and send user into core sections
 # ══════════════════════════════════════════════════════════════════════════════
@@ -149,9 +175,10 @@ def _entry_start(request, regime, actor, user, pss, crumbs):
     """
     draft_case = _get_or_create_draft_case(request, user, regime)
     _enter_core(request)
-    entry_url = call_sections(
+    entry_url = call_core(
         request, regime, actor, user,
-        section_ids=['HMRC_S1'], url_prefix='hmrc',
+        items=[{'type': 'section', 'id': 'HMRC_S1'}],
+        url_prefix='hmrc',
     )
     statuses = _get_statuses(actor, user, regime)
     # Render pre-verified home so user sees context before entering S1
@@ -165,9 +192,10 @@ def _entry_deceased_details(request, regime, actor, user):
     View/amend deceased details — enter S1.
     """
     _enter_core(request)
-    entry_url = call_sections(
+    entry_url = call_core(
         request, regime, actor, user,
-        section_ids=['HMRC_S1'], url_prefix='hmrc',
+        items=[{'type': 'section', 'id': 'HMRC_S1'}],
+        url_prefix='hmrc',
     )
     return redirect(entry_url)
 
@@ -194,10 +222,32 @@ def _entry_tailor(request, regime, actor, user):
     Tailor your submission — enter S4/S5/S6 section list.
     """
     _enter_core(request)
-    entry_url = call_sections(
+    entry_url = call_core(
         request, regime, actor, user,
-        section_ids=TRIAGE_SECTION_IDS,
+        items=[{'type': 'section', 'id': sid} for sid in TRIAGE_SECTION_IDS],
         title='Tailor your submission',
+        url_prefix='hmrc',
+    )
+    return redirect(entry_url)
+
+
+def _entry_common_assets(request, regime, actor, user, verified_case,
+                         active_items):
+    """
+    Common assets — build schedule list from Yes-answered S4 questions,
+    filtered to schedules that have at least one section built.
+    If nothing is built yet, return None (falls through to home).
+    """
+    items = _get_built_schedule_items(
+        active_items, 'HMRC_S4', QUESTION_SCHEDULE_MAP
+    )
+    if not items:
+        return None
+    _enter_core(request)
+    entry_url = call_core(
+        request, regime, actor, user,
+        items=items,
+        title='Common assets',
         url_prefix='hmrc',
     )
     return redirect(entry_url)
@@ -400,10 +450,15 @@ def _build_action_list(request, regime, actor, user, verified_case,
                 set_items = active_items.get(sid, [])
                 rollup    = _triage_set_rollup(sid, set_items, statuses)
 
+                built_items = _get_built_schedule_items(
+                    active_items, sid, QUESTION_SCHEDULE_MAP
+                )
+                action_url = reverse(f'dept_hmrc:iht_action_{triage_set["action"]}') \
+                    if built_items else '#'
                 actions.append({
                     'id':            triage_set['id'],
                     'status':        rollup,
-                    'url':           '#',
+                    'url':           action_url,
                     'flash_message': _flash_for(triage_set['id']),
                     'hint':          None,
                     'extra':         {
@@ -503,12 +558,44 @@ def _triage_set_rollup(section_id, set_items, statuses):
     for item in set_items:
         detail_sid = item['detail_section']
         if detail_sid is None:
-            return 'in_progress'
+            return 'not_started'
         obj    = statuses.filter(section_id=detail_sid).first()
         status = obj.status if obj else 'not_started'
         if status != 'complete':
             return 'in_progress'
     return 'complete'
+
+
+def _get_built_schedule_items(active_items, section_id, schedule_map):
+    """
+    Return call_core items list for one triage set's action button.
+    Maps Yes-answered question IDs to schedule IDs via schedule_map,
+    then filters to schedules that have at least one section built.
+    Preserves the triage question display order.
+    Returns [] if nothing is built yet.
+    """
+    from core.models import Section as CoreSection
+    yes_questions = [
+        item['question_id']
+        for item in active_items.get(section_id, [])
+    ]
+    candidate_schedule_ids = [
+        schedule_map[qid]
+        for qid in yes_questions
+        if qid in schedule_map
+    ]
+    if not candidate_schedule_ids:
+        return []
+    built = set(
+        CoreSection.objects
+        .filter(schedule__schedule_id__in=candidate_schedule_ids)
+        .values_list('schedule__schedule_id', flat=True)
+    )
+    return [
+        {'type': 'schedule', 'id': sid}
+        for sid in candidate_schedule_ids
+        if sid in built
+    ]
 
 
 # ══════════════════════════════════════════════════════════════════════════════

@@ -21,6 +21,9 @@ urlpatterns = [
     path('regime/<str:regime_id>/schedule/<str:schedule_id>/sections/',
          views.regime_schedule_sections,
          name='regime_schedule_sections'),
+    path('regime/<str:regime_id>/top/',
+         views.regime_top_level,
+         name='regime_top_level'),
 
     # IHT reckoner bespoke threshold question
     path('iht/reckoner/threshold/',
@@ -36,6 +39,7 @@ urlpatterns = [
     path('iht/action/deceased/', views.iht_action_deceased, name='iht_action_deceased'),
     path('iht/action/reckoner/', views.iht_action_reckoner, name='iht_action_reckoner'),
     path('iht/action/tailor/',   views.iht_action_tailor,   name='iht_action_tailor'),
+    path('iht/action/common/',   views.iht_action_common,   name='iht_action_common'),
 
     path('tools/',                  include('core.urls_tools')),
 ]

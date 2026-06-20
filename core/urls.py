@@ -18,6 +18,11 @@ urlpatterns = [
          views_layer1.regime_sections,
          name='regime_sections'),
 
+    # ── Layer 1 navigation — mixed top-level (schedules + bare sections) ────────
+    path('regime/<str:regime_id>/top/',
+         views_layer1.regime_top_level,
+         name='regime_top_level'),
+
     # ── Layer 1 navigation — Pattern C (schedule → section list) ─────────────
     path('regime/<str:regime_id>/schedules/',
          views_layer1.regime_schedules,

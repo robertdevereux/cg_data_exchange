@@ -30,7 +30,7 @@ from django.shortcuts import redirect
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
-from core.interfaces import call_sections, get_answers, get_cases
+from core.interfaces import call_core, get_answers, get_cases
 
 IHT_REGIME_ID = 'HMRC_IHT'
 
@@ -229,9 +229,9 @@ def handle_reckoner(request, regime, actor, user, case):
     # Section not yet complete → redirect straight in
     request.session['iht_in_core'] = True
     request.session.modified = True
-    entry_url = call_sections(
+    entry_url = call_core(
         request, regime, actor, user,
-        section_ids=[section_id],
+        items=[{'type': 'section', 'id': section_id}],
         url_prefix='hmrc',
     )
     return redirect(entry_url)

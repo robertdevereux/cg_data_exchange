@@ -1,5 +1,5 @@
 # cg_data_exchange — Backlog
-Date: 14 June 2026
+Date: 19 June 2026
 Status: Live working document — update as items are completed or added
 
 ---
@@ -27,13 +27,16 @@ Part 1 (deceased survived by spouse) and Part 2 (widowed).
 Both need flow documents equivalent to `IHT_Reckoner_Part3_Flow-2.md`
 before building. Key points outlined in that doc.
 
-### D2: Estate elements — stub to full build
-Estate details action row currently `href="#"`.
-Full build: sections for property, financial assets, jointly owned assets,
-liabilities. Grouped into Schedule HMRC_SCH1.
+### D2: Estate detail sections — build from triage scaffolding
+Triage scaffolding complete (S4/S5/S6). Next: build S4/S5/S6 action
+buttons in HMRC orchestrate using `call_core` with schedule lists derived
+from Yes-answered triage questions. Entry/exit conditions for each button
+follow the two-phase pattern. Start with S4 (common assets). Each asset
+type gets one or more schedules defined in the regime; `call_core` routes
+to `regime_top_level` or direct to section list as appropriate.
 
 ### D3: Encode IHT regime in load_test_data
-Once HMRC_S1 through HMRC_S5 stable, encode all regime/section/routing/
+Once HMRC_S1 through HMRC_S6 stable, encode all regime/section/routing/
 question records in `load_test_data` so they survive a database reset.
 Pattern: `update_or_create` with `old_ids` cleanup list.
 Also fix at D3:
@@ -66,8 +69,8 @@ Prompt already drafted — ready to fire at CC.
 - Replace "Layer 1/2" vocabulary with standard terms:
   orchestration layer / execution engine
 - Describe structural separation conceptually for Salesforce architect
-- Document iht_orchestrate/iht_screen/handle_reckoner as canonical
-  dept orchestration pattern → maps to Salesforce master Flow + Screen
+- Document two-phase action button pattern (iht_in_core / iht_current_action)
+  as canonical dept orchestration pattern → maps to Salesforce master Flow
 
 ### DOC G2: Vision Paper — minor amendment
 One sentence amendment to section 6.1 already drafted:
@@ -95,17 +98,19 @@ capability.
 ### D7: IHT S1 amend — conflict handling
 When an executor amends deceased's details (S1 View/amend) and the new
 details conflict with another verified estate:
-- Do NOT show the generic duplicate.html template (designed for first-time
-  matching, no reference issued yet)
-- Show a new `duplicate_amend.html` template explaining the conflict,
-  preserving the existing IHT reference and all completed work
+- `_exit_deceased_details` in orchestrate.py currently calls
+  `_render_duplicate_amend` which references `duplicate_amend.html`
+  — this template does not yet exist
+- Template should explain the conflict, preserve the existing IHT reference
+  and all completed work
 - Message: "We're unable to update the deceased's details as they now match
   another estate. Your existing submission (ref IHT-XXXXXXXXX) remains
   unchanged. HMRC will be in touch if needed."
 - Single action: "Return to your submission"
-- Restore original S1 answers (the amended answers should be discarded —
-  need to store pre-amend answers before S1 entry, or re-fetch from DB
-  snapshot). Design the restoration mechanism before building.
+- Also need to restore original S1 answers (the amended answers are already
+  saved to DB by the time we detect the conflict). Design the restoration
+  mechanism before building — options: store pre-amend snapshot before
+  entering S1, or re-fetch from a DB backup point.
 
 ### D8: Dept FK on Question model
 Add nullable dept FK to Question for formal scoping.
@@ -137,24 +142,44 @@ a conceptually distinct category from asset/liability triage. Deferred
 from the tailoring flow entirely. Design separately — likely a fourth
 triage section or a dedicated action button.
 
+### ~~D15~~ — COMPLETE: call_core
+
+### D16: Regime wizard — membership vs presentation order
+The regime wizard currently conflates membership (which sections/schedules
+belong to a regime, for permissions and status tracking) with top-level
+presentation order (what appears on the first page of `call_core`, and in
+what order). These are distinct concepts. The wizard needs two explicit
+steps: (1) membership declaration, (2) top-level ordered list as an
+ordered mix of schedule IDs and section IDs. Until then, depts using
+`call_core` for a pure regime must supply the ordered items list
+explicitly in their orchestrate code.
+
+### D17: Degenerate schedule UX
+Some asset types (simple single-section assets) will be wrapped in a
+schedule for consistency, causing a double-click for the user (choose
+schedule → choose its only section). Design a better UX: either auto-skip
+the section list when a schedule has exactly one permitted section, or
+allow `call_core` to route bare sections and schedules on the same
+top-level page without needing a wrapping schedule.
+
 ### DOC G6: README
 Government-audience README: what the PoC is, how to run it, architecture
 portability, how to add a new department. Draft after D1–D5 complete.
 
-### D12: Scope `post_confirm_redirect` by section_id (platform change)
-Currently `post_confirm_redirect` fires on any `section_done` while the
-session key is set — including table sections. Dept code manages misfire
-risk manually (e.g. clearing the key in `section_start` for S1). A cleaner
-platform solution: store a `section_id` alongside the URL and have
-`section_done` only consume the key if the completing section matches:
+### D12: Note — `post_confirm_redirect` scoping (platform consideration)
+`post_confirm_redirect` is no longer used in HMRC IHT — all post-processing
+happens in `iht_orchestrate` via the `iht_in_core` / `iht_current_action`
+pattern. This is the preferred pattern for dept orchestration.
+However `post_confirm_redirect` remains available in core for simpler
+dept patterns that don't need full two-phase orchestration. If a misfire
+risk arises in another regime, consider scoping it by section_id:
 ```python
 request.session['post_confirm_redirect'] = {
-    'url': reverse('dept_hmrc:iht_reckoner_compute'),
+    'url': reverse('...'),
     'section_id': 'HMRC_S3',
 }
 ```
-This is a core change. Defer until a concrete misfire risk arises in
-practice — the current manual approach is safe for existing IHT sections.
+Not urgent — note for future reference only.
 
 ---
 
@@ -197,11 +222,37 @@ practice — the current manual approach is safe for existing IHT sections.
 
 ---
 
+## Completed this sprint (19 June 2026)
+
+- **D2 (partial)** — IHT triage scaffolding built: S4/S5/S6 sections,
+  24 `radio_inline` triage questions (HMRC_16–39), `call_sections` multiple-
+  section behaviour, filtered section list with title, triage set rows on
+  home page, active items dict built dynamically from DB
+- **Two-phase orchestrate pattern** — `iht_in_core` / `iht_current_action`
+  session flags, clean ENTRY/EXIT separation, no `post_confirm_redirect`
+  in HMRC IHT, `call_sections` returns to `regime_home_url`
+- **`radio_inline` question type** — model choice, template, set template
+  support, dispatch in `views_layer2.py`
+- **Core `call_sections` improvements** — single section goes direct,
+  multiple sections show filtered titled section list, `return_url` set
+  to `regime_home_url` not `request.path`
+- **Matching refactor** — `iht_matching_result` and `iht_matching_amend`
+  removed as URL-routed views; matching logic moved into `_exit_start` and
+  `_exit_deceased_details` in orchestrate.py
+- **Core cleanup** — HMRC_S1 guard removed from `section_start`
+- **Documentation** — `260619_HMRC_IHT.md` created as single authoritative
+  IHT reference, replacing three previous docs
+- **115 tests passing, 0 failures**
+- **D15 — call_core unified entry point** — `call_schedules`, `call_sections`,
+  `call_regime` unified into single `call_core(items)` function accepting an
+  ordered mixed list of schedule and section IDs. `regime_top_level` view added
+  to core. All HMRC `call_sections` calls migrated to `call_core`. 115 tests
+  passing.
+
+---
+
 ## Known limitations (fix when they bite)
 
-- `call_sections` / `call_schedules`: `regime_home_url` not set in session
-  (only by `call_regime`). May cause redirect issues when all sections
-  complete. Fix when it causes a problem in practice.
 - Pre-population on set pages: works on amendment but not on first visit
   from a previous regime for compound types.
 - Table section answer pre-population not yet implemented.
@@ -213,6 +264,8 @@ practice — the current manual approach is safe for existing IHT sections.
 - Multiple Neon DBs: architecture in place, not yet provisioned.
 - personal_name and address migration to compound type: deferred.
 - Registration-gated regimes (e.g. Gambling Tax): design needed before build.
+- `duplicate_amend.html` template missing — referenced in orchestrate.py
+  `_render_duplicate_amend` but not yet built (see D7).
 
 ---
 

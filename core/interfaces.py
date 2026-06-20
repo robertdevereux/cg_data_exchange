@@ -157,6 +157,80 @@ def _build_permitted_lists(permitted):
     return permitted_schedule_ids, permitted_section_ids
 
 
+def call_core(request, regime, actor, user, items, title=None, url_prefix=''):
+    """
+    Unified core entry point.
+
+    items: ordered list of dicts, each {'type': 'schedule'|'section', 'id': str}
+    title: optional heading for the top-level list page
+    url_prefix: dept namespace prefix e.g. 'hmrc'
+    """
+    from django.db.models import Q
+    from .permissions import get_permitted_sections
+    from .session import update_session
+
+    session_case_id = request.session.get('case_id')
+    base_qs = get_permitted_sections(actor, user, case_id=session_case_id).filter(
+        Q(regime=regime) | Q(schedule__regime=regime)
+    )
+
+    schedule_ids_in = [i['id'] for i in items if i['type'] == 'schedule']
+    section_ids_in  = [i['id'] for i in items if i['type'] == 'section']
+
+    permitted = base_qs.filter(
+        Q(schedule__schedule_id__in=schedule_ids_in) |
+        Q(section_id__in=section_ids_in)
+    ) if (schedule_ids_in or section_ids_in) else base_qs.none()
+
+    case = get_or_create_case(user, regime)
+    bootstrap_section_statuses(user, regime, permitted)
+
+    permitted_schedule_ids, permitted_section_ids = _build_permitted_lists(permitted)
+
+    # Build ordered top-level items, filtered to what user can actually see
+    permitted_schedule_set = set(permitted_schedule_ids)
+    permitted_section_set  = set(permitted_section_ids)
+
+    ordered_items = []
+    for item in items:
+        if item['type'] == 'schedule' and item['id'] in permitted_schedule_set:
+            ordered_items.append(item)
+        elif item['type'] == 'section' and item['id'] in permitted_section_set:
+            ordered_items.append(item)
+
+    regime_home_url = request.session.get('regime_home_url', request.path)
+
+    update_session(request, {
+        'user_id':                user.pk,
+        'actor_id':               actor.pk,
+        'regime_id':              regime.regime_id,
+        'case_id':                case.case_id,
+        'return_url':             regime_home_url,
+        'permitted_schedule_ids': permitted_schedule_ids,
+        'permitted_section_ids':  permitted_section_ids,
+        'top_level_items':        ordered_items,
+        'top_level_title':        title or regime.regime_name,
+    })
+
+    # Route
+    def _prefix(url):
+        if url_prefix and url.startswith('/regime/'):
+            return '/' + url_prefix.strip('/') + url
+        return url
+
+    if not ordered_items:
+        return _prefix(f'/regime/{regime.regime_id}/sections/')
+
+    if len(ordered_items) == 1:
+        item = ordered_items[0]
+        if item['type'] == 'section':
+            return f'/section/{item["id"]}/start/'
+        else:
+            return _prefix(f'/regime/{regime.regime_id}/schedule/{item["id"]}/sections/')
+
+    return _prefix(f'/regime/{regime.regime_id}/top/')
+
+
 def call_regime(request, regime, actor, user, url_prefix=''):
     """
     Full-regime entry point.
@@ -169,38 +243,25 @@ def call_regime(request, regime, actor, user, url_prefix=''):
     /regime/... entry URL is rewritten to /<prefix>/regime/... so the calling
     view does not need a separate remap block.
     """
-    from django.db.models import Q
-    from .permissions import get_permitted_sections
-    from .nav_reference import resolve_layer1_entry_url
-    from .session import update_session
-
-    session_case_id = request.session.get('case_id')
-    permitted = get_permitted_sections(actor, user, case_id=session_case_id).filter(
-        Q(regime=regime) | Q(schedule__regime=regime)
+    from .models import Schedule, Section
+    schedule_ids = list(
+        Schedule.objects.filter(regime=regime)
+        .order_by('display_order', 'schedule_id')
+        .values_list('schedule_id', flat=True)
     )
-
-    case = get_or_create_case(user, regime)
-    bootstrap_section_statuses(user, regime, permitted)
-
-    permitted_schedule_ids, permitted_section_ids = _build_permitted_lists(permitted)
-
-    update_session(request, {
-        'user_id':                user.pk,
-        'actor_id':               actor.pk,
-        'regime_id':              regime.regime_id,
-        'case_id':                case.case_id,
-        'return_url':             request.path,
-        'permitted_schedule_ids': permitted_schedule_ids,
-        'permitted_section_ids':  permitted_section_ids,
-    })
-
-    entry_url = resolve_layer1_entry_url(permitted, regime.regime_id)
-    if url_prefix and entry_url.startswith('/regime/'):
-        entry_url = '/' + url_prefix.strip('/') + entry_url
-    return entry_url
+    bare_section_ids = list(
+        Section.objects.filter(regime=regime, schedule__isnull=True)
+        .order_by('display_order', 'section_id')
+        .values_list('section_id', flat=True)
+    )
+    items = (
+        [{'type': 'schedule', 'id': sid} for sid in schedule_ids] +
+        [{'type': 'section',  'id': sid} for sid in bare_section_ids]
+    )
+    return call_core(request, regime, actor, user, items, url_prefix=url_prefix)
 
 
-def call_schedules(request, regime, actor, user, schedule_ids, url_prefix=''):
+def call_schedules(request, regime, actor, user, schedule_ids, url_prefix='', title=None):
     """
     Schedule-filtered entry point.
 
@@ -210,34 +271,8 @@ def call_schedules(request, regime, actor, user, schedule_ids, url_prefix=''):
 
     url_prefix: see call_regime.
     """
-    from .permissions import get_permitted_sections
-    from .nav_reference import resolve_layer1_entry_url
-    from .session import update_session
-
-    session_case_id = request.session.get('case_id')
-    permitted = get_permitted_sections(actor, user, case_id=session_case_id).filter(
-        schedule__schedule_id__in=schedule_ids
-    )
-
-    case = get_or_create_case(user, regime)
-    bootstrap_section_statuses(user, regime, permitted)
-
-    permitted_schedule_ids, permitted_section_ids = _build_permitted_lists(permitted)
-
-    update_session(request, {
-        'user_id':                user.pk,
-        'actor_id':               actor.pk,
-        'regime_id':              regime.regime_id,
-        'case_id':                case.case_id,
-        'return_url':             request.path,
-        'permitted_schedule_ids': permitted_schedule_ids,
-        'permitted_section_ids':  permitted_section_ids,
-    })
-
-    entry_url = resolve_layer1_entry_url(permitted, regime.regime_id)
-    if url_prefix and entry_url.startswith('/regime/'):
-        entry_url = '/' + url_prefix.strip('/') + entry_url
-    return entry_url
+    items = [{'type': 'schedule', 'id': sid} for sid in schedule_ids]
+    return call_core(request, regime, actor, user, items, title=title, url_prefix=url_prefix)
 
 
 def call_sections(request, regime, actor, user, section_ids, url_prefix='', title=None):
@@ -251,55 +286,8 @@ def call_sections(request, regime, actor, user, section_ids, url_prefix='', titl
     url_prefix: see call_regime.
     title: optional heading for the section list page (multiple sections only).
     """
-    from .permissions import get_permitted_sections
-    from .session import update_session
-
-    session_case_id = request.session.get('case_id')
-    permitted = get_permitted_sections(actor, user, case_id=session_case_id).filter(
-        section_id__in=section_ids
-    )
-
-    case = get_or_create_case(user, regime)
-    bootstrap_section_statuses(user, regime, permitted)
-
-    permitted_schedule_ids, permitted_section_ids = _build_permitted_lists(permitted)
-
-    update_session(request, {
-        'user_id':                user.pk,
-        'actor_id':               actor.pk,
-        'regime_id':              regime.regime_id,
-        'case_id':                case.case_id,
-        'return_url':             request.session.get('regime_home_url', request.path),
-        'permitted_schedule_ids': permitted_schedule_ids,
-        'permitted_section_ids':  permitted_section_ids,
-    })
-
-    ordered = []
-    for sid in section_ids:
-        s = permitted.filter(section_id=sid).first()
-        if s:
-            ordered.append(s)
-
-    if not ordered:
-        return (
-            f'/{url_prefix.strip("/")}/regime/{regime.regime_id}/sections/'
-            if url_prefix else
-            f'/regime/{regime.regime_id}/sections/'
-        )
-
-    if len(ordered) == 1:
-        first = ordered[0]
-        if first.section_type in (1, 2):
-            return f'/section/{first.section_id}/table/'
-        return f'/section/{first.section_id}/start/'
-
-    # Multiple sections — store in session and route to filtered section list
-    update_session(request, {
-        'permitted_section_ids': [s.section_id for s in ordered],
-        'section_list_title':    title or regime.regime_name,
-    })
-    prefix = f'/{url_prefix.strip("/")}' if url_prefix else ''
-    return f'{prefix}/regime/{regime.regime_id}/sections/'
+    items = [{'type': 'section', 'id': sid} for sid in section_ids]
+    return call_core(request, regime, actor, user, items, title=title, url_prefix=url_prefix)
 
 
 # ── Answer utilities ──────────────────────────────────────────────────────────
