@@ -10,7 +10,7 @@ from django.shortcuts import render
 from django.urls import reverse
 
 from core.nav_reference import _resolve_user
-from core.permissions import get_permitted_regimes
+from core.permissions import get_actor_accessible_regimes, get_permitted_regimes
 from core.session import get_acting_for_name, get_session
 
 # Regime classification — determines which section of the home page each appears in
@@ -21,7 +21,7 @@ _OTHER_REGIME_IDS   = ['TEST_SCHEDULES']
 def _build_regime_item(regime):
     return {
         'regime': regime,
-        'url':    reverse('dept_demo:regime_home',
+        'url':    reverse('dept_demo:choose_identity',
                           kwargs={'regime_id': regime.regime_id}),
     }
 
@@ -36,11 +36,17 @@ def dept_home(request):
     request.session['active_dept'] = 'TEST'
     actor    = request.user
     pss      = get_session(request)
-    user     = _resolve_user(pss, actor)
-    is_agent = (actor.pk != user.pk)
+    user_id  = pss.get('user_id')
 
-    permitted_regimes = get_permitted_regimes(actor, user, dept_id='TEST')
+    if user_id:
+        user = _resolve_user(pss, actor)
+        permitted_regimes = get_permitted_regimes(actor, user, dept_id='TEST')
+    else:
+        # No identity selected yet — show all regimes accessible to actor for anyone
+        user = actor
+        permitted_regimes = get_actor_accessible_regimes(actor, dept_id='TEST')
 
+    is_agent  = (user_id and user_id != actor.pk)
     acting_for = get_acting_for_name(pss)
 
     if not permitted_regimes.exists():

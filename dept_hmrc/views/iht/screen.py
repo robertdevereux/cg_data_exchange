@@ -57,7 +57,7 @@ CONCLUSION_MESSAGES = {
 }
 
 
-def iht_screen(request, regime, verified_case, details, actions, crumbs):
+def iht_screen(request, regime, verified_case, deceased_rows, actions, crumbs):
     """
     Render the IHT home page for a verified case.
     Decorates the lean action list before passing to the template.
@@ -84,10 +84,7 @@ def iht_screen(request, regime, verified_case, details, actions, crumbs):
     return render(request, 'dept_hmrc/iht/home.html', {
         'regime':        regime,
         'verified_case': verified_case,
-        'deceased_name': details['name_display'],
-        'deceased_dob':  details['dob_display'],
-        'deceased_dod':  details['dod_display'],
-        'deceased_nino': details['nino'],
+        'deceased_rows': deceased_rows,
         'reference':     verified_case.reference,
         'actions':       decorated,
         'acting_for':    get_acting_for_name(pss),

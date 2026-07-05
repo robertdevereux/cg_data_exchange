@@ -1,0 +1,4 @@
+The item numbers in boxes 8 and 11 are back-references to property rows 
+in boxes 6 and 7. Consider modelling boxes 8/9/10 and 11 as conditional 
+columns within the property table rows rather than separate sections. 
+This would reduce the section count from four to two.

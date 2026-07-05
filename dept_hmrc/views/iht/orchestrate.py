@@ -29,34 +29,49 @@ Session flags:
 call_sections always sets return_url = regime_home_url so core always
 returns here. No post_confirm_redirect used in HMRC IHT.
 """
+from urllib.parse import urlencode
+
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
-from core.interfaces import call_core, create_case, get_answers, get_cases
-from core.models import Case, Regime, Routing, Section, SectionStatus
+from core.interfaces import (
+    call_core, create_case, format_answer_for_display,
+    get_answers, get_asked_answers_for_section, get_cases,
+)
+from core.models import Case, Permission, Regime, Routing, Section, SectionStatus
 from core.models import QuestionSetMember
 from core.nav_reference import _resolve_user
 from core.permissions import get_permitted_sections
 from core.session import get_acting_for_name, get_session, update_session
+from core.views_gate import choose_user_for_regime
 from dept_hmrc.models import IHTReckoner
 
 from .matching import run_iht_matching
 from .reckoner import handle_reckoner
 from .screen import iht_screen, iht_screen_unverified
-from .utils import _get_iht_answers
 
 
 IHT_REGIME_ID = 'HMRC_IHT'
 
-TRIAGE_SECTION_IDS = ['HMRC_S4', 'HMRC_S5', 'HMRC_S6']
 
-TRIAGE_SETS = [
-    {'section_id': 'HMRC_S4', 'id': 'triage_common',   'action': 'common'},
-    {'section_id': 'HMRC_S5', 'id': 'triage_pensions',  'action': 'pensions'},
-    {'section_id': 'HMRC_S6', 'id': 'triage_other',     'action': 'other'},
-]
+def _get_triage_sets():
+    """
+    Returns the ordered list of triage sections (HMRC_S4/S5/S6) belonging
+    to HMRC_SCH1. Section has a direct FK to Schedule (with display_order
+    on Section itself) — there is no separate ScheduleSection join model.
+    """
+    from django.db.models import F
+    return list(
+        Section.objects
+        .filter(schedule_id='HMRC_SCH1')
+        .order_by('display_order')
+        .values('section_id', name=F('section_name'))
+    )
+
+TRIAGE_SETS = _get_triage_sets()
+TRIAGE_SECTION_IDS = [t['section_id'] for t in TRIAGE_SETS]
 
 QUESTION_SCHEDULE_MAP = {
     'HMRC_16': 'HMRC_SCH2',
@@ -71,6 +86,33 @@ QUESTION_SCHEDULE_MAP = {
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# SESSION GATE
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _iht_gate(request, regime):
+    """
+    Inline identity/estate picker for IHT.  Always returns a response.
+
+    Leading option is "Begin a new estate" → select_self → iht_start_new_estate
+    (select_self writes user_id/actor_id to the PSS session before continuing).
+    Existing verified estates appear as additional candidates, each setting
+    case_id from perm.case_id via select_identity.
+    """
+    new_url  = reverse('dept_hmrc:iht_start_new_estate')
+    self_url = f"{reverse('core:select_self')}?{urlencode({'next': new_url})}"
+    return choose_user_for_regime(
+        request,
+        regime=regime,
+        leading_option={
+            'label':      'Begin a new estate',
+            'action_url': self_url,
+        },
+        next_url=reverse('dept_hmrc:regime_home',
+                         kwargs={'regime_id': regime.regime_id}),
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # ORCHESTRATOR
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -80,11 +122,31 @@ def iht_orchestrate(request):
     IHT regime controller. Reads state, dispatches — never renders directly.
     Called on every visit to /hmrc/regime/HMRC_IHT/.
     """
-    regime, actor, user, pss, crumbs = _setup(request)
+    regime, actor, _actor_default_user, pss, crumbs = _setup(request)
+    if not pss.get('user_id'):
+        return _iht_gate(request, regime)
+
     current_action      = _get_current_action(request)
-    verified_case       = _get_verified_case(user, regime)
     returning_from_core = request.session.pop('iht_in_core', False)
     request.session.modified = True
+
+    # Resolve the active case (if any) and derive `user` directly from it —
+    # case.user is the single source of truth for who owns this case's data,
+    # correct for both draft (user=actor) and verified (user=deceased) states.
+    # We deliberately do not cache this in session: promotion updates case.user
+    # in the DB, and the next request picks it up automatically.
+    case_id = request.session.get('case_id')
+    case = Case.objects.filter(case_id=case_id, regime=regime).first() if case_id else None
+
+    if case:
+        user = case.user
+        verified_case = case if case.reference else None
+    else:
+        verified_cases = list(_get_verified_cases(actor, regime))
+        if verified_cases:
+            return _iht_gate(request, regime)
+        user = _actor_default_user
+        verified_case = None
 
     # ── Bootstrap: very first visit, no case, no action set ───────────────────
     if not verified_case and not current_action:
@@ -100,12 +162,13 @@ def iht_orchestrate(request):
         if current_action == 'deceased_details':
             return _entry_deceased_details(request, regime, actor, user)
         if current_action == 'reckoner':
-            return _entry_reckoner(request, regime, actor, user, verified_case)
+            return _entry_reckoner(request, regime, actor, user)
         if current_action == 'tailor':
             return _entry_tailor(request, regime, actor, user)
-        if current_action == 'common_assets':
-            return _entry_common_assets(request, regime, actor, user,
-                                        verified_case, active_items)
+        if current_action in {t['section_id'].lower() for t in TRIAGE_SETS}:
+            return _entry_triage_assets(request, regime, actor, user,
+                                        verified_case, active_items,
+                                        current_action.upper())
         # No current_action — fresh home page visit
         return _render_home(request, regime, actor, user, verified_case, crumbs)
 
@@ -121,7 +184,7 @@ def iht_orchestrate(request):
             return result
     if current_action == 'tailor':
         pass  # nothing to do on exit
-    if current_action == 'common_assets':
+    if current_action in {t['section_id'].lower() for t in TRIAGE_SETS}:
         pass  # no post-processing needed
 
     # ── HOME ───────────────────────────────────────────────────────────────────
@@ -158,11 +221,71 @@ def iht_action_tailor(request):
 
 
 @login_required
-def iht_action_common(request):
-    """Common assets — enter schedule list for Yes-answered S4 items."""
-    _set_current_action(request, 'common_assets')
+def iht_action_hmrc_s4(request):
+    """Triage set S4 — enter built schedules for Yes-answered S4 items."""
+    _set_current_action(request, 'hmrc_s4')
     return redirect(reverse('dept_hmrc:regime_home',
                             kwargs={'regime_id': IHT_REGIME_ID}))
+
+
+@login_required
+def iht_action_hmrc_s5(request):
+    """Triage set S5 — enter built schedules for Yes-answered S5 items."""
+    _set_current_action(request, 'hmrc_s5')
+    return redirect(reverse('dept_hmrc:regime_home',
+                            kwargs={'regime_id': IHT_REGIME_ID}))
+
+
+@login_required
+def iht_action_hmrc_s6(request):
+    """Triage set S6 — enter built schedules for Yes-answered S6 items."""
+    _set_current_action(request, 'hmrc_s6')
+    return redirect(reverse('dept_hmrc:regime_home',
+                            kwargs={'regime_id': IHT_REGIME_ID}))
+
+
+@login_required
+def iht_start_new_estate(request):
+    """
+    Create a brand-new draft case and enter S1 directly.
+
+    Belt-and-braces: clears any stale SectionStatus rows for this actor+regime
+    before creating the new draft, so the fresh estate always starts at 0-of-N.
+    Bypasses the pre-verified summary by calling call_core directly.
+    """
+    regime, actor, user, pss, crumbs = _setup(request)
+    # Clear stale completion flags — ensures new estate never inherits progress
+    # from a prior estate whose SectionStatus was not yet re-keyed (e.g. if
+    # _promote_case_to_verified ran before this defensive clear was added).
+    SectionStatus.objects.filter(user=user, regime=regime).delete()
+    new_case = create_case(user, regime)
+    request.session['case_id'] = str(new_case.case_id)
+    for key in ('iht_current_action', 'iht_in_core'):
+        request.session.pop(key, None)
+    # _setup captured regime_home_url from this view's own request.path
+    # (/hmrc/iht/cases/new/), not the orchestrator URL.  Override it in both
+    # the PSS (read by section_done when all regime sections are complete) and
+    # the top-level session (read by call_core to set PSS return_url for the
+    # mid-journey redirect).  Without this, completing S1 sends the user back
+    # here, creating a second draft case on every S1 completion.
+    orchestrator_url = reverse(
+        'dept_hmrc:regime_home', kwargs={'regime_id': regime.regime_id}
+    )
+    update_session(request, {'regime_home_url': orchestrator_url})  # PSS
+    request.session['regime_home_url'] = orchestrator_url           # top-level for call_core
+    # Set current_action so _exit_start fires when the user returns from S1.
+    # Without this the orchestrator has no context on return and falls through
+    # to _render_home with verified_case=None → AttributeError.
+    request.session['iht_current_action'] = 'start'
+    request.session.modified = True
+    # Go straight into S1 — skip the intermediate pre-verified summary page.
+    _enter_core(request)
+    entry_url = call_core(
+        request, regime, actor, user,
+        items=[{'type': 'section', 'id': 'HMRC_S1'}],
+        url_prefix='hmrc',
+    )
+    return redirect(entry_url)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -200,21 +323,20 @@ def _entry_deceased_details(request, regime, actor, user):
     return redirect(entry_url)
 
 
-def _entry_reckoner(request, regime, actor, user, verified_case):
+def _entry_reckoner(request, regime, actor, user):
     """
-    Estate ready reckoner — enter S2 (S3 follows on exit if needed).
-    Delegates to handle_reckoner which decides whether to enter S2 or S3.
-    Sets iht_in_core before any redirect into core.
+    Estate ready reckoner — enter S2 so user can review/amend
+    HMRC_13 (reckoner preference) and HMRC_14 (marital status).
+    Exit logic in _exit_reckoner / handle_reckoner decides whether
+    to proceed to S3 or return home.
     """
     _enter_core(request)
-    result = handle_reckoner(request, regime, actor, user, verified_case)
-    if result is not None:
-        return result
-    # handle_reckoner returned None — reckoner already complete, go home
-    _clear_in_core(request)
-    _clear_current_action(request)
-    return _render_home(request, regime, actor, user, verified_case,
-                        _get_crumbs(regime))
+    entry_url = call_core(
+        request, regime, actor, user,
+        items=[{'type': 'section', 'id': 'HMRC_S2'}],
+        url_prefix='hmrc',
+    )
+    return redirect(entry_url)
 
 
 def _entry_tailor(request, regime, actor, user):
@@ -224,30 +346,30 @@ def _entry_tailor(request, regime, actor, user):
     _enter_core(request)
     entry_url = call_core(
         request, regime, actor, user,
-        items=[{'type': 'section', 'id': sid} for sid in TRIAGE_SECTION_IDS],
+        items=[{'type': 'schedule', 'id': 'HMRC_SCH1'}],
         title='Tailor your submission',
         url_prefix='hmrc',
     )
     return redirect(entry_url)
 
 
-def _entry_common_assets(request, regime, actor, user, verified_case,
-                         active_items):
+def _entry_triage_assets(request, regime, actor, user, verified_case,
+                         active_items, section_id):
     """
-    Common assets — build schedule list from Yes-answered S4 questions,
-    filtered to schedules that have at least one section built.
-    If nothing is built yet, return None (falls through to home).
+    Triage set assets — build schedule list from Yes-answered questions for
+    the given triage section, filtered to schedules that have at least one
+    section built. If nothing is built yet, return None (falls through to home).
     """
-    items = _get_built_schedule_items(
-        active_items, 'HMRC_S4', QUESTION_SCHEDULE_MAP
-    )
+    triage_set = next((t for t in TRIAGE_SETS if t['section_id'] == section_id), None)
+    title = triage_set['name'] if triage_set else section_id
+    items = _get_built_schedule_items(active_items, section_id, QUESTION_SCHEDULE_MAP)
     if not items:
         return None
     _enter_core(request)
     entry_url = call_core(
         request, regime, actor, user,
         items=items,
-        title='Common assets',
+        title=title,
         url_prefix='hmrc',
     )
     return redirect(entry_url)
@@ -260,12 +382,15 @@ def _entry_common_assets(request, regime, actor, user, verified_case,
 def _exit_start(request, regime, actor, user, pss, crumbs):
     """
     Returned from S1 first time.
-    Run matching — create IHT reference if unique, dead end if duplicate.
+    Run matching — promote to verified if unique, dead end if duplicate.
     """
+    from core.interfaces import get_answers as _get_raw_answers
+    from .matching import _promote_case_to_verified
+
     # At this point S1 answers are in DB but no verified case exists yet.
     # Find the draft case to match against.
     draft_case = (
-        get_cases(user, regime)
+        get_cases(actor, regime)
         .filter(reference__isnull=True)
         .first()
     )
@@ -278,13 +403,20 @@ def _exit_start(request, regime, actor, user, pss, crumbs):
     result, duplicate_case = run_iht_matching(draft_case)
 
     if result == 'duplicate':
+        # Part 3: clean up the rejected draft so deceased details cannot
+        # surface as pre-population suggestions on alice's future estates.
+        from core.models import Answer as _Answer
+        _Answer.objects.filter(case=draft_case, user=actor).delete()
+        request.session.pop('case_id', None)
+        request.session.modified = True
+        draft_case.delete()
         _clear_current_action(request)
-        return _render_duplicate(request, draft_case, duplicate_case, crumbs)
+        return _render_duplicate(request, duplicate_case, crumbs)
 
-    # Unique — assign reference
-    from .matching import _generate_iht_reference
-    draft_case.reference = _generate_iht_reference()
-    draft_case.save(update_fields=['reference'])
+    # Unique — promote the draft to a verified estate, creating a distinct
+    # User for the deceased and re-keying answer rows to that User.
+    deceased_name_raw = _get_raw_answers(draft_case, ['HMRC_1']).get('HMRC_1') or {}
+    _promote_case_to_verified(draft_case, actor, deceased_name_raw)
 
     request.session['iht_flash'] = {
         'row':  'deceased_details',
@@ -343,7 +475,17 @@ def _exit_reckoner(request, regime, actor, user, verified_case):
 
 def _render_home(request, regime, actor, user, verified_case, crumbs):
     """Build lean action state and pass to iht_screen. Never renders directly."""
-    details  = _get_iht_answers(verified_case)
+    if verified_case:
+        hmrc_s1 = Section.objects.get(section_id='HMRC_S1')
+        deceased_rows = [
+            {
+                'label': row['question_text'],
+                'value': format_answer_for_display(row['question_type'], row['answer']),
+            }
+            for row in get_asked_answers_for_section(verified_case, hmrc_s1)
+        ]
+    else:
+        deceased_rows = []
     statuses = _get_statuses(actor, user, regime)
 
     s1_status           = _section_status(statuses, 'HMRC_S1')
@@ -358,7 +500,7 @@ def _render_home(request, regime, actor, user, verified_case, crumbs):
         s1_status, s2_status,
         reckoner_conclusion, active_items, flash,
     )
-    return iht_screen(request, regime, verified_case, details, actions, crumbs)
+    return iht_screen(request, regime, verified_case, deceased_rows, actions, crumbs)
 
 
 def _build_action_list(request, regime, actor, user, verified_case,
@@ -401,10 +543,7 @@ def _build_action_list(request, regime, actor, user, verified_case,
             reckoner_status = 'in_progress'
         else:
             reckoner_status = s2_status
-        if s2_status == 'complete' and s3_status in ('complete', 'in_progress'):
-            reckoner_url = '/section/HMRC_S3/review/'
-        else:
-            reckoner_url = reverse('dept_hmrc:iht_action_reckoner')
+        reckoner_url = reverse('dept_hmrc:iht_action_reckoner')
 
     actions.append({
         'id':            'reckoner',
@@ -453,13 +592,13 @@ def _build_action_list(request, regime, actor, user, verified_case,
                 built_items = _get_built_schedule_items(
                     active_items, sid, QUESTION_SCHEDULE_MAP
                 )
-                action_url = reverse(f'dept_hmrc:iht_action_{triage_set["action"]}') \
+                action_url = reverse(f'dept_hmrc:iht_action_{triage_set["section_id"].lower()}') \
                     if built_items else '#'
                 actions.append({
-                    'id':            triage_set['id'],
+                    'id':            triage_set['section_id'].lower(),
                     'status':        rollup,
                     'url':           action_url,
-                    'flash_message': _flash_for(triage_set['id']),
+                    'flash_message': _flash_for(triage_set['section_id'].lower()),
                     'hint':          None,
                     'extra':         {
                         'section_id': sid,
@@ -474,10 +613,9 @@ def _build_action_list(request, regime, actor, user, verified_case,
 # DUPLICATE RENDERS
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _render_duplicate(request, case, duplicate_case, crumbs):
-    """First-time matching conflict — estate already exists."""
+def _render_duplicate(request, duplicate_case, crumbs):
+    """First-time matching conflict — estate already exists. Draft has been deleted."""
     return render(request, 'dept_hmrc/iht/duplicate.html', {
-        'case':           case,
         'duplicate_case': duplicate_case,
         'breadcrumbs':    crumbs,
     })
@@ -603,15 +741,17 @@ def _get_built_schedule_items(active_items, section_id, schedule_map):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _setup(request):
-    """Common setup. Returns (regime, actor, user, pss, crumbs)."""
+    """
+    Common setup. Returns (regime, actor, user, pss, crumbs).
+    Requires choose_user gate to have already run (user_id in session).
+    """
     regime = get_object_or_404(
         Regime.objects.filter(dept_id='HMRC'),
         regime_id=IHT_REGIME_ID,
     )
     actor = request.user
-    update_session(request, {'user_id': actor.pk, 'actor_id': actor.pk})
-    pss  = get_session(request)
-    user = _resolve_user(pss, actor)
+    pss   = get_session(request)
+    user  = _resolve_user(pss, actor)
 
     crumbs = _get_crumbs(regime)
     update_session(request, {
@@ -636,6 +776,30 @@ def _get_verified_case(user, regime):
         get_cases(user, regime)
         .filter(reference__isnull=False)
         .first()
+    )
+
+
+def _get_verified_cases(actor, regime):
+    """
+    All verified IHT cases this actor can work on, most recent first.
+
+    Two sources are unioned:
+    - Post-promotion: cases where actor holds a case-scoped Permission
+      (actor=alice, user=deceased) created by _promote_case_to_verified.
+    - Direct user: cases where actor is themselves the Case subject
+      (covers test data and any legacy pre-promotion cases).
+    """
+    case_ids_via_perm = list(
+        Permission.objects
+        .filter(actor=actor, regime=regime, case__isnull=False,
+                case__reference__isnull=False)
+        .values_list('case_id', flat=True)
+    )
+    return (
+        Case.objects.filter(
+            Q(case_id__in=case_ids_via_perm) |
+            Q(user=actor, regime=regime, reference__isnull=False)
+        ).distinct().order_by('-started_at')
     )
 
 

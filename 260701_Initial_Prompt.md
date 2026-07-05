@@ -1,5 +1,5 @@
 # cg_data_exchange — Initial Prompt for New Claude Sessions
-Date: 19 June 2026
+Date: 1 July 2026
 
 ---
 
@@ -11,6 +11,15 @@ Date: 19 June 2026
 ```
 claude --dangerously-skip-permissions
 ```
+
+**If you get a 401 auth error:** exit CC, then:
+```
+set -a; source .env; set +a
+claude /logout
+claude --dangerously-skip-permissions
+```
+The auth conflict arises when both a claude.ai token and `ANTHROPIC_API_KEY` are set.
+`/logout` clears the claude.ai token; the API key then takes sole control.
 
 **Test command** (always use this exact form):
 ```
@@ -85,7 +94,9 @@ core/                 — Platform app (data model + execution engine)
   models.py           — All models
   interfaces.py       — Platform interface for dept apps
   views_layer2.py     — Execution engine (section journey)
-  views_layer1.py     — Shared navigation views
+  views_layer1.py     — Shared navigation views (regime_top_level,
+                        regime_schedules, regime_schedule_sections,
+                        regime_sections)
   views_admin_tools.py — Admin tooling
   templatetags/       — Markdown rendering
 core/templates/core/  — All execution engine and admin templates
@@ -139,9 +150,9 @@ Two session flags drive dispatch:
   every regime home visit to distinguish entry from exit
 - `iht_current_action` — which action button is active
 
-`call_sections` sets `return_url = regime_home_url` so core always returns
+`call_core` sets `return_url = regime_home_url` so core always returns
 to the dept orchestrator. No `post_confirm_redirect` used in HMRC IHT.
-See `260619_HMRC_IHT.md` section 2 for full detail.
+See HMRC IHT Reference section 2 for full detail.
 
 **Orchestrate / screen separation**
 `orchestrate.py` reads state and dispatches — never renders.
@@ -155,16 +166,28 @@ presentation.
 
 | Document | File | Purpose |
 |----------|------|---------|
-| Initial Prompt | `260619_Initial_Prompt.md` | This file — read first in every session |
-| Core Platform Reference | `260616_Core_Platform_Reference.md` | Stable platform reference — data model, interfaces, design decisions |
-| HMRC IHT Reference | `260619_HMRC_IHT.md` | Complete IHT technical reference — action buttons, matching, reckoner, triage |
-| HMRC Reference | `260616_HMRC_Reference.md` | Thin HMRC wrapper — regime structure, refers to HMRC IHT doc for detail |
-| Backlog | `260616_Backlog.md` | Active task list with completed sprint record |
+| Initial Prompt | `260701_Initial_Prompt.md` | This file — read first in every session |
+| Core Platform Reference | `260701_Core_Platform_Reference.md` | Stable platform reference — data model, interfaces, design decisions |
+| HMRC IHT Reference | `260701_HMRC_IHT.md` | Complete IHT technical reference — action buttons, matching, reckoner, triage, asset buttons |
+| IHT Journey Architecture | `260628_iht-journey-architecture.md` | Question-level design for IHT asset declaration journey |
+| Backlog | `260701_Backlog.md` | Active task list with completed sprint record |
 | file_dump.txt | `file_dump.txt` | Full current codebase (.py and .html) — regenerate before CC work |
 
 **Reading order for a new session:** this file → Core Platform Reference →
 HMRC IHT Reference → Backlog → file_dump.txt (as needed for specific files).
 
+All project documents are prefixed `260701_` as of 1 July 2026.
+
 **Superseded documents** (archive, do not read):
-- `260616_IHT_Orchestration_Logic.md` — replaced by `260619_HMRC_IHT.md`
-- `260616_IHT_Tailoring_Flow.md` — replaced by `260619_HMRC_IHT.md`
+- `260616_IHT_Orchestration_Logic.md` — replaced by HMRC IHT Reference
+- `260616_IHT_Tailoring_Flow.md` — replaced by HMRC IHT Reference
+- `260619_Initial_Prompt.md` — superseded
+- `260619_Core_Platform_Reference.md` — superseded
+- `260619_HMRC_IHT.md` — superseded
+- `260619_Backlog.md` — superseded
+- `260616_HMRC_Reference.md` — superseded
+- `260620_Initial_Prompt.md` — superseded by this file
+- `260620_Core_Platform_Reference.md` — superseded
+- `260620_HMRC_IHT.md` — superseded
+- `260628_Backlog.md` — superseded
+- `260628_Core_Platform_Reference.md` — superseded

@@ -1,7 +1,6 @@
 from django.urls import include, path
 
 from . import (
-    views_dept,
     views_home,
     views_nav,
     views_regime_schedules,
@@ -12,15 +11,15 @@ from . import (
 app_name = 'dept_demo'
 
 urlpatterns = [
-    # Entry point — person-picker (agents) or straight to dept_home (self-only users)
+    # Entry point — regime selection (identity picker follows after regime chosen)
     path('',
-         views_dept.choose_user,
-         name='choose_user'),
-
-    # Regime selection (multi-regime users)
-    path('select-regime/',
          views_nav.select_regime,
          name='select_regime'),
+
+    # Per-regime identity picker — runs after regime is selected
+    path('regime/<str:regime_id>/choose/',
+         views_nav.choose_identity,
+         name='choose_identity'),
 
     # Regime card list (reached from select_regime when count > 1)
     path('regimes/',

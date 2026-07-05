@@ -1,6 +1,6 @@
 from django.urls import include, path
 
-from . import views, views_layer1, views_layer2
+from . import views, views_gate, views_layer1, views_layer2
 
 app_name = 'core'
 
@@ -8,6 +8,10 @@ urlpatterns = [
 
     # ── Root landing page ─────────────────────────────────────────────────────
     path('', views.root_landing, name='root_landing'),
+
+    # ── Regime-scoped identity picker actions ─────────────────────────────────
+    path('select-identity/<int:perm_id>/', views_gate.select_identity, name='select_identity'),
+    path('select-self/',                    views_gate.select_self,      name='select_self'),
 
     # ── Admin tools (also mounted at /hmrc/tools/, /dwp/tools/, /demo/tools/) ─
     path('tools/', include('core.urls_tools')),
@@ -65,6 +69,22 @@ urlpatterns = [
     path('section/<str:section_id>/table/delete/<int:row_index>/',
          views_layer2.section_table_delete,
          name='section_table_delete'),
+
+    path('section/<str:section_id>/table/add-routed/',
+         views_layer2.section_table_routed_add,
+         name='section_table_routed_add'),
+
+    path('section/<str:section_id>/table/add-routed/<str:question_or_set_id>/',
+         views_layer2.section_table_routed_question,
+         name='section_table_routed_question'),
+
+    path('section/<str:section_id>/table/change/<int:row_index>/',
+         views_layer2.section_table_routed_change,
+         name='section_table_routed_change'),
+
+    path('section/<str:section_id>/table/row-detail/<int:row_index>/',
+         views_layer2.section_table_row_detail,
+         name='section_table_row_detail'),
 
     path('section/<str:section_id>/confirm-table/',
          views_layer2.section_confirm_table,

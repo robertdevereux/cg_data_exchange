@@ -71,6 +71,36 @@ def get_permitted_sections(actor, user, case_id=None):
     return (scope1 | scope2).distinct()
 
 
+def get_actor_accessible_regimes(actor, dept_id=None):
+    """
+    All regimes the actor can access for ANY user — used for the unscoped
+    regime picker that runs before identity selection.
+
+    Covers all three Permission scopes:
+      - regime-level grants (Permission.regime set)
+      - section-level grants where section.regime is set
+      - section-level grants where section.schedule.regime is set
+    """
+    perms = Permission.objects.filter(actor=actor)
+
+    qs = Regime.objects.filter(
+        Q(regime_id__in=perms.filter(
+            regime__isnull=False,
+        ).values_list('regime_id', flat=True)) |
+        Q(regime_id__in=perms.filter(
+            section__regime__isnull=False,
+        ).values_list('section__regime_id', flat=True)) |
+        Q(regime_id__in=perms.filter(
+            section__schedule__regime__isnull=False,
+        ).values_list('section__schedule__regime_id', flat=True))
+    ).distinct()
+
+    if dept_id is not None:
+        qs = qs.filter(dept_id=dept_id)
+
+    return qs.order_by('display_order', 'regime_name')
+
+
 def get_permitted_regimes(actor, user, dept_id=None):
     """
     Return a distinct QuerySet[Regime] of all regimes reachable from the

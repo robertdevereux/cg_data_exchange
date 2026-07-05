@@ -108,10 +108,15 @@ class Section(models.Model):
 
     # Table-section fields
     section_guidance = models.TextField(blank=True, null=True)
-    column_question_ids = models.TextField(
+    display_question_ids = models.TextField(
         blank=True,
         null=True,
-        help_text='Semicolon-delimited question IDs defining table column display order',
+        help_text=(
+            'Semicolon-delimited question IDs to display as table columns.\n'
+            'For flat tables (type 1): defines add-form columns and display order.\n'
+            'For routed tables (type 2): declares which routed questions appear as\n'
+            'summary columns. Routing defines the full row journey.'
+        ),
     )
     totals_question_ids = models.TextField(
         blank=True,
@@ -213,7 +218,7 @@ class Question(models.Model):
 class QuestionSet(models.Model):
     """
     A named group of questions presented together on one screen.
-    set_id values follow the convention S1, S2, S3, etc.
+    set_id values follow the convention SET1, SET2, SET3, etc.
     """
     set_id    = models.CharField(max_length=100, primary_key=True)
     set_title = models.CharField(max_length=255)
@@ -251,6 +256,36 @@ class QuestionSetMember(models.Model):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# SECTION MEMBERS — node pool for routing wizard pickers
+# ─────────────────────────────────────────────────────────────────────────────
+
+class SectionMember(models.Model):
+    """
+    Explicit pool of Questions/Sets available to a Section, prior to and
+    independent of routing. A node must be a SectionMember before it can
+    appear in that section's routing wizard pickers. Scoped to type-0 and
+    type-2 sections (type-1 flat tables use display_question_ids and have
+    no routing step, so no pool is needed there).
+    """
+    NODE_TYPE_CHOICES = [('Q', 'Question'), ('S', 'Set')]
+
+    section = models.ForeignKey(
+        Section, to_field='section_id',
+        on_delete=models.CASCADE, related_name='members',
+    )
+    node_id = models.CharField(max_length=100)
+    node_type = models.CharField(max_length=1, choices=NODE_TYPE_CHOICES)
+    added_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        unique_together = ['section', 'node_id']
+        ordering = ['added_order']
+
+    def __str__(self):
+        return f'{self.section_id} — {self.node_id}'
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # FA OBJECT 5: ROUTING
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -278,6 +313,17 @@ class Routing(models.Model):
     current_node = models.CharField(
         max_length=100,
         help_text='Q-prefixed question ID or S-prefixed set ID for this screen',
+    )
+    condition_question_id = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text=(
+            'Optional. If set, routing evaluates the answer to this question '
+            'rather than the current node\'s own answer. The question must have '
+            'been answered earlier in the journey (or on the current set page). '
+            'Leave blank to use the current node\'s own answer (standard behaviour).'
+        ),
     )
     answer_value = models.TextField(
         blank=True,
@@ -310,20 +356,21 @@ class Routing(models.Model):
         null=True,
         help_text='Threshold for scalar comparison; leave blank for standard answer_value matching',
     )
-    order_in_section = models.PositiveIntegerField(default=0)
+    order_in_section = models.FloatField(default=0)
 
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=['section', 'current_node', 'answer_value'],
+                fields=['section', 'current_node', 'condition_question_id', 'answer_value'],
                 name='unique_routing_rule',
             )
         ]
         ordering = ['order_in_section']
 
     def __str__(self):
+        cq = f' [on {self.condition_question_id}]' if self.condition_question_id else ''
         return (
-            f'{self.section_id} | {self.current_node}'
+            f'{self.section_id} | {self.current_node}{cq}'
             f' → {self.next_node or "END"}'
             f' (if {self.answer_value!r})'
         )

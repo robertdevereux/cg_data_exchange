@@ -313,6 +313,129 @@ def get_answers(case, question_ids):
     return result
 
 
+def get_asked_answers_for_section(case, section):
+    """
+    Replay this section's routing against the case's confirmed answers and
+    return the questions actually reached, in the order asked.
+
+    Returns an ordered list of dicts::
+
+        [{'question_id': str, 'question_text': str, 'answer': any}, ...]
+
+    Set nodes are expanded to their member questions in display order.
+    Stops at the first unanswered/unreached node, mirroring the re-entry
+    reconstruction in section_start.
+
+    Designed to be called by department apps that need to summarise or
+    validate what a citizen answered in a completed section.
+    """
+    # Local imports — keeps layer2 helpers private; avoids future circular risk.
+    from .models import Answer, Routing
+    from .views_layer2 import (
+        _build_section_tables,
+        _evaluate_routing,
+        _resolve_routing_answer,
+    )
+
+    routing_rows = Routing.objects.filter(section=section).order_by('order_in_section')
+    tables = _build_section_tables(routing_rows)
+    if not tables['first_node']:
+        return []
+
+    # Collect all question IDs reachable in this section (direct nodes + set members)
+    all_question_ids = tables['question_node_ids'] + list(tables['question_to_set'].keys())
+    answers = {
+        a.question_id: a.answer
+        for a in Answer.objects.filter(
+            user=case.user, case=case, question_id__in=all_question_ids,
+        )
+    }
+
+    results = []
+    node = tables['first_node']
+    while node is not None:
+        if node in tables['set_table']:
+            # Set node — expand members in display order
+            for member in tables['set_table'][node]['members']:
+                qid = member['question_id']
+                if qid not in answers:
+                    return results          # stop at first unanswered member
+                results.append({
+                    'question_id':   qid,
+                    'question_text': member['question_text'],
+                    'question_type': member.get('question_type', ''),
+                    'answer':        answers[qid],
+                })
+        else:
+            # Direct question node
+            if node not in answers:
+                return results              # stop at first unanswered question
+            q = tables['question_table'][node]
+            results.append({
+                'question_id':   node,
+                'question_text': q['question_text'],
+                'question_type': q.get('question_type', ''),
+                'answer':        answers[node],
+            })
+
+        routing_answer = _resolve_routing_answer(tables['routing_table'], node, answers)
+        next_node, found = _evaluate_routing(tables['routing_table'], node, routing_answer)
+        if not found:
+            break
+        node = next_node
+
+    return results
+
+
+def format_answer_for_display(question_type, answer):
+    """
+    Turn a raw Answer.answer value into a human-readable display string.
+
+    question_type: the Question.question_type string (e.g. 'text', 'date',
+                   'personal_name', 'address', 'compound', 'checkbox', …)
+    answer:        the stored value — may be a plain string, list, or dict
+                   depending on question_type.
+
+    Returns a non-empty string; uses '—' as the empty sentinel.
+    """
+    _months = ['January', 'February', 'March', 'April', 'May', 'June',
+               'July', 'August', 'September', 'October', 'November', 'December']
+
+    if question_type == 'compound' and isinstance(answer, dict):
+        return '\n'.join(f'{k}: {v}' for k, v in answer.items() if v) or '—'
+
+    if isinstance(answer, dict) and all(k in answer for k in ('day', 'month', 'year')):
+        try:
+            mon = int(answer['month'])
+            return f"{answer['day']} {_months[mon - 1]} {answer['year']}"
+        except (ValueError, IndexError):
+            return (
+                f"{answer.get('day', '')} {answer.get('month', '')} {answer.get('year', '')}"
+            )
+
+    if isinstance(answer, dict) and 'first_name' in answer:
+        return ' '.join(filter(None, [
+            answer.get('title', ''),
+            answer.get('first_name', ''),
+            answer.get('middle_name', ''),
+            answer.get('last_name', ''),
+        ])) or '—'
+
+    if isinstance(answer, dict) and 'line1' in answer:
+        return '\n'.join(filter(None, [
+            answer.get('line1', ''),
+            answer.get('line2', ''),
+            answer.get('city', ''),
+            answer.get('county', ''),
+            answer.get('postcode', ''),
+        ])) or '—'
+
+    if isinstance(answer, list):
+        return ', '.join(answer)
+
+    return answer or '—'
+
+
 def format_date(answer):
     """
     Format a date-type answer dict {day, month, year} as DD/MM/YYYY.

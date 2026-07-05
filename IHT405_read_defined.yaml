@@ -1,0 +1,806 @@
+questions:
+  - ref: Q1
+    box: null
+    question_id: HMRC_H1
+    question_text: "Name of the deceased"
+    type: text
+    options: []
+    guidance: ""
+    hint: ""
+    required: true
+    currency: false
+    validation: ""
+    notes: ""
+
+  - ref: Q2
+    box: null
+    question_id: HMRC_H2
+    question_text: "Date of death"
+    type: date
+    options: []
+    guidance: ""
+    hint: "For example, 31 3 2025"
+    required: true
+    currency: false
+    validation: ""
+    notes: ""
+
+  - ref: Q3
+    box: null
+    question_id: HMRC_H3
+    question_text: "Inheritance Tax reference number if known"
+    type: text
+    options: []
+    guidance: ""
+    hint: ""
+    required: false
+    currency: false
+    validation: ""
+    notes: "Marked as 'if known' so treated as optional."
+
+  - ref: Q4
+    box: null
+    question_id: HMRC_N1
+    question_text: "Is the person to contact about the valuation different from the one named on form IHT400, box 17?"
+    type: radio
+    options:
+      - "Yes"
+      - "No"
+    guidance: "Only complete the contact details section if the person we should contact about the valuation of houses or land is different from the one named on form IHT400, box 17. Make sure they have the legal personal representative's authority to be contacted."
+    hint: ""
+    required: true
+    currency: false
+    validation: ""
+    notes: ""
+
+  - ref: Q5
+    box: 1
+    question_id: HMRC_1
+    question_text: "What is the name and address of the firm or person dealing with the valuation of the houses or land?"
+    type: compound
+    options: []
+    guidance: ""
+    hint: ""
+    required: true
+    currency: false
+    validation: ""
+    notes: "Compound field combining a name and an address (firm or individual). Sub-fields: Title (Mr, Mrs, Miss, Ms or other), Name, House or building number, Remainder of address including house name or flat number, Postcode. Developer should note this combines name and address into one box on the original form."
+
+  - ref: Q6
+    box: 2
+    question_id: HMRC_2
+    question_text: "What is the contact name, if different from box 1?"
+    type: personal_name
+    options: []
+    guidance: ""
+    hint: ""
+    required: false
+    currency: false
+    validation: ""
+    notes: "Optional — only required if the contact name differs from the name given in box 1. Not a platform question (P_1) as this refers to a third-party contact, not the citizen."
+
+  - ref: Q7
+    box: 3
+    question_id: HMRC_3
+    question_text: "What is the contact's phone number?"
+    type: text
+    options: []
+    guidance: ""
+    hint: ""
+    required: true
+    currency: false
+    validation: ""
+    notes: "Could map to P_5 or P_6 but the form does not distinguish mobile from landline — treat as generic phone number text field."
+
+  - ref: Q8
+    box: 4
+    question_id: HMRC_4
+    question_text: "DX number and town (if used)"
+    type: text
+    options: []
+    guidance: ""
+    hint: "For example, DX 1234 London"
+    required: false
+    currency: false
+    validation: ""
+    notes: "DX (Document Exchange) number — optional."
+
+  - ref: Q9
+    box: 5
+    question_id: HMRC_5
+    question_text: "What is the contact's reference?"
+    type: text
+    options: []
+    guidance: ""
+    hint: ""
+    required: false
+    currency: false
+    validation: ""
+    notes: "Optional reference used by the contact's firm."
+
+  - ref: Q10
+    box: 6A
+    question_id: HMRC_6
+    question_text: "Item number"
+    type: number
+    options: []
+    guidance: "Number each item of property."
+    hint: ""
+    required: true
+    currency: false
+    validation: ""
+    notes: "TABLE COL for deceased's residence table (box 6). Item numbers must be consistent with those used elsewhere on the form."
+
+  - ref: Q11
+    box: 6B
+    question_id: HMRC_7
+    question_text: "Full address or description of property"
+    type: textarea
+    options: []
+    guidance: "Give the full address or description of the property. If the property has no street number, or it is farmland or other land without an address, enclose a plan that clearly shows the boundaries of the property."
+    hint: ""
+    required: true
+    currency: false
+    validation: ""
+    notes: "TABLE COL for deceased's residence table (box 6)."
+
+  - ref: Q12
+    box: 6C
+    question_id: HMRC_8
+    question_text: "Postcode of property"
+    type: text
+    options: []
+    guidance: ""
+    hint: ""
+    required: false
+    currency: false
+    validation: "Must be a valid UK postcode where provided."
+    notes: "TABLE COL for deceased's residence table (box 6). Not all properties (e.g. farmland) will have a postcode so treated as optional."
+
+  - ref: Q13
+    box: 6D
+    question_id: HMRC_9
+    question_text: "Tenure"
+    type: text
+    options: []
+    guidance: "State whether the deceased owned the property outright (freehold) or had a lease (leasehold). For leasehold property, enter the number of years left on the lease and the annual ground rent."
+    hint: "For example, freehold or leasehold. If leasehold, include length of lease and annual ground rent."
+    required: true
+    currency: false
+    validation: ""
+    notes: "TABLE COL for deceased's residence table (box 6). Free text to accommodate freehold/leasehold and lease details."
+
+  - ref: Q14
+    box: 6E
+    question_id: HMRC_10
+    question_text: "Details of lettings/leases"
+    type: textarea
+    options: []
+    guidance: "If the property was let out by the deceased, you must provide a copy of the lease, sublease, business or agricultural tenancy agreement. If the following information is not in the written agreement, or there is no written agreement, enter it here: date the tenancy or lease began; date the tenancy is due to end; what rent is payable and whether the rent can be reviewed; who is responsible for the outgoings on the property; name of the tenant. If the property was unoccupied at the date of death, write 'vacant'."
+    hint: ""
+    required: false
+    currency: false
+    validation: ""
+    notes: "TABLE COL for deceased's residence table (box 6). Optional — only required if property was let."
+
+  - ref: Q15
+    box: 6F
+    question_id: HMRC_11
+    question_text: "Value of Agricultural or Business Relief at 100%, or Woodlands Relief or heritage exemption deducted"
+    type: number
+    options: []
+    guidance: "Enter the value of the property that you say qualifies for Agricultural Relief at 100%, Business Relief at 100%, Woodlands Relief, or heritage exemption. You cannot deduct Business Relief on businesses that deal in properties or investments. For deaths on and after 6 April 2026, relief at 100% on the combined value of qualifying agricultural and/or business property is limited to £2.5 million. Unused allowance from a late spouse or civil partner may be transferred to the deceased's estate."
+    hint: ""
+    required: false
+    currency: true
+    validation: ""
+    notes: "TABLE COL for deceased's residence table (box 6). Optional — only completed where relief applies."
+
+  - ref: Q16
+    box: 6G
+    question_id: HMRC_12
+    question_text: "Value of Agricultural or Business Relief at 50%"
+    type: number
+    options: []
+    guidance: "Where the total value of qualifying property exceeds £2.5 million, the excess qualifies for relief at 50%. Enter the value here."
+    hint: ""
+    required: false
+    currency: true
+    validation: ""
+    notes: "TABLE COL for deceased's residence table (box 6). Optional — only completed where 50% relief applies."
+
+  - ref: Q17
+    box: 6H
+    question_id: HMRC_13
+    question_text: "Open market value at the date of death"
+    type: number
+    options: []
+    guidance: "Enter the open market value of the property at the date of death. If you have a professional valuation, enclose a copy with the completed form."
+    hint: ""
+    required: true
+    currency: true
+    validation: ""
+    notes: "TABLE COL for deceased's residence table (box 6). Total of this column is copied to IHT400 box 51."
+
+  - ref: Q18
+    box: 7A
+    question_id: HMRC_14
+    question_text: "Item number"
+    type: number
+    options: []
+    guidance: "Number each item of property."
+    hint: ""
+    required: true
+    currency: false
+    validation: ""
+    notes: "TABLE COL for other land and buildings table (box 7)."
+
+  - ref: Q19
+    box: 7B
+    question_id: HMRC_15
+    question_text: "Full address or description of property"
+    type: textarea
+    options: []
+    guidance: "Give the full address or description of the property. For rights over land (such as fishing or mineral rights), give details of those rights as well as details of the land. If the property has no street number, or it is farmland or other land without an address, enclose a plan that clearly shows the boundaries."
+    hint: ""
+    required: true
+    currency: false
+    validation: ""
+    notes: "TABLE COL for other land and buildings table (box 7)."
+
+  - ref: Q20
+    box: 7C
+    question_id: HMRC_16
+    question_text: "Postcode of property"
+    type: text
+    options: []
+    guidance: ""
+    hint: ""
+    required: false
+    currency: false
+    validation: "Must be a valid UK postcode where provided."
+    notes: "TABLE COL for other land and buildings table (box 7). Not all properties will have a postcode."
+
+  - ref: Q21
+    box: 7D
+    question_id: HMRC_17
+    question_text: "Tenure"
+    type: text
+    options: []
+    guidance: "State whether the deceased owned the property outright (freehold) or had a lease (leasehold). For leasehold property, enter the number of years left on the lease and the annual ground rent."
+    hint: "For example, freehold or leasehold. If leasehold, include length of lease and annual ground rent."
+    required: true
+    currency: false
+    validation: ""
+    notes: "TABLE COL for other land and buildings table (box 7)."
+
+  - ref: Q22
+    box: 7E
+    question_id: HMRC_18
+    question_text: "Details of lettings/leases"
+    type: textarea
+    options: []
+    guidance: "If the property was let out by the deceased, you must provide a copy of the lease, sublease, business or agricultural tenancy agreement. If the following information is not in the written agreement, or there is no written agreement, enter it here: date the tenancy or lease began; date the tenancy is due to end; what rent is payable and whether the rent can be reviewed; who is responsible for the outgoings on the property; name of the tenant. If the property was unoccupied at the date of death, write 'vacant'."
+    hint: ""
+    required: false
+    currency: false
+    validation: ""
+    notes: "TABLE COL for other land and buildings table (box 7). Optional — only required if property was let."
+
+  - ref: Q23
+    box: 7F
+    question_id: HMRC_19
+    question_text: "Value of Agricultural or Business Relief at 100%, or Woodlands Relief or heritage exemption deducted"
+    type: number
+    options: []
+    guidance: "Enter the value of the property that you say qualifies for Agricultural Relief at 100%, Business Relief at 100%, Woodlands Relief, or heritage exemption. You cannot deduct Business Relief on businesses that deal in properties or investments. For deaths on and after 6 April 2026, relief at 100% on the combined value of qualifying agricultural and/or business property is limited to £2.5 million."
+    hint: ""
+    required: false
+    currency: true
+    validation: ""
+    notes: "TABLE COL for other land and buildings table (box 7). Optional — only completed where relief applies."
+
+  - ref: Q24
+    box: 7G
+    question_id: HMRC_20
+    question_text: "Value of Agricultural or Business Relief at 50%"
+    type: number
+    options: []
+    guidance: "Where the total value of qualifying property exceeds £2.5 million, the excess qualifies for relief at 50%. Enter the value here."
+    hint: ""
+    required: false
+    currency: true
+    validation: ""
+    notes: "TABLE COL for other land and buildings table (box 7). Optional — only completed where 50% relief applies."
+
+  - ref: Q25
+    box: 7H
+    question_id: HMRC_21
+    question_text: "Open market value at the date of death"
+    type: number
+    options: []
+    guidance: "Enter the open market value of the property at the date of death. Include this total in form IHT400, boxes 68 to 70."
+    hint: ""
+    required: true
+    currency: true
+    validation: ""
+    notes: "TABLE COL for other land and buildings table (box 7)."
+
+  - ref: Q26
+    box: 8
+    question_id: HMRC_22
+    question_text: "Were any of the properties listed on this form subject to any special factors, such as major damage or development potential, that may affect their value?"
+    type: radio
+    options:
+      - "Yes"
+      - "No"
+    guidance: "If a property is damaged in a way that is covered by building insurance, it may affect the way we value it."
+    hint: ""
+    required: true
+    currency: false
+    validation: ""
+    notes: ""
+
+  - ref: Q27
+    box: 8
+    question_id: HMRC_23
+    question_text: "Item number"
+    type: number
+    options: []
+    guidance: "Use the same item numbers used in the first column of the property tables."
+    hint: ""
+    required: true
+    currency: false
+    validation: ""
+    notes: "This is the item number field within the special factors details section (box 8). Shares box reference 8 with Q26 and Q28."
+
+  - ref: Q28
+    box: 8
+    question_id: HMRC_24
+    question_text: "Details of the special factors"
+    type: textarea
+    options: []
+    guidance: "Describe the special factors affecting the property. Enclose a copy of the survey or structural engineer's report, or planning approval notice if appropriate."
+    hint: ""
+    required: true
+    currency: false
+    validation: ""
+    notes: "Shares box reference 8 with Q26 and Q27."
+
+  - ref: Q29
+    box: null
+    question_id: HMRC_N2
+    question_text: "Was the property damaged (as listed under the special factors in box 8)?"
+    type: radio
+    options:
+      - "Yes"
+      - "No"
+    guidance: "Answer Yes if the property was damaged in a way described under the special factors. If the property was damaged, you will be asked about insurance cover."
+    hint: ""
+    required: true
+    currency: false
+    validation: ""
+    notes: "NAV question routing to Q30 if Yes, or Q32 if No."
+
+  - ref: Q30
+    box: 9
+    question_id: HMRC_25
+    question_text: "Did the deceased's insurance cover all or part of the repairs?"
+    type: radio
+    options:
+      - "Yes"
+      - "No"
+    guidance: ""
+    hint: ""
+    required: true
+    currency: false
+    validation: ""
+    notes: ""
+
+  - ref: Q31
+    box: 10
+    question_id: HMRC_26
+    question_text: "Do you intend to make a claim under the deceased's insurance policy?"
+    type: radio
+    options:
+      - "Yes"
+      - "No"
+    guidance: "If Yes, attach copies of any correspondence you have had with the insurers or loss adjusters."
+    hint: ""
+    required: true
+    currency: false
+    validation: ""
+    notes: ""
+
+  - ref: Q32
+    box: 11
+    question_id: HMRC_27
+    question_text: "Have any of the properties been sold, or do you intend to sell any of them within 12 months of the date of death?"
+    type: radio
+    options:
+      - "Yes"
+      - "No"
+    guidance: ""
+    hint: ""
+    required: true
+    currency: false
+    validation: ""
+    notes: ""
+
+  - ref: Q33
+    box: 11A
+    question_id: HMRC_28
+    question_text: "Item number"
+    type: number
+    options: []
+    guidance: "Use the same item numbers used on the property tables."
+    hint: ""
+    required: true
+    currency: false
+    validation: ""
+    notes: "TABLE COL for property sale table (box 11)."
+
+  - ref: Q34
+    box: 11B
+    question_id: HMRC_29
+    question_text: "Sale status and date contracts were exchanged"
+    type: textarea
+    options: []
+    guidance: "Say whether the property has 'already been sold', 'is on the market now', or 'will be sold later'. If the property has been sold, give the date contracts were exchanged (or missives concluded for property in Scotland)."
+    hint: "For example: already been sold, contracts exchanged 15 June 2024"
+    required: true
+    currency: false
+    validation: ""
+    notes: "TABLE COL for property sale table (box 11)."
+
+  - ref: Q35
+    box: 11C
+    question_id: HMRC_30
+    question_text: "Asking price or agreed sale price"
+    type: number
+    options: []
+    guidance: "Do not deduct the costs of the sale."
+    hint: ""
+    required: true
+    currency: true
+    validation: ""
+    notes: "TABLE COL for property sale table (box 11)."
+
+  - ref: Q36
+    box: 11D
+    question_id: HMRC_31
+    question_text: "Was the sale, or is the intended sale, to a relative, friend or business colleague of the deceased?"
+    type: radio_inline
+    options:
+      - "Yes"
+      - "No"
+    guidance: ""
+    hint: ""
+    required: true
+    currency: false
+    validation: ""
+    notes: "TABLE COL for property sale table (box 11). radio_inline used as this is a column within a table row."
+
+  - ref: Q37
+    box: 11E
+    question_id: HMRC_32
+    question_text: "Price for fixtures, carpets and curtains if included in the sale price"
+    type: number
+    options: []
+    guidance: "Enter the amount attributed to fixtures, carpets and curtains if these were included in the sale price."
+    hint: ""
+    required: false
+    currency: true
+    validation: ""
+    notes: "TABLE COL for property sale table (box 11). Optional — only applicable if fixtures etc. are included in the sale price."
+
+  - ref: Q38
+    box: 11F
+    question_id: HMRC_33
+    question_text: "Do you want to use the sale price as the value at the date of death?"
+    type: radio_inline
+    options:
+      - "Yes"
+      - "No"
+    guidance: ""
+    hint: ""
+    required: true
+    currency: false
+    validation: ""
+    notes: "TABLE COL for property sale table (box 11). radio_inline used as this is a column within a table row."
+
+sections:
+  - ref: S1
+    title: "Form header details"
+    type: basic
+    question_refs: [Q1, Q2, Q3]
+    gateway_ref: null
+    notes: "Header section collecting identifying details for the form. Always shown."
+
+  - ref: S2
+    title: "Valuation contact details"
+    type: basic
+    question_refs: [Q4, Q5, Q6, Q7, Q8, Q9]
+    gateway_ref: Q4
+    notes: "Q4 is the NAV gateway. If the answer is No, the rest of the section is skipped."
+
+  - ref: S3
+    title: "Deceased's residence"
+    type: table
+    question_refs: [Q10, Q11, Q12, Q13, Q14, Q15, Q16, Q17]
+    gateway_ref: null
+    notes: "All questions are TABLE COL questions with unconditional routing. Rows correspond to individual properties that formed the deceased's residence."
+
+  - ref: S4
+    title: "Other land and buildings"
+    type: table
+    question_refs: [Q18, Q19, Q20, Q21, Q22, Q23, Q24, Q25]
+    gateway_ref: null
+    notes: "All questions are TABLE COL questions with unconditional routing. Rows correspond to other land, buildings and rights over land."
+
+  - ref: S5
+    title: "Special factors affecting value"
+    type: basic
+    question_refs: [Q26, Q27, Q28, Q29, Q30, Q31]
+    gateway_ref: Q26
+    notes: "Q26 gates the section — if No, routing skips to Q32 (S6). Q29 is a further branch within the section."
+
+  - ref: S6
+    title: "Property sale details"
+    type: conditional_table
+    question_refs: [Q32, Q33, Q34, Q35, Q36, Q37, Q38]
+    gateway_ref: Q32
+    notes: "Q32 gates the sale detail rows. If No, the form ends. The table columns (Q33–Q38) include conditional radio fields within each row, so type is conditional_table."
+
+routing:
+  - section: S1
+    current_q: Q1
+    condition_q: null
+    condition_answer: null
+    next_q: Q2
+
+  - section: S1
+    current_q: Q2
+    condition_q: null
+    condition_answer: null
+    next_q: Q3
+
+  - section: S1
+    current_q: Q3
+    condition_q: null
+    condition_answer: null
+    next_q: END
+
+  - section: S2
+    current_q: Q4
+    condition_q: Q4
+    condition_answer: "No"
+    next_q: END
+
+  - section: S2
+    current_q: Q4
+    condition_q: Q4
+    condition_answer: "Yes"
+    next_q: Q5
+
+  - section: S2
+    current_q: Q5
+    condition_q: null
+    condition_answer: null
+    next_q: Q6
+
+  - section: S2
+    current_q: Q6
+    condition_q: null
+    condition_answer: null
+    next_q: Q7
+
+  - section: S2
+    current_q: Q7
+    condition_q: null
+    condition_answer: null
+    next_q: Q8
+
+  - section: S2
+    current_q: Q8
+    condition_q: null
+    condition_answer: null
+    next_q: Q9
+
+  - section: S2
+    current_q: Q9
+    condition_q: null
+    condition_answer: null
+    next_q: END
+
+  - section: S3
+    current_q: Q10
+    condition_q: null
+    condition_answer: null
+    next_q: Q11
+
+  - section: S3
+    current_q: Q11
+    condition_q: null
+    condition_answer: null
+    next_q: Q12
+
+  - section: S3
+    current_q: Q12
+    condition_q: null
+    condition_answer: null
+    next_q: Q13
+
+  - section: S3
+    current_q: Q13
+    condition_q: null
+    condition_answer: null
+    next_q: Q14
+
+  - section: S3
+    current_q: Q14
+    condition_q: null
+    condition_answer: null
+    next_q: Q15
+
+  - section: S3
+    current_q: Q15
+    condition_q: null
+    condition_answer: null
+    next_q: Q16
+
+  - section: S3
+    current_q: Q16
+    condition_q: null
+    condition_answer: null
+    next_q: Q17
+
+  - section: S3
+    current_q: Q17
+    condition_q: null
+    condition_answer: null
+    next_q: END
+
+  - section: S4
+    current_q: Q18
+    condition_q: null
+    condition_answer: null
+    next_q: Q19
+
+  - section: S4
+    current_q: Q19
+    condition_q: null
+    condition_answer: null
+    next_q: Q20
+
+  - section: S4
+    current_q: Q20
+    condition_q: null
+    condition_answer: null
+    next_q: Q21
+
+  - section: S4
+    current_q: Q21
+    condition_q: null
+    condition_answer: null
+    next_q: Q22
+
+  - section: S4
+    current_q: Q22
+    condition_q: null
+    condition_answer: null
+    next_q: Q23
+
+  - section: S4
+    current_q: Q23
+    condition_q: null
+    condition_answer: null
+    next_q: Q24
+
+  - section: S4
+    current_q: Q24
+    condition_q: null
+    condition_answer: null
+    next_q: Q25
+
+  - section: S4
+    current_q: Q25
+    condition_q: null
+    condition_answer: null
+    next_q: END
+
+  - section: S5
+    current_q: Q26
+    condition_q: Q26
+    condition_answer: "No"
+    next_q: Q32
+
+  - section: S5
+    current_q: Q26
+    condition_q: Q26
+    condition_answer: "Yes"
+    next_q: Q27
+
+  - section: S5
+    current_q: Q27
+    condition_q: null
+    condition_answer: null
+    next_q: Q28
+
+  - section: S5
+    current_q: Q28
+    condition_q: null
+    condition_answer: null
+    next_q: Q29
+
+  - section: S5
+    current_q: Q29
+    condition_q: Q29
+    condition_answer: "No"
+    next_q: Q32
+
+  - section: S5
+    current_q: Q29
+    condition_q: Q29
+    condition_answer: "Yes"
+    next_q: Q30
+
+  - section: S5
+    current_q: Q30
+    condition_q: null
+    condition_answer: null
+    next_q: Q31
+
+  - section: S5
+    current_q: Q31
+    condition_q: null
+    condition_answer: null
+    next_q: END
+
+  - section: S6
+    current_q: Q32
+    condition_q: Q32
+    condition_answer: "No"
+    next_q: END
+
+  - section: S6
+    current_q: Q32
+    condition_q: Q32
+    condition_answer: "Yes"
+    next_q: Q33
+
+  - section: S6
+    current_q: Q33
+    condition_q: null
+    condition_answer: null
+    next_q: Q34
+
+  - section: S6
+    current_q: Q34
+    condition_q: null
+    condition_answer: null
+    next_q: Q35
+
+  - section: S6
+    current_q: Q35
+    condition_q: null
+    condition_answer: null
+    next_q: Q36
+
+  - section: S6
+    current_q: Q36
+    condition_q: null
+    condition_answer: null
+    next_q: Q37
+
+  - section: S6
+    current_q: Q37
+    condition_q: null
+    condition_answer: null
+    next_q: Q38
+
+  - section: S6
+    current_q: Q38
+    condition_q: null
+    condition_answer: null
+    next_q: END

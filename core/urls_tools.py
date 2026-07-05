@@ -184,6 +184,14 @@ urlpatterns = [
          views_admin_tools.tools_section_edit,
          name='tools_section_edit'),
 
+    path('sections/<str:section_id>/members/add/',
+         views_admin_tools.tools_section_member_add,
+         name='tools_section_member_add'),
+
+    path('sections/<str:section_id>/members/<str:node_id>/remove/',
+         views_admin_tools.tools_section_member_remove,
+         name='tools_section_member_remove'),
+
     path('sections/<str:section_id>/routing/',
          views_admin_tools.tools_section_routing,
          name='tools_section_routing'),

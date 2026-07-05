@@ -9,7 +9,7 @@ def _get_iht_answers(case):
     Return a dict of deceased's details for a given Case.
     Keys: name_display, dob_display, dod_display, nino, last_name, dod_raw.
     """
-    answers  = get_answers(case, ['HMRC_1', 'HMRC_2', 'HMRC_3', 'HMRC_4'])
+    answers  = get_answers(case, ['HMRC_1', 'HMRC_2', 'HMRC_3', 'HMRC_4', 'HMRC_14'])
     name_raw = answers['HMRC_1']
     dod_raw  = answers['HMRC_2']
     dob_raw  = answers['HMRC_3']
@@ -28,11 +28,14 @@ def _get_iht_answers(case):
         name_display = str(name_raw) if name_raw else ''
         last_name    = name_display.split()[-1].lower() if name_display else ''
 
+    marital_raw = answers.get('HMRC_14') or ''
+
     return {
-        'name_display': name_display,
-        'dob_display':  format_date(dob_raw),
-        'dod_display':  format_date(dod_raw),
-        'nino':         nino_raw or '',
-        'last_name':    last_name,
-        'dod_raw':      dod_raw,
+        'name_display':   name_display,
+        'dob_display':    format_date(dob_raw),
+        'dod_display':    format_date(dod_raw),
+        'nino':           nino_raw or '',
+        'last_name':      last_name,
+        'dod_raw':        dod_raw,
+        'marital_status': marital_raw,
     }

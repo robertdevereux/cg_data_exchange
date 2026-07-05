@@ -1,0 +1,108 @@
+Questions
+Q1, null, BASIC, , Name of the deceased
+Q2, null, BASIC, , Date of death
+Q3, null, BASIC, NAV, Is the valuation contact different from the person named on form IHT400, box 17?
+Q4, 1, BASIC, , Name of the firm or person dealing with the valuation of the houses or land
+Q5, 1, BASIC, , Address of the firm or person dealing with the valuation of the houses or land
+Q6, 2, BASIC, , Contact name, if different from box 1
+Q7, 2, BASIC, , Title of the contact
+Q8, 2, BASIC, , Name of the contact
+Q9, 3, BASIC, , Phone number
+Q10, 4, BASIC, , DX number and town
+Q11, 5, BASIC, , Contact's reference
+Q12, 6A, TABLE, , Item number
+Q13, 6B, TABLE, , Full address or description of property
+Q14, 6C, TABLE, , Postcode of property
+Q15, 6D, TABLE, NAV, Is this property freehold or leasehold?
+Q16, 6D, TABLE, , Length of the lease (years remaining)
+Q17, 6D, TABLE, , Annual ground rent
+Q18, 6E, TABLE, , Details of lettings/leases
+Q19, 6F, TABLE, , Value of Agricultural or Business Relief at 100% or Woodlands Relief or heritage exemption deducted
+Q20, 6G, TABLE, , Value of Agricultural or Business Relief at 50%
+Q21, 6H, TABLE, , Open market value at the date of death
+Q22, 7A, TABLE, , Item number
+Q23, 7B, TABLE, , Full address or description of property
+Q24, 7C, TABLE, , Postcode of property
+Q25, 7D, TABLE, NAV, Is this property freehold or leasehold?
+Q26, 7D, TABLE, , Length of the lease (years remaining)
+Q27, 7D, TABLE, , Annual ground rent
+Q28, 7E, TABLE, , Details of lettings/leases
+Q29, 7F, TABLE, , Value of Agricultural or Business Relief at 100% or Woodlands Relief or heritage exemption deducted
+Q30, 7G, TABLE, , Value of Agricultural or Business Relief at 50%
+Q31, 7H, TABLE, , Open market value at the date of death
+Q32, 8, BASIC, NAV, Were any of the properties subject to special factors that may affect their value?
+Q33, 8, TABLE, , Item number
+Q34, 8, TABLE, , Details of the special factors
+Q35, null, BASIC, NAV, Was the property damaged?
+Q36, 9, BASIC, NAV, Did the deceased's insurance cover all or part of the repairs?
+Q37, 10, BASIC, , Do you intend to make a claim under the deceased's insurance policy?
+Q38, 11, BASIC, NAV, Have any of the properties been sold or do you intend to sell any within 12 months of the date of death?
+Q39, 11A, TABLE, , Item number
+Q40, 11B, TABLE, , Sale status and date contracts were exchanged
+Q41, 11C, TABLE, , Asking price or agreed sale price
+Q42, 11D, TABLE, , Was the sale to a relative, friend or business colleague of the deceased?
+Q43, 11E, TABLE, , Price for fixtures, carpets and curtains if included in the sale price
+Q44, 11F, TABLE, , Do you want to use the sale price as the value at the date of death?
+
+Sections
+S1, basic, [Q1, Q2], "Details of the deceased"
+S2, basic, [Q3, Q4, Q5, Q6, Q7, Q8, Q9, Q10, Q11], "Valuation contact details"
+S3, conditional_table, [Q12, Q13, Q14, Q15, Q16, Q17, Q18, Q19, Q20, Q21], "Deceased's residence properties"
+S4, conditional_table, [Q22, Q23, Q24, Q25, Q26, Q27, Q28, Q29, Q30, Q31], "Other land and buildings"
+S5, basic, [Q32, Q35, Q36, Q37], "Special factors affecting value"
+S6, conditional_table, [Q33, Q34], "Special factors property details"
+S7, basic, [Q38], "Property sale"
+S8, conditional_table, [Q39, Q40, Q41, Q42, Q43, Q44], "Property sale details"
+
+Routing
+S1, Q1, null, null, Q2
+S1, Q2, null, null, END
+S2, Q3, null, "Yes", Q4
+S2, Q3, null, "No", END
+S2, Q4, null, null, Q5
+S2, Q5, null, null, Q6
+S2, Q6, null, null, Q7
+S2, Q7, null, null, Q8
+S2, Q8, null, null, Q9
+S2, Q9, null, null, Q10
+S2, Q10, null, null, Q11
+S2, Q11, null, null, END
+S3, Q12, null, null, Q13
+S3, Q13, null, null, Q14
+S3, Q14, null, null, Q15
+S3, Q15, null, "Leasehold", Q16
+S3, Q15, null, "Freehold", Q18
+S3, Q16, null, null, Q17
+S3, Q17, null, null, Q18
+S3, Q18, null, null, Q19
+S3, Q19, null, null, Q20
+S3, Q20, null, null, Q21
+S3, Q21, null, null, END
+S4, Q22, null, null, Q23
+S4, Q23, null, null, Q24
+S4, Q24, null, null, Q25
+S4, Q25, null, "Leasehold", Q26
+S4, Q25, null, "Freehold", Q28
+S4, Q26, null, null, Q27
+S4, Q27, null, null, Q28
+S4, Q28, null, null, Q29
+S4, Q29, null, null, Q30
+S4, Q30, null, null, Q31
+S4, Q31, null, null, END
+S5, Q32, null, "No", Q38
+S5, Q32, null, "Yes", Q35
+S5, Q35, null, "Yes", Q36
+S5, Q35, null, "No", Q38
+S5, Q36, null, "Yes", Q37
+S5, Q36, null, "No", Q37
+S5, Q37, null, null, END
+S6, Q33, null, null, Q34
+S6, Q34, null, null, END
+S7, Q38, null, "No", END
+S7, Q38, null, "Yes", END
+S8, Q39, null, null, Q40
+S8, Q40, null, null, Q41
+S8, Q41, null, null, Q42
+S8, Q42, null, null, Q43
+S8, Q43, null, null, Q44
+S8, Q44, null, null, END

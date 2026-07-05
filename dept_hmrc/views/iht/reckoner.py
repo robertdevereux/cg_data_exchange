@@ -203,8 +203,11 @@ def handle_reckoner(request, regime, actor, user, case):
     hmrc14 = ans['HMRC_14']
 
 
-    # HMRC_13 = No (or missing) → main flow, home page renders
+    # HMRC_13 = No (or missing) → clear any stale reckoner conclusion, home page renders
     if hmrc13 != HMRC13_YES:
+        from dept_hmrc.models import IHTReckoner
+        if case:
+            IHTReckoner.objects.filter(case=case).delete()
         return None
 
     # HMRC_13 = Yes → look up which reckoner section to call

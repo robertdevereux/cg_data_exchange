@@ -14,8 +14,6 @@
         Insert node
         {% if position == 'first' %}
           — at start
-        {% elif position == 'before' and anchor_node == '__END__' %}
-          — before END
         {% elif position == 'before' %}
           — before <code>{{ anchor_node }}</code>
         {% elif position == 'after' and anchor_answer_value %}
@@ -91,6 +89,25 @@
             No sets available — all are already in this section's routing.
           </p>
           {% endif %}
+        </div>
+
+        {# ── Condition question ID (optional) ─────────────────────────────── #}
+        <div class="govuk-form-group">
+          <label class="govuk-label govuk-label--s" for="condition_question_id">
+            Condition question ID
+            <span class="govuk-hint" style="display:inline">(optional)</span>
+          </label>
+          <div class="govuk-hint">
+            Leave blank to condition routing on the current node's own answer
+            (standard behaviour). Set to a question ID to condition routing on
+            that question's answer instead — useful for set nodes where the
+            routing decision depends on a specific member question.
+          </div>
+          <input class="govuk-input govuk-input--width-10"
+                 type="text"
+                 id="condition_question_id"
+                 name="condition_question_id"
+                 value="">
         </div>
 
         {# ── Next node (non-branching) ─────────────────────────────────────── #}
@@ -379,6 +396,22 @@
 
     if (destTypeQ) destTypeQ.addEventListener('change', toggleDestType);
     if (destTypeS) destTypeS.addEventListener('change', toggleDestType);
+
+    // Pre-select node_id if supplied via ?prefill_node=
+    {% if prefill_node %}
+    (function() {
+      var sel = document.getElementById('node-id-q');
+      if (sel) {
+        for (var i = 0; i < sel.options.length; i++) {
+          if (sel.options[i].value === '{{ prefill_node }}') {
+            sel.selectedIndex = i;
+            onQuestionChange();
+            break;
+          }
+        }
+      }
+    })();
+    {% endif %}
   </script>
 
 {% endblock %}

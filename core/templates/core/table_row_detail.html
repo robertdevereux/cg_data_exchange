@@ -1,0 +1,36 @@
+{% extends "core/base.html" %}
+
+{% block title %}Row details — {{ section.section_name }}{% endblock %}
+
+{% block content %}
+
+  <a href="{{ back_url }}" class="govuk-back-link">Back to {{ section.section_name }}</a>
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-two-thirds">
+
+      <h1 class="govuk-heading-l">Other details — record {{ row_number }}</h1>
+      <h2 class="govuk-heading-m">{{ section.section_name }}</h2>
+
+      {% if extras %}
+      <dl class="govuk-summary-list">
+        {% for item in extras %}
+        <div class="govuk-summary-list__row">
+          <dt class="govuk-summary-list__key">{{ item.question_text }}</dt>
+          <dd class="govuk-summary-list__value">
+            {% if item.answer %}{{ item.answer }}{% else %}&mdash;{% endif %}
+          </dd>
+        </div>
+        {% endfor %}
+      </dl>
+      {% else %}
+      <p class="govuk-body">No additional details recorded for this entry.</p>
+      {% endif %}
+
+      <a href="{{ back_url }}" class="govuk-button govuk-button--secondary"
+         data-module="govuk-button">Back to list</a>
+
+    </div>
+  </div>
+
+{% endblock %}

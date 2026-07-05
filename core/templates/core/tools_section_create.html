@@ -117,17 +117,18 @@
                       rows="3">{{ post.section_guidance|default:'' }}</textarea>
           </div>
 
-          {# ── Column question IDs ────────────────────────────────────────────── #}
+          {# ── Display question IDs ───────────────────────────────────────────── #}
           <div class="govuk-form-group">
-            <label class="govuk-label govuk-label--s" for="column_question_ids">
-              Column question IDs
+            <label class="govuk-label govuk-label--s" for="display_question_ids">
+              Display question IDs
               <span class="govuk-hint" style="display:inline">(optional)</span>
             </label>
             <div class="govuk-hint">
               Table sections only. Semicolon-delimited question IDs defining column order, e.g. Q1;Q2;Q3.
+              For routed tables (type 2) these are the summary columns; routing defines the full journey.
             </div>
-            <input class="govuk-input" id="column_question_ids" name="column_question_ids"
-                   type="text" value="{{ post.column_question_ids|default:'' }}">
+            <input class="govuk-input" id="display_question_ids" name="display_question_ids"
+                   type="text" value="{{ post.display_question_ids|default:'' }}">
           </div>
 
           {# ── Totals question IDs ────────────────────────────────────────────── #}

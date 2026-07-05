@@ -7,7 +7,13 @@
   <div class="govuk-grid-row">
     <div class="govuk-grid-column-two-thirds">
 
+      {% if back == 'section' and back_section %}
+      <a href="{% url 'core:tools_section_edit' back_section %}#pool" class="govuk-back-link">
+        Section {{ back_section }}
+      </a>
+      {% else %}
       <a href="{% url 'core:tools_questions_list' %}" class="govuk-back-link">Question bank</a>
+      {% endif %}
 
       <h1 class="govuk-heading-l govuk-!-margin-top-4">Add question</h1>
 
@@ -37,6 +43,8 @@
 
       <form method="post" novalidate>
         {% csrf_token %}
+        <input type="hidden" name="back"         value="{{ back }}">
+        <input type="hidden" name="back_section" value="{{ back_section }}">
 
         {# ── Prefix selector (superusers only) ───────────────────────────────── #}
         {% if is_superuser %}

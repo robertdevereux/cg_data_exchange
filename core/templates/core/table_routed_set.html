@@ -1,0 +1,115 @@
+{% extends "core/base.html" %}
+
+{% block title %}Add record — {{ section.section_name }}{% endblock %}
+
+{% block content %}
+
+  <a href="{{ back_url }}" class="govuk-back-link">Back</a>
+
+  <div class="govuk-grid-row">
+    <div class="govuk-grid-column-two-thirds">
+
+      <form method="post" action="">
+        {% csrf_token %}
+
+        <h1 class="govuk-heading-l">{{ set_title }}</h1>
+
+        {% if set_hint %}
+        <div class="govuk-hint">{{ set_hint }}</div>
+        {% endif %}
+
+        {% for field in members %}
+        <div class="govuk-form-group">
+
+          {% if field.question_type == "radio" or field.question_type == "radio_inline" %}
+          <fieldset class="govuk-fieldset">
+            <legend class="govuk-fieldset__legend">
+              <label class="govuk-label" for="field-{{ field.question_id }}-1">
+                {{ field.question_text }}
+              </label>
+            </legend>
+            {% if field.hint %}
+            <div class="govuk-hint">{{ field.hint }}</div>
+            {% endif %}
+            <div class="govuk-radios{% if field.question_type == 'radio_inline' %} govuk-radios--inline{% endif %}" data-module="govuk-radios">
+              {% for option in field.options %}
+              <div class="govuk-radios__item">
+                <input class="govuk-radios__input"
+                       id="field-{{ field.question_id }}-{{ forloop.counter }}"
+                       name="{{ field.question_id }}" type="radio"
+                       value="{{ option }}"
+                       {% if option == field.current_value %}checked{% endif %}>
+                <label class="govuk-label govuk-radios__label"
+                       for="field-{{ field.question_id }}-{{ forloop.counter }}">
+                  {{ option }}
+                </label>
+              </div>
+              {% endfor %}
+            </div>
+          </fieldset>
+
+          {% elif field.question_type == "checkbox" %}
+          <fieldset class="govuk-fieldset">
+            <legend class="govuk-fieldset__legend">
+              <label class="govuk-label" for="field-{{ field.question_id }}-1">
+                {{ field.question_text }}
+              </label>
+            </legend>
+            {% if field.hint %}
+            <div class="govuk-hint">{{ field.hint }}</div>
+            {% endif %}
+            <div class="govuk-checkboxes" data-module="govuk-checkboxes">
+              {% for option in field.options %}
+              <div class="govuk-checkboxes__item">
+                <input class="govuk-checkboxes__input"
+                       id="field-{{ field.question_id }}-{{ forloop.counter }}"
+                       name="{{ field.question_id }}" type="checkbox"
+                       value="{{ option }}"
+                       {% if field.current_value and option in field.current_value %}checked{% endif %}>
+                <label class="govuk-label govuk-checkboxes__label"
+                       for="field-{{ field.question_id }}-{{ forloop.counter }}">
+                  {{ option }}
+                </label>
+              </div>
+              {% endfor %}
+            </div>
+          </fieldset>
+
+          {% elif field.question_type == "number" %}
+          <label class="govuk-label" for="field-{{ field.question_id }}">
+            {{ field.question_text }}
+          </label>
+          {% if field.hint %}
+          <div class="govuk-hint">{{ field.hint }}</div>
+          {% endif %}
+          <input class="govuk-input govuk-input--width-10"
+                 type="number" step="any"
+                 id="field-{{ field.question_id }}"
+                 name="{{ field.question_id }}"
+                 value="{{ field.current_value|default:'' }}">
+
+          {% else %}
+          <label class="govuk-label" for="field-{{ field.question_id }}">
+            {{ field.question_text }}
+          </label>
+          {% if field.hint %}
+          <div class="govuk-hint">{{ field.hint }}</div>
+          {% endif %}
+          <input class="govuk-input"
+                 type="text"
+                 id="field-{{ field.question_id }}"
+                 name="{{ field.question_id }}"
+                 value="{{ field.current_value|default:'' }}">
+          {% endif %}
+
+        </div>
+        {% endfor %}
+
+        <button class="govuk-button" data-module="govuk-button">Continue</button>
+        <a href="{{ back_url }}" class="govuk-link" style="margin-left:1em">Cancel</a>
+      </form>
+
+    </div>
+  </div>
+
+{% endblock %}

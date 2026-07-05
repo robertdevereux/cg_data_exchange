@@ -146,13 +146,13 @@ class TestPatternA_DemoSimple(TestCase):
         # Visit regime home first so session gets return_url set
         self.client.get('/demo/regime/demo-simple/')
 
-        # Start the section — first node is now the S1 set page
+        # Start the section — first node is now the SET1 set page
         r = self.client.get('/section/SIMPLE_S1/start/')
         self.assertEqual(r.status_code, 302)
-        self.assertIn('/set/S1/', r['Location'])
+        self.assertIn('/set/SET1/', r['Location'])
 
-        # POST S1 set page (first name, last name)
-        r = self.client.post('/section/SIMPLE_S1/set/S1/', {
+        # POST SET1 set page (first name, last name)
+        r = self.client.post('/section/SIMPLE_S1/set/SET1/', {
             'TEST_22': 'Carla', 'TEST_23': 'Garcia',
         })
         self.assertEqual(r.status_code, 302, 'POST S1 returned unexpected status')
@@ -433,7 +433,7 @@ class TestPrePopulation(TestCase):
         self.client.get('/section/SECTIONS_S1/start/')
 
         # Advance past the S1 set page (first node) to reach TEST_2
-        self.client.post('/section/SECTIONS_S1/set/S1/', {
+        self.client.post('/section/SECTIONS_S1/set/SET1/', {
             'TEST_22': 'Alice', 'TEST_23': 'Johnson',
         })
 

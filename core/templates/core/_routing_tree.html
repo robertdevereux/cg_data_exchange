@@ -1,0 +1,176 @@
+{% comment %}
+  Shared routing-tree partial.
+  Required context: section, tree, routing_validation, first_question_id
+  Used by: tools_section_routing.html, tools_section_edit.html
+{% endcomment %}
+
+{% if not routing_validation.valid %}
+<div class="govuk-notification-banner govuk-notification-banner--important"
+     role="region" aria-labelledby="routing-warning-title"
+     data-module="govuk-notification-banner">
+  <div class="govuk-notification-banner__header">
+    <h2 class="govuk-notification-banner__title" id="routing-warning-title">Warning</h2>
+  </div>
+  <div class="govuk-notification-banner__content">
+    <p class="govuk-body govuk-!-margin-bottom-1">
+      This section has routing issues and cannot be used in a regime until resolved:
+    </p>
+    <ul class="govuk-list govuk-list--bullet govuk-!-margin-bottom-0">
+      {% for issue in routing_validation.issues %}
+      <li>{{ issue }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endif %}
+
+{% if tree|length == 1 and tree.0.type == 'end' %}
+  <p class="govuk-body">No routing defined yet.</p>
+  <a href="{% url 'core:tools_routing_insert' section.section_id %}?position=first"
+     class="govuk-button govuk-button--secondary">Add first node</a>
+{% else %}
+
+<style>
+  .routing-tree { font-family: monospace; font-size: 0.875rem; border: 1px solid #b1b4b6; border-radius: 4px; overflow: hidden; }
+  .routing-row {
+    display: flex;
+    align-items: center;
+    padding: 6px 10px;
+    border-bottom: 1px solid #e8e8e8;
+    position: relative;
+    background: #ffffff;
+  }
+  .routing-row:last-child { border-bottom: none; }
+  .rt-end { color: #505a5f; font-style: italic; }
+  .routing-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .routing-label--question { white-space: normal; text-overflow: unset; overflow: visible; }
+  .dots-btn {
+    background: none;
+    border: 1px solid #b1b4b6;
+    border-radius: 3px;
+    cursor: pointer;
+    padding: 0 8px;
+    font-size: 1.1rem;
+    line-height: 1.6;
+    margin-left: 8px;
+    flex-shrink: 0;
+  }
+  .dots-btn:hover { background: #f0f0f0; }
+  .action-menu {
+    display: none;
+    position: absolute;
+    right: 10px;
+    top: 34px;
+    background: #fff;
+    border: 1px solid #b1b4b6;
+    border-radius: 3px;
+    padding: 6px 0;
+    z-index: 1000;
+    min-width: 260px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  .routing-row:last-child .action-menu,
+  .routing-row:nth-last-child(-n+2) .action-menu {
+    bottom: 100%; top: auto;
+  }
+  .action-menu a,
+  .action-menu button.am-link {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 6px 16px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-family: monospace;
+    color: #1d70b8;
+    text-decoration: underline;
+    white-space: nowrap;
+    box-sizing: border-box;
+  }
+  .action-menu a:hover,
+  .action-menu button.am-link:hover { background: #f3f2f1; }
+  .action-menu hr.am-sep {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 4px 0;
+  }
+</style>
+
+<div class="routing-tree">
+  {% for node in tree %}
+
+    {% if node.type == 'end' and node.indent == 0 %}
+    <div class="routing-row rt-end" style="padding-left: calc(10px + {{ node.indent }}rem);">
+      <span class="routing-label">&rarr; END</span>
+    </div>
+
+    {% elif node.type == 'condition' %}
+    <div class="routing-row"
+         style="padding-left: calc(10px + {{ node.indent }}rem);">
+      <span class="routing-label" style="color: #505a5f;">
+        {% if node.condition_question_id %}
+          <span style="font-size:0.8em; color:#b1b4b6;">[on {{ node.condition_question_id }}]</span>
+        {% endif %}
+        {% if node.answer_value %}
+          = {{ node.answer_value }}
+        {% else %}
+          All other answers
+        {% endif %}
+        &nbsp;&rarr;&nbsp;
+        {% if node.next_node %}
+          {% if node.show_brackets %}<a href="{% url 'core:tools_routing_insert' section.section_id %}?position=after&anchor_node={{ node.node_id }}&prefill_node={{ node.next_node }}" style="color:inherit;">[{{ node.next_node }}]</a>{% else %}{{ node.next_node }}{% endif %}
+        {% else %}
+          END
+        {% endif %}
+      </span>
+    </div>
+
+    {% elif node.type == 'question' %}
+    <div class="routing-row"
+         style="padding-left: calc(10px + {{ node.indent }}rem);">
+      <span class="routing-label routing-label--question">
+        <strong>{{ node.node_id }}</strong>
+        &nbsp;&mdash;&nbsp;{{ node.label }}
+      </span>
+      <button class="dots-btn" onclick="toggleMenu(this); event.stopPropagation();">&#8942;</button>
+      <div class="action-menu">
+        {% if node.node_id == first_question_id %}
+        <a href="{% url 'core:tools_routing_insert' section.section_id %}?position=before&anchor_node={{ node.node_id }}">
+          Insert above
+        </a>
+        {% endif %}
+        <a href="{% url 'core:tools_routing_insert' section.section_id %}?position=after&anchor_node={{ node.node_id }}">
+          Insert below
+        </a>
+        <hr class="am-sep">
+        <form method="post" action="{% url 'core:tools_routing_delete' section.section_id %}">
+          {% csrf_token %}
+          <input type="hidden" name="node_id"     value="{{ node.node_id }}">
+          <input type="hidden" name="delete_mode" value="node_only">
+          <button type="submit" class="am-link">Delete this question and conditions</button>
+        </form>
+      </div>
+    </div>
+
+    {% endif %}
+
+  {% endfor %}
+</div>
+
+{% endif %}
+
+<script>
+  function toggleMenu(btn) {
+    var menu = btn.nextElementSibling;
+    menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+  }
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('dots-btn')) {
+      document.querySelectorAll('.action-menu').forEach(function(m) {
+        m.style.display = 'none';
+      });
+    }
+  });
+</script>

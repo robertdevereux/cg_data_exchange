@@ -1,6 +1,6 @@
 {% extends "core/base.html" %}
 
-{% block title %}Who are you acting for? — PSS Demo{% endblock %}
+{% block title %}Who are you acting for?{% endblock %}
 
 {% block content %}
 
@@ -8,10 +8,16 @@
     <div class="govuk-grid-column-two-thirds">
 
       {% if no_access %}
-        <h1 class="govuk-heading-l">Access not available</h1>
+        <h1 class="govuk-heading-l">You do not have access to any services</h1>
         <p class="govuk-body">
-          You do not have access to any services. Contact your administrator.
+          Your account does not currently have permission to access any services
+          on this system.
         </p>
+        <p class="govuk-body">
+          If you believe this is an error, contact your administrator or the
+          person who invited you to use this service.
+        </p>
+
       {% else %}
 
         {% if error %}
@@ -25,31 +31,44 @@
         </div>
         {% endif %}
 
-        <form method="post">
+        <form method="post" novalidate>
           {% csrf_token %}
-          <div class="govuk-form-group">
+
+          <div class="govuk-form-group {% if error %}govuk-form-group--error{% endif %}">
             <fieldset class="govuk-fieldset">
               <legend class="govuk-fieldset__legend govuk-fieldset__legend--l">
-                <h1 class="govuk-fieldset__heading">Who are you acting for?</h1>
+                <h1 class="govuk-fieldset__heading">
+                  Who are you acting for?
+                </h1>
               </legend>
+
+              {% if error %}
+              <p class="govuk-error-message">
+                <span class="govuk-visually-hidden">Error:</span> {{ error }}
+              </p>
+              {% endif %}
+
               <div class="govuk-radios" data-module="govuk-radios">
-                {% for u in users %}
+                {% for c in candidates %}
                 <div class="govuk-radios__item">
                   <input class="govuk-radios__input"
                          id="user_{{ forloop.counter }}"
-                         name="user_id" type="radio"
-                         value="{{ u.pk }}" required>
+                         name="action_url"
+                         type="radio"
+                         value="{{ c.action_url }}">
                   <label class="govuk-label govuk-radios__label"
                          for="user_{{ forloop.counter }}">
-                    {{ u.get_full_name|default:u.username }}
-                    {% if u == request.user %}<span class="govuk-hint"> (yourself)</span>{% endif %}
+                    {{ c.label }}
                   </label>
                 </div>
                 {% endfor %}
               </div>
             </fieldset>
           </div>
-          <button class="govuk-button" data-module="govuk-button">Continue</button>
+
+          <button type="submit" class="govuk-button" data-module="govuk-button">
+            Continue
+          </button>
         </form>
 
       {% endif %}

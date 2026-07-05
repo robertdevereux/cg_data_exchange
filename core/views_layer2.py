@@ -52,6 +52,27 @@ from .session import clear_section_session, get_acting_for_name, get_session, up
 _UNSET = object()   # sentinel: "no route found yet"
 
 
+def _resolve_routing_answer(routing_table, current_node, all_answers):
+    """Return the answer value to test when evaluating routing from current_node.
+
+    If any routing row for current_node has a condition_question_id set, return
+    the stored answer for that question. Where all rows share the same
+    condition_question_id (the expected pattern), returns that answer.
+
+    If no condition_question_id is set on any row (standard behaviour), returns
+    the current node's own answer from all_answers.
+
+    Note: where rows for the same current_node carry *different*
+    condition_question_ids the first one found is used. That pattern is out of
+    scope for this spec (deferred to the Conditional Table spec).
+    """
+    for row in routing_table:
+        if row['current_node'] == current_node and row.get('condition_question_id'):
+            cqid = row['condition_question_id']
+            return all_answers.get(cqid, '')
+    return all_answers.get(current_node, '')
+
+
 def _evaluate_routing(routing_table, question_id, answer):
     """Find the next question_id for a given question and answer.
 
@@ -147,6 +168,139 @@ def _get_or_create_case(user, regime):
     return case
 
 
+# ── Section-tables build helper ──────────────────────────────────────────────
+
+def _build_section_tables(routing_rows):
+    """Build the routing, question, and set metadata tables for a section.
+
+    Args:
+        routing_rows: QuerySet of Routing rows ordered by order_in_section.
+
+    Returns a dict with keys:
+        routing_table       — list of dicts (one per Routing row)
+        all_node_ids        — ordered list of unique current_node values
+        question_node_ids   — subset of all_node_ids that are Questions
+        set_node_ids        — subset of all_node_ids that are QuestionSets
+        question_table      — {question_id: metadata_dict}
+        set_table           — {set_id: {set_title, set_hint, members: [...]}}
+        question_to_set     — {question_id: set_id}
+        first_node          — current_node of the first routing row, or None
+    """
+    routing_table = [
+        {
+            'current_node':          row.current_node,
+            'condition_question_id': row.condition_question_id,
+            'answer_value':          row.answer_value,
+            'next_node':             row.next_node,
+            'comparator':            row.comparator,
+            'threshold_value':       row.threshold_value,
+        }
+        for row in routing_rows
+    ]
+
+    all_node_ids = list(dict.fromkeys(r['current_node'] for r in routing_table))
+
+    existing_set_ids = set(
+        QuestionSet.objects
+        .filter(set_id__in=all_node_ids)
+        .values_list('set_id', flat=True)
+    )
+    set_node_ids      = [nid for nid in all_node_ids if nid in existing_set_ids]
+    question_node_ids = [nid for nid in all_node_ids if nid not in existing_set_ids]
+
+    questions = Question.objects.filter(question_id__in=question_node_ids)
+    question_table = {
+        q.question_id: {
+            'question_text': q.question_text,
+            'question_type': q.question_type,
+            'guidance':      q.guidance or '',
+            'hint':          q.hint or '',
+            'options':       q.options or '',
+        }
+        for q in questions
+    }
+
+    set_table = {}
+    question_to_set = {}
+    if set_node_ids:
+        set_members = (
+            QuestionSetMember.objects
+            .filter(question_set_id__in=set_node_ids)
+            .select_related('question', 'question_set')
+            .order_by('display_order')
+        )
+        for member in set_members:
+            sid = member.question_set_id
+            qid = member.question_id
+            if sid not in set_table:
+                set_table[sid] = {
+                    'set_title': member.question_set.set_title,
+                    'set_hint':  member.question_set.set_hint or '',
+                    'members': [],
+                }
+            set_table[sid]['members'].append({
+                'question_id':   qid,
+                'question_text': member.question.question_text,
+                'question_type': member.question.question_type,
+                'guidance':      member.question.guidance or '',
+                'hint':          member.question.hint or '',
+                'options':       member.question.options or '',
+                'required':      member.required,
+            })
+            question_to_set[qid] = sid
+
+    first_node = routing_rows[0].current_node if routing_rows else None
+
+    return {
+        'routing_table':     routing_table,
+        'all_node_ids':      all_node_ids,
+        'question_node_ids': question_node_ids,
+        'set_node_ids':      set_node_ids,
+        'question_table':    question_table,
+        'set_table':         set_table,
+        'question_to_set':   question_to_set,
+        'first_node':        first_node,
+    }
+
+
+# ── Table row commit helper ───────────────────────────────────────────────────
+
+def _commit_table_row(request, section, case, regime, pss, row_answers, row_index=None):
+    """Write a completed row to AnswerTable.
+
+    If row_index is None, appends a new row.
+    If row_index is an int, replaces the row at that index.
+    Returns the saved AnswerTable instance.
+    """
+    actor_id = pss.get('actor_id') or request.user.pk
+    try:
+        actor = User.objects.get(pk=actor_id)
+    except User.DoesNotExist:
+        actor = request.user
+
+    answer_table, _ = AnswerTable.objects.get_or_create(
+        user=request.user, case=case, section=section,
+        defaults={'actor': actor, 'regime': regime, 'answer': []},
+    )
+
+    rows = list(answer_table.answer)
+    if row_index is None:
+        rows.append(row_answers)
+    else:
+        if 0 <= row_index < len(rows):
+            rows[row_index] = row_answers
+
+    answer_table.answer = rows
+    answer_table.save(update_fields=['answer', 'updated_at'])
+
+    SectionStatus.objects.update_or_create(
+        user=request.user, regime=regime, section=section,
+        defaults={'status': 'in_progress'},
+    )
+
+    return answer_table
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 1.  SECTION START
 # ─────────────────────────────────────────────────────────────────────────────
@@ -180,80 +334,23 @@ def section_start(request, section_id):
 
     actor_id = pss.get('actor_id') or request.user.pk
 
-    # ── Build routing table ───────────────────────────────────────────────────
+    # ── Build routing / question / set tables ─────────────────────────────────
     routing_rows = (
         Routing.objects
         .filter(section=section)
         .order_by('order_in_section')
     )
-    routing_table = [
-        {
-            'current_node':  row.current_node,
-            'answer_value':  row.answer_value,
-            'next_node':     row.next_node,   # None = END
-            'comparator':    row.comparator,
-            'threshold_value': row.threshold_value,
-        }
-        for row in routing_rows
-    ]
+    tables = _build_section_tables(routing_rows)
+    routing_table     = tables['routing_table']
+    all_node_ids      = tables['all_node_ids']
+    question_node_ids = tables['question_node_ids']
+    set_node_ids      = tables['set_node_ids']
+    question_table    = tables['question_table']
+    set_table         = tables['set_table']
+    question_to_set   = tables['question_to_set']
+    first_node        = tables['first_node']
+    existing_set_ids  = set(set_node_ids)
 
-    # Unique ordered list of all node IDs referenced in this section's routing
-    all_node_ids = list(dict.fromkeys(r['current_node'] for r in routing_table))
-
-    # ── Separate Q-nodes (standalone questions) from S-nodes (QuestionSets) ──
-    existing_set_ids = set(
-        QuestionSet.objects
-        .filter(set_id__in=all_node_ids)
-        .values_list('set_id', flat=True)
-    )
-    set_node_ids      = [nid for nid in all_node_ids if nid in existing_set_ids]
-    question_node_ids = [nid for nid in all_node_ids if nid not in existing_set_ids]
-
-    # ── Build question metadata table (standalone questions only) ─────────────
-    questions = Question.objects.filter(question_id__in=question_node_ids)
-    question_table = {
-        q.question_id: {
-            'question_text': q.question_text,
-            'question_type': q.question_type,
-            'guidance':      q.guidance or '',
-            'hint':          q.hint or '',
-            'options':       q.options or '',
-        }
-        for q in questions
-    }
-
-    # ── Build set metadata table and question→set mapping ─────────────────────
-    set_table = {}
-    question_to_set = {}
-    if set_node_ids:
-        set_members = (
-            QuestionSetMember.objects
-            .filter(question_set_id__in=set_node_ids)
-            .select_related('question', 'question_set')
-            .order_by('display_order')
-        )
-        for member in set_members:
-            sid = member.question_set_id
-            qid = member.question_id
-            if sid not in set_table:
-                set_table[sid] = {
-                    'set_title': member.question_set.set_title,
-                    'set_hint':  member.question_set.set_hint or '',
-                    'members': [],
-                }
-            set_table[sid]['members'].append({
-                'question_id':   qid,
-                'question_text': member.question.question_text,
-                'question_type': member.question.question_type,
-                'guidance':      member.question.guidance or '',
-                'hint':          member.question.hint or '',
-                'options':       member.question.options or '',
-                'required':      member.required,
-            })
-            question_to_set[qid] = sid
-
-    # ── First node is the one with lowest order_in_section ────────────────────
-    first_node = routing_rows.first().current_node if routing_rows.exists() else None
     if not first_node:
         # No routing configured — treat as done
         return redirect('core:section_done', section_id=section_id)
@@ -261,7 +358,7 @@ def section_start(request, section_id):
     # ── Load confirmed answers from DB ────────────────────────────────────────
     all_question_ids = question_node_ids + list(question_to_set.keys())
     existing_answers = Answer.objects.filter(
-        user=request.user, case=case, section=section,
+        user=case.user, case=case, section=section,
         question_id__in=all_question_ids,
     )
     basic_answers = {a.question_id: a.answer for a in existing_answers}
@@ -742,7 +839,8 @@ def _process_answer(request, section, section_id, question_id, q_meta, pss):
 
     # ── Evaluate routing ──────────────────────────────────────────────────────
     routing_table = pss.get('routing_table', [])
-    next_qid, found = _evaluate_routing(routing_table, question_id, answer)
+    routing_answer = _resolve_routing_answer(routing_table, question_id, basic_answers)
+    next_qid, found = _evaluate_routing(routing_table, question_id, routing_answer)
 
     if not found:
         # Routing data error — fall through to review as a safe fallback
@@ -774,6 +872,7 @@ def _process_answer(request, section, section_id, question_id, q_meta, pss):
 
 @login_required
 def section_review(request, section_id):
+    from .interfaces import format_answer_for_display
     section = get_object_or_404(Section, section_id=section_id)
     pss = get_session(request)
 
@@ -809,39 +908,9 @@ def section_review(request, section_id):
             for m in set_meta.get('members', []):
                 qid    = m['question_id']
                 answer = basic_answers.get(qid)
-                if m.get('question_type') == 'compound' and isinstance(answer, dict):
-                    display_answer = '\n'.join(
-                        f'{k}: {v}' for k, v in answer.items() if v
-                    ) or '—'
-                elif isinstance(answer, dict) and all(k in answer for k in ('day', 'month', 'year')):
-                    _months = ['January', 'February', 'March', 'April', 'May', 'June',
-                               'July', 'August', 'September', 'October', 'November', 'December']
-                    try:
-                        mon = int(answer['month'])
-                        display_answer = f"{answer['day']} {_months[mon - 1]} {answer['year']}"
-                    except (ValueError, IndexError):
-                        display_answer = (
-                            f"{answer.get('day', '')} {answer.get('month', '')} {answer.get('year', '')}"
-                        )
-                elif isinstance(answer, dict) and 'first_name' in answer:
-                    display_answer = ' '.join(filter(None, [
-                        answer.get('title', ''),
-                        answer.get('first_name', ''),
-                        answer.get('middle_name', ''),
-                        answer.get('last_name', ''),
-                    ])) or '—'
-                elif isinstance(answer, dict) and 'line1' in answer:
-                    display_answer = '\n'.join(filter(None, [
-                        answer.get('line1', ''),
-                        answer.get('line2', ''),
-                        answer.get('city', ''),
-                        answer.get('county', ''),
-                        answer.get('postcode', ''),
-                    ])) or '—'
-                elif isinstance(answer, list):
-                    display_answer = ', '.join(answer)
-                else:
-                    display_answer = answer or '—'
+                display_answer = format_answer_for_display(
+                    m.get('question_type', ''), answer
+                )
                 member_rows.append({
                     'question_id':   qid,
                     'question_text': m['question_text'],
@@ -858,38 +927,9 @@ def section_review(request, section_id):
         else:
             q_meta = question_table.get(node_id, {})
             answer  = basic_answers.get(node_id)
-            if q_meta.get('question_type') == 'compound' and isinstance(answer, dict):
-                display_answer = '\n'.join(
-                    f'{k}: {v}' for k, v in answer.items() if v
-                ) or '—'
-            elif isinstance(answer, dict) and all(k in answer for k in ('day', 'month', 'year')):
-                _months = ['January', 'February', 'March', 'April', 'May', 'June',
-                           'July', 'August', 'September', 'October', 'November', 'December']
-                try:
-                    m = int(answer['month'])
-                    display_answer = f"{answer['day']} {_months[m - 1]} {answer['year']}"
-                except (ValueError, IndexError):
-                    display_answer = (
-                        f"{answer.get('day', '')} {answer.get('month', '')} {answer.get('year', '')}"
-                    )
-            elif isinstance(answer, dict) and 'first_name' in answer:
-                display_answer = ' '.join(filter(None, [
-                    answer.get('first_name', ''),
-                    answer.get('middle_name', ''),
-                    answer.get('last_name', ''),
-                ])) or '—'
-            elif isinstance(answer, dict) and 'line1' in answer:
-                display_answer = '\n'.join(filter(None, [
-                    answer.get('line1', ''),
-                    answer.get('line2', ''),
-                    answer.get('city', ''),
-                    answer.get('county', ''),
-                    answer.get('postcode', ''),
-                ])) or '—'
-            elif isinstance(answer, list):
-                display_answer = ', '.join(answer)
-            else:
-                display_answer = answer or '—'
+            display_answer = format_answer_for_display(
+                q_meta.get('question_type', ''), answer
+            )
             rows.append({
                 'type':          'question',
                 'question_id':   node_id,
@@ -966,7 +1006,7 @@ def _commit_section_answers(request, section):
 
     # Load previous live answers for this section/case
     previous_qs = Answer.objects.filter(
-        user=request.user, case=case, section=section,
+        user=case.user, case=case, section=section,
     ).select_related('question', 'actor')
     previous_answers = {a.question_id: a for a in previous_qs}
 
@@ -989,7 +1029,7 @@ def _commit_section_answers(request, section):
         for qid in changed_qids + removed_qids:
             old = previous_answers[qid]
             history_records.append(AnswerHistory(
-                user=request.user,
+                user=case.user,
                 actor=old.actor,
                 regime=regime,
                 case=case,
@@ -1003,7 +1043,7 @@ def _commit_section_answers(request, section):
 
         # b) Delete all existing answers for this section/case
         Answer.objects.filter(
-            user=request.user, case=case, section=section,
+            user=case.user, case=case, section=section,
         ).delete()
 
         # c) Bulk-insert new answers
@@ -1011,7 +1051,7 @@ def _commit_section_answers(request, section):
         questions_map = {q.question_id: q for q in questions_qs}
         new_records = [
             Answer(
-                user=request.user,
+                user=case.user,
                 actor=actor,
                 regime=regime,
                 case=case,
@@ -1026,7 +1066,7 @@ def _commit_section_answers(request, section):
 
         # d) Mark section complete
         SectionStatus.objects.update_or_create(
-            user=request.user, regime=regime, section=section,
+            user=case.user, regime=regime, section=section,
             defaults={'status': 'complete'},
         )
 
@@ -1078,14 +1118,14 @@ def section_table(request, section_id):
     # ── Column questions ──────────────────────────────────────────────────────
     col_qids = [
         qid.strip()
-        for qid in (section.column_question_ids or '').split(';')
+        for qid in (section.display_question_ids or '').split(';')
         if qid.strip()
     ]
     col_questions = {
         q.question_id: q
         for q in Question.objects.filter(question_id__in=col_qids)
     }
-    # Preserve the order defined in column_question_ids
+    # Preserve the order defined in display_question_ids
     ordered_columns = [col_questions[qid] for qid in col_qids if qid in col_questions]
 
     # ── Totals columns ────────────────────────────────────────────────────────
@@ -1138,13 +1178,28 @@ def section_table(request, section_id):
         except (ValueError, TypeError):
             return val if val not in (None, '') else '—'
 
+    is_routed = (section.section_type == 2)
     display_rows = []
     for i, row in enumerate(rows):
-        display_rows.append({
-            'index':  i,
-            'values': [_fmt(row.get(q.question_id), q.question_id) for q in ordered_columns],
+        row_dict = {
+            'index':      i,
+            'values':     [_fmt(row.get(q.question_id), q.question_id) for q in ordered_columns],
             'delete_url': f'/section/{section_id}/table/delete/{i}/',
-        })
+        }
+        if is_routed:
+            row_dict['change_url'] = f'/section/{section_id}/table/change/{i}/'
+            # detail_url only shown when there are answers beyond the display columns
+            display_qids_set = {q.question_id for q in ordered_columns}
+            has_extras = any(k not in display_qids_set for k in row)
+            if has_extras:
+                row_dict['detail_url'] = f'/section/{section_id}/table/row-detail/{i}/'
+        display_rows.append(row_dict)
+
+    add_url = (
+        f'/section/{section_id}/table/add-routed/'
+        if is_routed
+        else f'/section/{section_id}/table/add/'
+    )
 
     context = {
         'section':       section,
@@ -1152,9 +1207,10 @@ def section_table(request, section_id):
         'display_rows':  display_rows,
         'totals_row':    totals_row,
         'has_totals':    has_totals,
-        'add_url':       f'/section/{section_id}/table/add/',
+        'add_url':       add_url,
         'confirm_url':   f'/section/{section_id}/confirm-table/',
         'has_rows':      bool(rows),
+        'is_routed':     is_routed,
         'breadcrumbs':   _build_crumbs(pss, section.section_name),
         'acting_for':    get_acting_for_name(pss),
     }
@@ -1175,7 +1231,7 @@ def section_table_add(request, section_id):
 
     col_qids = [
         qid.strip()
-        for qid in (section.column_question_ids or '').split(';')
+        for qid in (section.display_question_ids or '').split(';')
         if qid.strip()
     ]
     col_questions_qs = Question.objects.filter(question_id__in=col_qids)
@@ -1243,7 +1299,359 @@ def section_table_add(request, section_id):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 8.  TABLE ROW DELETE
+# 8.  TABLE ROW ADD — ROUTED (section_type=2)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _table_row_ns_get(request, section_id):
+    """Return the _table_row namespace dict for section_id (may be empty)."""
+    return (request.session.get('_table_row') or {}).get(section_id) or {}
+
+
+def _table_row_ns_set(request, section_id, row_data):
+    """Write row_data back into _table_row[section_id] in the session."""
+    ns = request.session.get('_table_row') or {}
+    ns[section_id] = row_data
+    request.session['_table_row'] = ns
+    request.session.modified = True
+
+
+def _table_row_ns_clear(request, section_id):
+    """Remove _table_row[section_id] from the session."""
+    ns = request.session.get('_table_row') or {}
+    ns.pop(section_id, None)
+    request.session['_table_row'] = ns
+    request.session.modified = True
+
+
+@login_required
+def section_table_routed_add(request, section_id):
+    """Initialise a fresh row journey and redirect to the first node."""
+    section = get_object_or_404(Section, section_id=section_id)
+    pss     = get_session(request)
+    regime  = section.get_regime()
+    if regime is None:
+        raise Http404('Section is not yet assigned to a regime.')
+
+    routing_rows = (
+        Routing.objects
+        .filter(section=section)
+        .order_by('order_in_section')
+    )
+    tables = _build_section_tables(routing_rows)
+    if not tables['first_node']:
+        return redirect('core:section_table', section_id=section_id)
+
+    # Bootstrap case if needed
+    if not pss.get('case_id'):
+        case = _get_or_create_case(request.user, regime)
+        update_session(request, {'case_id': case.case_id})
+
+    # Initialise fresh row namespace (row_index=None → new row)
+    _table_row_ns_set(request, section_id, {
+        '_asked_ids': [tables['first_node']],
+        '_row_index': None,
+    })
+
+    first = tables['first_node']
+    if first in tables['set_table']:
+        return redirect('core:section_table_routed_question',
+                        section_id=section_id, question_or_set_id=first)
+    return redirect('core:section_table_routed_question',
+                    section_id=section_id, question_or_set_id=first)
+
+
+@login_required
+def section_table_routed_change(request, section_id, row_index):
+    """Initialise a change-row journey by pre-populating the session from the saved row."""
+    section = get_object_or_404(Section, section_id=section_id)
+    pss     = get_session(request)
+    regime  = section.get_regime()
+    if regime is None:
+        raise Http404('Section is not yet assigned to a regime.')
+
+    case_id = pss.get('case_id')
+    try:
+        case = Case.objects.get(case_id=case_id)
+    except Case.DoesNotExist:
+        return redirect('core:section_table', section_id=section_id)
+
+    try:
+        answer_table = AnswerTable.objects.get(
+            user=request.user, case=case, section=section,
+        )
+    except AnswerTable.DoesNotExist:
+        return redirect('core:section_table', section_id=section_id)
+
+    rows = answer_table.answer
+    if row_index < 0 or row_index >= len(rows):
+        return redirect('core:section_table', section_id=section_id)
+
+    saved_row = rows[row_index]
+
+    routing_rows = (
+        Routing.objects
+        .filter(section=section)
+        .order_by('order_in_section')
+    )
+    tables = _build_section_tables(routing_rows)
+    if not tables['first_node']:
+        return redirect('core:section_table', section_id=section_id)
+
+    routing_table   = tables['routing_table']
+    all_node_ids    = tables['all_node_ids']
+    question_table  = tables['question_table']
+    set_table       = tables['set_table']
+    question_to_set = tables['question_to_set']
+
+    # Reconstruct the asked_ids path by replaying routing on saved answers
+    asked_ids = []
+    node = tables['first_node']
+    while node is not None:
+        asked_ids.append(node)
+        # Build combined answers dict for routing resolution
+        all_answers = dict(saved_row)
+        routing_answer = _resolve_routing_answer(routing_table, node, all_answers)
+        next_node, found = _evaluate_routing(routing_table, node, routing_answer)
+        if not found:
+            break
+        node = next_node
+
+    # Seed session namespace with saved answers + metadata
+    row_data = dict(saved_row)
+    row_data['_asked_ids'] = asked_ids
+    row_data['_row_index'] = row_index
+    _table_row_ns_set(request, section_id, row_data)
+
+    first = tables['first_node']
+    return redirect('core:section_table_routed_question',
+                    section_id=section_id, question_or_set_id=first)
+
+
+@login_required
+def section_table_routed_question(request, section_id, question_or_set_id):
+    """Workhorse view: render/process one question or set page within a row journey."""
+    section = get_object_or_404(Section, section_id=section_id)
+    pss     = get_session(request)
+    regime  = section.get_regime()
+    if regime is None:
+        raise Http404('Section is not yet assigned to a regime.')
+
+    # Bootstrap case if needed
+    if not pss.get('case_id'):
+        case = _get_or_create_case(request.user, regime)
+        update_session(request, {'case_id': case.case_id})
+    else:
+        try:
+            case = Case.objects.get(case_id=pss['case_id'])
+        except Case.DoesNotExist:
+            case = _get_or_create_case(request.user, regime)
+            update_session(request, {'case_id': case.case_id})
+
+    routing_rows = (
+        Routing.objects
+        .filter(section=section)
+        .order_by('order_in_section')
+    )
+    tables = _build_section_tables(routing_rows)
+    if not tables['first_node']:
+        return redirect('core:section_table', section_id=section_id)
+
+    routing_table   = tables['routing_table']
+    question_table  = tables['question_table']
+    set_table       = tables['set_table']
+    question_to_set = tables['question_to_set']
+
+    node_id  = question_or_set_id
+    is_set   = node_id in set_table
+    is_q     = node_id in question_table
+
+    if not is_set and not is_q:
+        return redirect('core:section_table', section_id=section_id)
+
+    row_data  = _table_row_ns_get(request, section_id)
+    asked_ids = row_data.get('_asked_ids', [node_id])
+    row_index = row_data.get('_row_index')  # None = new row, int = change
+
+    # Back-navigation: truncate asked_ids if re-visiting an earlier node
+    if node_id in asked_ids:
+        idx = asked_ids.index(node_id)
+        asked_ids = asked_ids[:idx + 1]
+        row_data['_asked_ids'] = asked_ids
+        _table_row_ns_set(request, section_id, row_data)
+
+    # Determine back URL
+    if len(asked_ids) > 1:
+        prev_node = asked_ids[-2]
+        back_url  = f'/section/{section_id}/table/add-routed/{prev_node}/?back=1'
+    else:
+        back_url  = f'/section/{section_id}/table/'
+
+    if request.method == 'GET' and request.GET.get('back'):
+        # Back button pressed — just render this node with pre-filled values
+        pass
+
+    if request.method == 'POST':
+        if is_set:
+            # Collect field values for all set members
+            members = set_table[node_id]['members']
+            field_values = {}
+            for m in members:
+                qid = m['question_id']
+                if m['question_type'] == 'checkbox':
+                    field_values[qid] = request.POST.getlist(qid)
+                else:
+                    field_values[qid] = request.POST.get(qid, '').strip()
+
+            # Routing answer: resolve via condition_question_id if set
+            all_answers = {**{k: v for k, v in row_data.items() if not k.startswith('_')},
+                           **field_values}
+            routing_answer = _resolve_routing_answer(routing_table, node_id, all_answers)
+            next_node, _ = _evaluate_routing(routing_table, node_id, routing_answer)
+
+            # Save field values into row_data
+            row_data.update(field_values)
+        else:
+            q_meta = question_table[node_id]
+            if q_meta['question_type'] == 'checkbox':
+                answer = request.POST.getlist(node_id)
+            else:
+                answer = request.POST.get(node_id, '').strip()
+
+            all_answers = {**{k: v for k, v in row_data.items() if not k.startswith('_')},
+                           node_id: answer}
+            routing_answer = _resolve_routing_answer(routing_table, node_id, all_answers)
+            next_node, _ = _evaluate_routing(routing_table, node_id, routing_answer)
+
+            row_data[node_id] = answer
+
+        if next_node is None:
+            # END — commit row, pruning to asked_ids to drop stale answers from diverged paths
+            asked_ids = row_data.get('_asked_ids', [])
+            row_to_save = {k: v for k, v in row_data.items()
+                           if not k.startswith('_') and (not asked_ids or k in asked_ids)}
+            _commit_table_row(request, section, case, regime, pss, row_to_save, row_index)
+            _table_row_ns_clear(request, section_id)
+            return redirect('core:section_table', section_id=section_id)
+
+        # Advance to next node
+        if next_node not in asked_ids:
+            asked_ids.append(next_node)
+        row_data['_asked_ids'] = asked_ids
+        _table_row_ns_set(request, section_id, row_data)
+
+        return redirect('core:section_table_routed_question',
+                        section_id=section_id, question_or_set_id=next_node)
+
+    # ── GET ───────────────────────────────────────────────────────────────────
+    if is_set:
+        meta = set_table[node_id]
+        member_dicts = []
+        for m in meta['members']:
+            qid = m['question_id']
+            member_dicts.append({
+                'question_id':   qid,
+                'question_text': m['question_text'],
+                'question_type': m['question_type'],
+                'hint':          m['hint'],
+                'options':       [o.strip() for o in m['options'].split(';') if o.strip()],
+                'required':      m['required'],
+                'current_value': row_data.get(qid, ''),
+            })
+        context = {
+            'section':    section,
+            'set_id':     node_id,
+            'set_title':  meta['set_title'],
+            'set_hint':   meta['set_hint'],
+            'members':    member_dicts,
+            'back_url':   back_url,
+            'acting_for': get_acting_for_name(pss),
+        }
+        return render(request, 'core/table_routed_set.html', context)
+    else:
+        q_meta = question_table[node_id]
+        question_dict = {
+            'question_id':   node_id,
+            'question_text': q_meta['question_text'],
+            'question_type': q_meta['question_type'],
+            'guidance':      q_meta['guidance'],
+            'hint':          q_meta['hint'],
+            'options':       [o.strip() for o in q_meta['options'].split(';') if o.strip()],
+            'current_value': row_data.get(node_id, ''),
+        }
+        context = {
+            'section':    section,
+            'question':   question_dict,
+            'back_url':   back_url,
+            'acting_for': get_acting_for_name(pss),
+        }
+        return render(request, 'core/table_routed_question.html', context)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 9.  TABLE ROW DETAIL (read-only, section_type=2)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@login_required
+def section_table_row_detail(request, section_id, row_index):
+    """Read-only display of the extra (non-display-column) answers for one row."""
+    section = get_object_or_404(Section, section_id=section_id)
+    pss     = get_session(request)
+    regime  = section.get_regime()
+    if regime is None:
+        raise Http404('Section is not yet assigned to a regime.')
+
+    case_id = pss.get('case_id')
+    try:
+        case = Case.objects.get(case_id=case_id)
+    except Case.DoesNotExist:
+        return redirect('core:section_table', section_id=section_id)
+
+    try:
+        answer_table = AnswerTable.objects.get(
+            user=request.user, case=case, section=section,
+        )
+    except AnswerTable.DoesNotExist:
+        return redirect('core:section_table', section_id=section_id)
+
+    rows = answer_table.answer
+    if row_index < 0 or row_index >= len(rows):
+        return redirect('core:section_table', section_id=section_id)
+
+    row = rows[row_index]
+
+    display_qids = {
+        qid.strip()
+        for qid in (section.display_question_ids or '').split(';')
+        if qid.strip()
+    }
+    extra_qids = [qid for qid in row if qid not in display_qids]
+    q_map = {
+        q.question_id: q
+        for q in Question.objects.filter(question_id__in=extra_qids)
+    }
+    extras = [
+        {
+            'question_text': q_map[qid].question_text if qid in q_map else qid,
+            'answer':        row.get(qid, ''),
+        }
+        for qid in extra_qids
+        if qid in q_map
+    ]
+
+    from django.urls import reverse
+    context = {
+        'section':    section,
+        'row_number': row_index + 1,
+        'extras':     extras,
+        'back_url':   reverse('core:section_table', kwargs={'section_id': section_id}),
+        'breadcrumbs': _build_crumbs(pss, f'Row {row_index + 1} details'),
+        'acting_for': get_acting_for_name(pss),
+    }
+    return render(request, 'core/table_row_detail.html', context)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 10.  TABLE ROW DELETE
 # ─────────────────────────────────────────────────────────────────────────────
 
 @login_required
@@ -1641,11 +2049,12 @@ def _process_set_answer(request, section, section_id, set_id, set_meta, pss):
         asked_ids.append(set_id)
 
     # ── Evaluate routing ──────────────────────────────────────────────────────
-    # Routing for a set node uses the first member question's answer as the
-    # routing answer — covers unconditional progression (null answer_value)
-    # and simple conditional cases.
-    first_member_qid = set_meta['members'][0]['question_id'] if set_meta['members'] else None
-    routing_answer   = field_values.get(first_member_qid, '')
+    # Resolve which answer drives routing for this set node.
+    # field_values contains all answers just submitted; merge with basic_answers
+    # so condition_question_id can reference any answered question.
+    routing_answer = _resolve_routing_answer(
+        routing_table, set_id, {**basic_answers, **field_values}
+    )
     next_node, found = _evaluate_routing(routing_table, set_id, routing_answer)
 
     if not found:

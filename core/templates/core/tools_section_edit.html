@@ -25,6 +25,19 @@
       </div>
       {% endif %}
 
+      {% if routing_error %}
+      <div class="govuk-notification-banner govuk-notification-banner--important"
+           role="region" aria-labelledby="routing-error-banner"
+           data-module="govuk-notification-banner">
+        <div class="govuk-notification-banner__header">
+          <h2 class="govuk-notification-banner__title" id="routing-error-banner">Error</h2>
+        </div>
+        <div class="govuk-notification-banner__content">
+          <p class="govuk-body">Routing change failed: {{ routing_error }}</p>
+        </div>
+      </div>
+      {% endif %}
+
       <!-- PANEL 1 — Section details -->
 
       <h2 class="govuk-heading-m">Section details</h2>
@@ -91,12 +104,12 @@
           </div>
 
           <div class="govuk-form-group">
-            <label class="govuk-label govuk-label--s" for="column_question_ids">
-              Column question IDs <span class="govuk-hint" style="display:inline">(optional)</span>
+            <label class="govuk-label govuk-label--s" for="display_question_ids">
+              Display question IDs <span class="govuk-hint" style="display:inline">(optional)</span>
             </label>
-            <div class="govuk-hint">Semicolon-delimited, e.g. Q1;Q2;Q3.</div>
-            <input class="govuk-input" id="column_question_ids" name="column_question_ids"
-                   type="text" value="{{ section.column_question_ids|default:'' }}">
+            <div class="govuk-hint">Semicolon-delimited, e.g. Q1;Q2;Q3. For routed tables (type 2) these are the summary columns.</div>
+            <input class="govuk-input" id="display_question_ids" name="display_question_ids"
+                   type="text" value="{{ section.display_question_ids|default:'' }}">
           </div>
 
           <div class="govuk-form-group">
@@ -135,275 +148,131 @@
 
       <hr class="govuk-section-break govuk-section-break--l govuk-section-break--visible govuk-!-margin-top-6">
 
-      <!-- PANEL 2 — Routing -->
+      <!-- PANEL 2 — Question and set pool -->
+
+      {% if section.section_type != 1 %}
+      <h2 class="govuk-heading-m govuk-!-margin-top-6" id="pool">
+        Questions and sets in this section
+      </h2>
+
+      {% if pool_members %}
+      <table class="govuk-table govuk-!-margin-bottom-4">
+        <thead class="govuk-table__head">
+          <tr class="govuk-table__row">
+            <th class="govuk-table__header" scope="col" style="width:10%">Type</th>
+            <th class="govuk-table__header" scope="col">ID</th>
+            <th class="govuk-table__header" scope="col">Label</th>
+            <th class="govuk-table__header" scope="col"></th>
+          </tr>
+        </thead>
+        <tbody class="govuk-table__body">
+          {% for m in pool_members %}
+          <tr class="govuk-table__row">
+            <td class="govuk-table__cell">
+              <code style="font-size:0.8rem; color:#505a5f;">{{ m.node_type }}</code>
+            </td>
+            <td class="govuk-table__cell"><code>{{ m.node_id }}</code></td>
+            <td class="govuk-table__cell govuk-!-font-size-16">{{ m.label }}</td>
+            <td class="govuk-table__cell" style="text-align:right">
+              <form method="post"
+                    action="{% url 'core:tools_section_member_remove' section.section_id m.node_id %}"
+                    style="display:inline">
+                {% csrf_token %}
+                <button type="submit" class="govuk-button govuk-button--warning govuk-!-margin-bottom-0"
+                        style="font-size:0.8rem; padding:4px 10px;">
+                  Remove
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="govuk-body govuk-!-colour-secondary">No questions or sets added yet.</p>
+      {% endif %}
+
+      <h3 class="govuk-heading-s govuk-!-margin-top-4">Associate an existing question or set</h3>
+
+      {% if available_questions or available_sets %}
+      <form method="post"
+            action="{% url 'core:tools_section_member_add' section.section_id %}"
+            id="pool-add-form"
+            style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; margin-bottom:1rem;">
+        {% csrf_token %}
+        <input type="hidden" name="node_type" id="pool-node-type" value="">
+        <div>
+          <label class="govuk-label govuk-label--s" for="pool-node-select">Question or set</label>
+          <select class="govuk-select" name="node_id" id="pool-node-select">
+            <option value="">— Select —</option>
+            {% if available_questions %}
+            <optgroup label="Questions ({{ dept_id }})">
+              {% for q in available_questions %}
+              <option value="{{ q.question_id }}" data-node-type="Q">
+                {{ q.question_id }} — {{ q.question_text|truncatechars:60 }}
+              </option>
+              {% endfor %}
+            </optgroup>
+            {% endif %}
+            {% if available_sets %}
+            <optgroup label="Sets">
+              {% for s in available_sets %}
+              <option value="{{ s.set_id }}" data-node-type="S">
+                {{ s.set_id }} — {{ s.set_title }}
+              </option>
+              {% endfor %}
+            </optgroup>
+            {% endif %}
+          </select>
+        </div>
+        <button type="submit"
+                class="govuk-button govuk-button--secondary govuk-!-margin-bottom-0">
+          Add to section
+        </button>
+      </form>
+      <script>
+        (function () {
+          var sel = document.getElementById('pool-node-select');
+          var typ = document.getElementById('pool-node-type');
+          sel.addEventListener('change', function () {
+            var opt = sel.options[sel.selectedIndex];
+            typ.value = opt ? (opt.dataset.nodeType || '') : '';
+          });
+        })();
+      </script>
+      {% else %}
+      <p class="govuk-body govuk-!-colour-secondary govuk-!-font-size-16">
+        All available {{ dept_id }} questions and sets are already in this section's pool.
+      </p>
+      {% endif %}
+
+      <p class="govuk-body govuk-!-margin-top-2">
+        <a href="/tools/questions/add/?back=section&back_section={{ section.section_id }}"
+           class="govuk-link">
+          Define a new question and add it to this section
+        </a>
+      </p>
+
+      <hr class="govuk-section-break govuk-section-break--l govuk-section-break--visible govuk-!-margin-top-6">
+      {% endif %}
+
+      <!-- PANEL 3 — Routing -->
 
       <h2 class="govuk-heading-m govuk-!-margin-top-6">Routing</h2>
 
       {% if section.section_type == 1 %}
-      {# Table section — no routing #}
+      {# Flat table section — no routing #}
       <div style="background:#f3f2f1; border-left:4px solid #b1b4b6; padding:1rem 1.25rem;">
         <p class="govuk-body govuk-!-margin-bottom-0">
-          Table sections do not use routing. Column order is defined by the
-          <strong>Column question IDs</strong> field above.
+          Flat table sections do not use routing. Column order is defined by the
+          <strong>Display question IDs</strong> field above.
         </p>
       </div>
 
       {% else %}
 
-      {% if not routing_validation.valid %}
-      <div class="govuk-notification-banner govuk-notification-banner--important"
-           role="region" aria-labelledby="routing-warning-title"
-           data-module="govuk-notification-banner">
-        <div class="govuk-notification-banner__header">
-          <h2 class="govuk-notification-banner__title" id="routing-warning-title">Warning</h2>
-        </div>
-        <div class="govuk-notification-banner__content">
-          <p class="govuk-body govuk-!-margin-bottom-1">
-            This section has routing issues and cannot be used until resolved:
-          </p>
-          <ul class="govuk-list govuk-list--bullet govuk-!-margin-bottom-0">
-            {% for issue in routing_validation.issues %}
-            <li>{{ issue }}</li>
-            {% endfor %}
-          </ul>
-        </div>
-      </div>
-      {% endif %}
+      {% include 'core/_routing_tree.html' %}
 
-      {% if tree|length == 1 and tree.0.type == 'end' %}
-        <p class="govuk-body">No routing defined yet.</p>
-        <a href="{% url 'core:tools_routing_insert' section.section_id %}?position=first"
-           class="govuk-button govuk-button--secondary">Add first node</a>
-      {% else %}
-
-      <style>
-        .routing-tree { font-family: monospace; font-size: 0.875rem; border: 1px solid #b1b4b6; border-radius: 4px; overflow: hidden; }
-        .routing-row {
-          display: flex;
-          align-items: center;
-          padding: 6px 10px;
-          border-bottom: 1px solid #e8e8e8;
-          position: relative;
-          background: #ffffff;
-        }
-        .routing-row:last-child { border-bottom: none; }
-        .rt-end { color: #505a5f; font-style: italic; }
-        .routing-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .routing-label--question { white-space: normal; text-overflow: unset; overflow: visible; }
-        .dots-btn {
-          background: none;
-          border: 1px solid #b1b4b6;
-          border-radius: 3px;
-          cursor: pointer;
-          padding: 0 8px;
-          font-size: 1.1rem;
-          line-height: 1.6;
-          margin-left: 8px;
-          flex-shrink: 0;
-        }
-        .dots-btn:hover { background: #f0f0f0; }
-        .action-menu {
-          display: none;
-          position: absolute;
-          right: 10px;
-          top: 34px;
-          background: #fff;
-          border: 1px solid #b1b4b6;
-          border-radius: 3px;
-          padding: 6px 0;
-          z-index: 1000;
-          min-width: 260px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-        }
-        .routing-row:last-child .action-menu,
-        .routing-row:nth-last-child(-n+2) .action-menu {
-          bottom: 100%; top: auto;
-        }
-        .action-menu a,
-        .action-menu button.am-link {
-          display: block;
-          width: 100%;
-          text-align: left;
-          padding: 6px 16px;
-          background: none;
-          border: none;
-          cursor: pointer;
-          font-size: 0.875rem;
-          font-family: monospace;
-          color: #1d70b8;
-          text-decoration: underline;
-          white-space: nowrap;
-          box-sizing: border-box;
-        }
-        .action-menu a:hover,
-        .action-menu button.am-link:hover { background: #f3f2f1; }
-        .action-menu hr.am-sep {
-          border: none;
-          border-top: 1px solid #e0e0e0;
-          margin: 4px 0;
-        }
-        .add-cond-row {
-          display: flex;
-          gap: 6px;
-          align-items: center;
-          padding: 6px 16px;
-          flex-wrap: wrap;
-        }
-        .add-cond-row input, .add-cond-row select {
-          border: 1px solid #b1b4b6;
-          padding: 3px 6px;
-          font-size: 0.875rem;
-          font-family: monospace;
-        }
-        .add-cond-row input[name="answer_value"] { width: 110px; }
-        .add-cond-row select[name="comparator"]  { width: 60px; }
-        .add-cond-row input[name="threshold_value"] { width: 90px; }
-        .add-cond-row button {
-          padding: 4px 10px;
-          font-size: 0.875rem;
-          background: #00703c;
-          color: #fff;
-          border: none;
-          cursor: pointer;
-          border-radius: 2px;
-        }
-        .add-cond-divider {
-          font-size: 0.75rem;
-          color: #505a5f;
-          padding: 2px 16px 2px;
-        }
-      </style>
-
-      <div class="routing-tree">
-        {% for node in tree %}
-
-          {% if node.type == 'end' and node.indent == 0 %}
-          <div class="routing-row rt-end" style="padding-left: calc(10px + {{ node.indent }}rem);">
-            <span class="routing-label">&rarr; END</span>
-          </div>
-
-          {% elif node.type == 'condition' %}
-          <div class="routing-row"
-               style="padding-left: calc(10px + {{ node.indent }}rem);">
-            <span class="routing-label" style="color: #505a5f;">
-              {% if node.answer_value %}
-                = {{ node.answer_value }}
-              {% else %}
-                All other answers
-              {% endif %}
-              &nbsp;&rarr;&nbsp;
-              {% if node.next_node %}
-                {% if node.show_brackets %}[{{ node.next_node }}]{% else %}{{ node.next_node }}{% endif %}
-              {% else %}
-                END
-              {% endif %}
-            </span>
-            <button class="dots-btn" onclick="toggleMenu(this); event.stopPropagation();">&#8942;</button>
-            <div class="action-menu">
-              {% if node.show_brackets and node.next_node %}
-              <a href="{% url 'core:tools_routing_insert' section.section_id %}?position=after&anchor_node={{ node.node_id }}&anchor_answer_value={{ node.answer_value|urlencode }}">
-                Add first question to this branch
-              </a>
-              <hr class="am-sep">
-              {% endif %}
-              <form method="post"
-                    action="{% url 'core:tools_routing_delete_condition' section.section_id %}">
-                {% csrf_token %}
-                <input type="hidden" name="node_id"      value="{{ node.node_id }}">
-                <input type="hidden" name="answer_value" value="{{ node.answer_value }}">
-                <button type="submit" class="am-link">Delete this condition</button>
-              </form>
-            </div>
-          </div>
-
-          {% elif node.type == 'question' %}
-          <div class="routing-row"
-               style="padding-left: calc(10px + {{ node.indent }}rem);">
-            <span class="routing-label routing-label--question">
-              {% if node.is_convergence %}[{% endif %}<strong>{{ node.node_id }}</strong>{% if node.is_convergence %}]{% endif %}
-              &nbsp;&mdash;&nbsp;{{ node.label }}
-            </span>
-            <button class="dots-btn" onclick="toggleMenu(this); event.stopPropagation();">&#8942;</button>
-            <div class="action-menu">
-              <a href="{% url 'core:tools_routing_insert' section.section_id %}?position=before&anchor_node={{ node.node_id }}">
-                Insert question above
-              </a>
-              {% if not node.is_branching %}
-              <a href="{% url 'core:tools_routing_insert' section.section_id %}?position=after&anchor_node={{ node.node_id }}">
-                Insert after
-              </a>
-              {% endif %}
-              <hr class="am-sep">
-              <form method="post" action="{% url 'core:tools_routing_delete' section.section_id %}">
-                {% csrf_token %}
-                <input type="hidden" name="node_id"     value="{{ node.node_id }}">
-                <input type="hidden" name="delete_mode" value="delete_all">
-                <button type="submit" class="am-link">Delete this question and conditions</button>
-              </form>
-              <hr class="am-sep">
-              {% comment %}data-node-id used by JS (C2) to switch condition input based on question type.
-                 Shown for all question nodes — branching and linear alike — so the first
-                 branch condition can be added directly from the routing page.{% endcomment %}
-              <form method="post" action="{% url 'core:tools_routing_add_condition' section.section_id %}"
-                    class="add-cond-form" data-node-id="{{ node.node_id }}">
-                {% csrf_token %}
-                <input type="hidden" name="node_id" value="{{ node.node_id }}">
-
-                {# ── Answer-value section (radio/checkbox and other types) ── #}
-                <div class="add-cond-section cond-answer-section">
-                  <div class="add-cond-row">
-                    {# JS replaces this input with a <select> for radio/checkbox questions #}
-                    <input type="text" name="answer_value" placeholder="answer value"
-                           class="cond-answer-input">
-                    <button type="submit">Add condition</button>
-                  </div>
-                </div>
-
-                {# ── Scalar section (number/compound questions) ── #}
-                <div class="add-cond-section cond-scalar-section" style="display:none">
-                  <div class="add-cond-row">
-                    <select name="comparator">
-                      <option value="">—</option>
-                      <option value="=">=</option>
-                      <option value="&lt;">&lt;</option>
-                      <option value="&lt;=">&lt;=</option>
-                      <option value="&gt;">&gt;</option>
-                      <option value="&gt;=">&gt;=</option>
-                    </select>
-                    <input type="text" name="threshold_value" placeholder="e.g. 325000">
-                    <button type="submit">Add condition</button>
-                  </div>
-                </div>
-
-                {# ── Next node — JS replaces this select with buildGoesToSelect() ── #}
-                <div class="add-cond-row cond-goto-row"
-                     style="padding-top:2px; border-top:1px solid #e8e8e8; margin-top:2px;">
-                  <span style="font-size:0.75rem; color:#505a5f; flex-shrink:0;">→ goes to:</span>
-                  <select name="next_node" style="flex:1; min-width:0;">
-                    <option value="">— END (return to home page) —</option>
-                    {% for rn in routing_nodes %}
-                    <option value="{{ rn.id }}">{{ rn.label }}</option>
-                    {% endfor %}
-                  </select>
-                </div>
-
-              </form>
-            </div>
-          </div>
-
-          {% endif %}
-
-        {% endfor %}
-      </div>
-
-      <div class="govuk-!-margin-top-4">
-        <a href="{% url 'core:tools_routing_insert' section.section_id %}?position=first"
-           class="govuk-button govuk-button--secondary">
-          Add node to section
-        </a>
-      </div>
-
-      {% endif %}
       {% endif %}
 
     </div>
@@ -423,136 +292,6 @@
       typeSelect.addEventListener('change', toggleTableFields);
       toggleTableFields();
     })();
-
-    // ── Action menu toggle ───────────────────────────────────────────────────
-    function toggleMenu(btn) {
-      var menu = btn.nextElementSibling;
-      menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
-    }
-    document.addEventListener('click', function(e) {
-      if (!e.target.classList.contains('dots-btn')) {
-        document.querySelectorAll('.action-menu').forEach(function(m) {
-          m.style.display = 'none';
-        });
-      }
-    });
-
-    // ── C2: Dynamic condition input based on question type ───────────────────
-    var ROUTING_QUESTION_DATA = {{ question_data_json|safe }};
-    var ROUTING_NODES = {{ routing_nodes_json|safe }};
-    var NODE_CONDITIONS = {{ node_conditions_json|safe }};
-
-    var SCALAR_TYPES = ['number', 'compound'];
-    var OPTION_TYPES = ['radio', 'checkbox'];
-
-    function escHtml(s) {
-      return String(s)
-        .replace(/&/g, '&amp;')
-        .replace(/"/g, '&quot;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-    }
-
-    function buildGoesToSelect(name, currentValue) {
-      var sel = document.createElement('select');
-      sel.name = name;
-      sel.style.cssText = 'flex:1; min-width:0; border:1px solid #b1b4b6; padding:3px 6px; font-size:0.875rem; font-family:monospace;';
-      var endOpt = document.createElement('option');
-      endOpt.value = '';
-      endOpt.textContent = '\u2014 END (return to home page) \u2014';
-      if (!currentValue) endOpt.selected = true;
-      sel.appendChild(endOpt);
-      ROUTING_NODES.forEach(function(rn) {
-        var o = document.createElement('option');
-        o.value = rn.id;
-        o.textContent = rn.label;
-        if (currentValue && rn.id === currentValue) o.selected = true;
-        sel.appendChild(o);
-      });
-      return sel;
-    }
-
-    document.querySelectorAll('.add-cond-form').forEach(function(form) {
-      var nodeId  = form.dataset.nodeId;
-      var qdata   = ROUTING_QUESTION_DATA[nodeId] || {};
-      var qtype   = qdata.type || '';
-      var options = qdata.options ? qdata.options.split(';').map(function(s) { return s.trim(); }).filter(Boolean) : [];
-
-      var answerSection = form.querySelector('.cond-answer-section');
-      var scalarSection = form.querySelector('.cond-scalar-section');
-
-      function disableSection(section) {
-        section.style.display = 'none';
-        section.querySelectorAll('input, select').forEach(function(el) { el.disabled = true; });
-      }
-      function enableSection(section) {
-        section.style.display = '';
-        section.querySelectorAll('input, select').forEach(function(el) { el.disabled = false; });
-      }
-
-      var conditions = NODE_CONDITIONS[nodeId] || {};
-      var goesToRow = form.querySelector('.cond-goto-row');
-      if (goesToRow) {
-        var existingSel = goesToRow.querySelector('select[name="next_node"]');
-        if (existingSel) { existingSel.replaceWith(buildGoesToSelect('next_node', conditions['__default__'] || '')); }
-      }
-
-      if (SCALAR_TYPES.indexOf(qtype) !== -1) {
-        disableSection(answerSection);
-        enableSection(scalarSection);
-
-      } else if (OPTION_TYPES.indexOf(qtype) !== -1 && options.length > 0) {
-        var csrf   = form.querySelector('[name=csrfmiddlewaretoken]').value;
-        var action = form.action;
-        var nid    = form.querySelector('[name=node_id]').value;
-
-        var container = document.createElement('div');
-
-        options.forEach(function(opt) {
-          var miniForm = document.createElement('form');
-          miniForm.method = 'post';
-          miniForm.action = action;
-
-          var csrfIn = document.createElement('input');
-          csrfIn.type = 'hidden'; csrfIn.name = 'csrfmiddlewaretoken'; csrfIn.value = csrf;
-          var nodeIn = document.createElement('input');
-          nodeIn.type = 'hidden'; nodeIn.name = 'node_id'; nodeIn.value = nid;
-          var ansIn  = document.createElement('input');
-          ansIn.type = 'hidden'; ansIn.name = 'answer_value'; ansIn.value = opt;
-          miniForm.appendChild(csrfIn);
-          miniForm.appendChild(nodeIn);
-          miniForm.appendChild(ansIn);
-
-          var row = document.createElement('div');
-          row.className = 'add-cond-row';
-
-          var lbl = document.createElement('span');
-          lbl.style.cssText = 'font-size:0.8rem; color:#0b0c0c; flex-shrink:0; min-width:70px; font-family:monospace;';
-          lbl.textContent = opt + ':';
-          row.appendChild(lbl);
-
-          var currentDest = conditions[opt] || '';
-          row.appendChild(buildGoesToSelect('next_node', currentDest));
-
-          var btn = document.createElement('button');
-          btn.type = 'submit';
-          btn.textContent = 'Add';
-          btn.style.cssText = 'padding:4px 10px; font-size:0.875rem; background:#00703c; color:#fff; border:none; cursor:pointer; border-radius:2px;';
-          row.appendChild(btn);
-
-          miniForm.appendChild(row);
-          container.appendChild(miniForm);
-        });
-
-        form.parentNode.insertBefore(container, form);
-        form.style.display = 'none';
-        form.querySelectorAll('input, select, button').forEach(function(el) { el.disabled = true; });
-
-      } else {
-        enableSection(answerSection);
-        disableSection(scalarSection);
-      }
-    });
   </script>
 
 {% endblock %}

@@ -27,6 +27,8 @@ import os
 import re
 import uuid
 
+from urllib.parse import urlencode
+
 from django.conf import settings
 from django.contrib.auth.decorators import user_passes_test
 from django.db import models
@@ -50,6 +52,7 @@ from .models import (
     Routing,
     Schedule,
     Section,
+    SectionMember,
     SectionStatus,
     User,
 )
@@ -100,6 +103,34 @@ def validate_section_routing(section):
         issues.append(
             f'Node {node_id} is defined but cannot be reached from the entry point.'
         )
+
+    # Check 4: condition_question_id references unknown questions
+    cq_ids = {r.condition_question_id for r in rows if r.condition_question_id}
+    if cq_ids:
+        from .models import QuestionSet as _QuestionSet
+        known_qids = set(
+            Question.objects.filter(question_id__in=cq_ids)
+            .values_list('question_id', flat=True)
+        )
+        known_sids = set(
+            _QuestionSet.objects.filter(set_id__in=cq_ids)
+            .values_list('set_id', flat=True)
+        )
+        known = known_qids | known_sids
+        for cqid in sorted(cq_ids - known):
+            issues.append(
+                f'condition_question_id "{cqid}" is not a known question or set.'
+            )
+
+    # Check 5: warn if a current_node has mixed condition_question_ids
+    for node_id, node_rows in node_map.items():
+        cq_values = {r.condition_question_id for r in node_rows}
+        if len(cq_values) > 1:
+            issues.append(
+                f'Node {node_id} has routing rows with mixed condition_question_ids '
+                f'({", ".join(str(v) for v in sorted(cq_values, key=lambda x: x or ""))}). '
+                f'All rows for a node should share the same condition_question_id.'
+            )
 
     return {'valid': len(issues) == 0, 'issues': issues}
 
@@ -222,6 +253,8 @@ def tools_question_add(request):
     errors = {}
     post = {}
     is_superuser = request.user.is_superuser
+    back         = request.POST.get('back', '') or request.GET.get('back', '')
+    back_section = request.POST.get('back_section', '') or request.GET.get('back_section', '')
 
     if request.method == 'POST':
         post = request.POST
@@ -257,6 +290,19 @@ def tools_question_add(request):
                 options=options,
                 is_platform=is_platform,
             )
+            if back == 'section' and back_section:
+                section = Section.objects.filter(section_id=back_section).first()
+                if section:
+                    max_order = SectionMember.objects.filter(section=section).aggregate(
+                        m=Max('added_order'))['m'] or 0
+                    SectionMember.objects.create(
+                        section=section, node_id=question_id, node_type='Q',
+                        added_order=max_order + 10,
+                    )
+                    return redirect(
+                        reverse('core:tools_section_edit',
+                                kwargs={'section_id': back_section}) + '#pool'
+                    )
             return redirect(f'/tools/questions/?added={question_id}')
 
     context = {
@@ -265,6 +311,8 @@ def tools_question_add(request):
         'next_question_id':      _next_question_id(prefix='P_') if is_superuser else _next_question_id(request=request),
         'question_type_choices': Question.QUESTION_TYPE_CHOICES,
         'is_superuser':          is_superuser,
+        'back':                  back,
+        'back_section':          back_section,
     }
     return render(request, 'core/tools_question_add.html', context)
 
@@ -275,10 +323,10 @@ def tools_question_add(request):
 
 def _next_set_id():
     existing = QuestionSet.objects.filter(
-        set_id__regex=r'^S\d+$'
+        set_id__regex=r'^SET\d+$'
     ).values_list('set_id', flat=True)
     nums = [int(re.search(r'\d+', s).group()) for s in existing]
-    return f'S{max(nums) + 1 if nums else 1}'
+    return f'SET{max(nums) + 1 if nums else 1}'
 
 
 @staff_required
@@ -1475,7 +1523,7 @@ def tools_section_create(request):
         section_name        = post.get('section_name', '').strip()
         section_type        = post.get('section_type', '0').strip()
         section_guidance    = post.get('section_guidance', '').strip() or None
-        column_question_ids = post.get('column_question_ids', '').strip() or None
+        display_question_ids = post.get('display_question_ids', '').strip() or None
         totals_question_ids = post.get('totals_question_ids', '').strip() or None
 
         if not section_name:
@@ -1504,7 +1552,7 @@ def tools_section_create(request):
                 regime=None,
                 schedule=None,
                 section_guidance=section_guidance,
-                column_question_ids=column_question_ids,
+                display_question_ids=display_question_ids,
                 totals_question_ids=totals_question_ids,
                 copied_from=copy_from_id or None,
                 show_confirmation=post.get('show_confirmation') == 'on',
@@ -1548,7 +1596,7 @@ def tools_section_create(request):
                     'section_type':        str(copy_source.section_type),
                     'display_order':       str(copy_source.display_order),
                     'section_guidance':    copy_source.section_guidance or '',
-                    'column_question_ids': copy_source.column_question_ids or '',
+                    'display_question_ids': copy_source.display_question_ids or '',
                     'totals_question_ids': copy_source.totals_question_ids or '',
                     'copy_from':           copy_from_id,
                 }
@@ -1681,6 +1729,12 @@ def build_routing_tree(section):
                  'conditions': [], 'answer_value': None, 'next_node': None,
                  'routing_row_id': None, 'show_brackets': False}]
 
+    # Nodes that already have their own outgoing routing rows — destinations
+    # pointing at these should NOT show brackets (they're real nodes in the tree).
+    # Only destinations with no routing rows of their own are dangling references
+    # that deserve the bracket shortcut.
+    defined_nodes = {r.current_node for r in rows}
+
     # node_order: distinct current_nodes in first-appearance order
     seen = set()
     node_order = []
@@ -1758,9 +1812,10 @@ def build_routing_tree(section):
                 'is_convergence': False,
                 'conditions': [],
                 'answer_value': cond_row.answer_value,
+                'condition_question_id': cond_row.condition_question_id,
                 'next_node': dest,
                 'routing_row_id': cond_row.pk,
-                'show_brackets': dest is not None and dest in convergence_nodes,
+                'show_brackets': dest is not None and dest not in defined_nodes,
             })
 
         # Default / fallback row
@@ -1776,9 +1831,10 @@ def build_routing_tree(section):
                 'is_convergence': False,
                 'conditions': [],
                 'answer_value': None,
+                'condition_question_id': default_row.condition_question_id,
                 'next_node': dest,
                 'routing_row_id': default_row.pk,
-                'show_brackets': dest is not None,
+                'show_brackets': dest is not None and dest not in defined_nodes,
             })
 
     # Final END node
@@ -1793,105 +1849,10 @@ def build_routing_tree(section):
 
 
 def _renumber_routing(section):
-    """
-    Reassign order_in_section as 10, 20, 30, ... using the same traversal
-    order as build_routing_tree, so that re-running build_routing_tree after
-    renumbering produces an identical tree.
-
-    We walk the tree and collect (current_node, answer_value) tuples in
-    display order, then update the corresponding Routing rows.
-    """
-    rows = list(
-        Routing.objects.filter(section=section).order_by('order_in_section')
-    )
-    if not rows:
-        return
-
-    outgoing = _build_outgoing(rows)
-    node_order = _node_first_order(rows)
-
-    # Find entry node (no predecessor)
-    all_nexts = set(r.next_node for r in rows if r.next_node is not None)
-    entry = None
-    for nid in node_order:
-        if nid not in all_nexts:
-            entry = nid
-            break
-    if entry is None:
-        entry = node_order[0] if node_order else None
-
-    ordered_keys = []   # list of (current_node, answer_value) in traversal order
-    visited = set()
-
-    def _walk(node_id, excluded):
-        if node_id is None or node_id in visited or node_id in excluded:
-            return
-        visited.add(node_id)
-        nexts = outgoing.get(node_id, [])
-        node_rows = sorted(
-            [r for r in rows if r.current_node == node_id],
-            key=lambda r: r.order_in_section,
-        )
-        for r in node_rows:
-            ordered_keys.append((r.current_node, r.answer_value))
-
-        if len(nexts) <= 1:
-            next_node = nexts[0] if nexts else None
-            _walk(next_node, excluded)
-        else:
-            cond_rows = node_rows  # already sorted
-            branch_reachable = [_reachable_from(outgoing, r.next_node) for r in cond_rows]
-
-            if branch_reachable:
-                common = branch_reachable[0].copy()
-                for br in branch_reachable[1:]:
-                    common &= br
-            else:
-                common = set()
-            convergence = None
-            for nid in node_order:
-                if nid in common and nid not in visited and nid != node_id:
-                    convergence = nid
-                    break
-
-            for i, cond_row in enumerate(cond_rows):
-                branch_next = cond_row.next_node
-                other_reachable = set()
-                for j, br in enumerate(branch_reachable):
-                    if j != i:
-                        other_reachable |= br
-                branch_only = branch_reachable[i] - other_reachable
-                if convergence:
-                    branch_only.discard(convergence)
-
-                new_excluded = excluded | (other_reachable - branch_only)
-                if convergence:
-                    new_excluded.add(convergence)
-                _walk(branch_next, new_excluded)
-
-            if convergence:
-                _walk(convergence, excluded)
-
-    _walk(entry, set())
-
-    # Build a row lookup by (current_node, answer_value)
-    row_lookup = {(r.current_node, r.answer_value): r for r in rows}
-
-    new_order = 10
-    updated = []
-    seen_keys = set()
-    for key in ordered_keys:
-        if key in seen_keys:
-            continue
-        seen_keys.add(key)
-        row = row_lookup.get(key)
-        if row:
-            row.order_in_section = new_order
-            updated.append(row)
-            new_order += 10
-
-    if updated:
-        Routing.objects.bulk_update(updated, ['order_in_section'])
+    """No-op. order_in_section is now a float set at creation time by
+    _next_order_value and never rewritten. Kept as a stub so any remaining
+    call sites compile without error until they are removed."""
+    pass
 
 
 # ── View: question type / options lookup (AJAX) ───────────────────────────────
@@ -1926,37 +1887,38 @@ def tools_section_routing(request, section_id):
     section = get_object_or_404(Section, section_id=section_id)
     tree = build_routing_tree(section)
 
-    existing_node_ids = set(
+    pool_members = list(SectionMember.objects.filter(section=section).order_by('added_order'))
+    pool_node_ids = [m.node_id for m in pool_members]
+    has_routing = set(
         Routing.objects.filter(section=section)
         .values_list('current_node', flat=True)
         .distinct()
     )
+    addable = [m for m in pool_members if m.node_id not in has_routing]
 
-    # Build available_nodes from all Questions + QuestionSets not already in routing
+    # available_nodes: pool members not yet in routing → "add new node" picker
+    q_addable_ids  = {m.node_id for m in addable if m.node_type == 'Q'}
+    qs_addable_ids = {m.node_id for m in addable if m.node_type == 'S'}
     questions = sorted(
-        Question.objects.exclude(question_id__in=existing_node_ids),
+        Question.objects.filter(question_id__in=q_addable_ids),
         key=_question_sort_key,
     )
-    sets = QuestionSet.objects.exclude(set_id__in=existing_node_ids).order_by('set_id')
+    sets = QuestionSet.objects.filter(set_id__in=qs_addable_ids).order_by('set_id')
 
     available_nodes = (
         [{'id': q.question_id, 'label': f'{q.question_id}  {q.question_text}'} for q in questions]
         + [{'id': s.set_id, 'label': f'{s.set_id}  {s.set_title}'} for s in sets]
     )
 
-    # Build question_data for C2 — type + options for each node currently in routing.
-    # Also build routing_nodes for C1 — the next_node dropdown in condition forms.
-    q_map = {
-        q.question_id: q
-        for q in Question.objects.filter(question_id__in=existing_node_ids)
-    }
-    qs_map = {
-        qs.set_id: qs
-        for qs in QuestionSet.objects.filter(set_id__in=existing_node_ids)
-    }
+    # Build question_data and routing_nodes from the full pool
+    pn_q_ids  = {m.node_id for m in pool_members if m.node_type == 'Q'}
+    pn_qs_ids = {m.node_id for m in pool_members if m.node_type == 'S'}
+    q_map  = {q.question_id: q for q in Question.objects.filter(question_id__in=pn_q_ids)}
+    qs_map = {qs.set_id: qs   for qs in QuestionSet.objects.filter(set_id__in=pn_qs_ids)}
     question_data = {}
     routing_nodes = []
-    for node_id in sorted(existing_node_ids):
+    for m in pool_members:
+        node_id = m.node_id
         if node_id in q_map:
             q = q_map[node_id]
             question_data[node_id] = {'type': q.question_type, 'options': q.options or ''}
@@ -1977,25 +1939,50 @@ def tools_section_routing(request, section_id):
         key = r.answer_value if r.answer_value is not None else '__default__'
         node_conditions.setdefault(r.current_node, {})[key] = r.next_node or ''
 
+    first_question_id = next(
+        (n['node_id'] for n in tree if n['type'] == 'question'), None
+    )
+
     return render(request, 'core/tools_section_routing.html', {
         'section':              section,
         'tree':                 tree,
-        'available_nodes':      available_nodes,
-        'routing_nodes':        routing_nodes,
-        'question_data_json':   json.dumps(question_data),
-        'routing_nodes_json':   json.dumps(routing_nodes),
-        'node_conditions_json': json.dumps(node_conditions),
+        'first_question_id':    first_question_id,
         'routing_validation':   validate_section_routing(section),
     })
 
 
 # ── Routing redirect helper ───────────────────────────────────────────────────
 
-def _routing_redirect(section_id):
+def _routing_redirect(section_id, error=None):
     """Redirect to the composite section edit page (routing panel)."""
-    return redirect(
-        reverse('core:tools_section_edit', kwargs={'section_id': section_id})
-    )
+    url = reverse('core:tools_section_edit', kwargs={'section_id': section_id})
+    if error:
+        url += '?' + urlencode({'routing_error': error})
+    return redirect(url)
+
+
+# ── Routing order helper ──────────────────────────────────────────────────────
+
+def _next_order_value(section, anchor_node=None, position='after'):
+    rows = list(Routing.objects.filter(section=section).order_by('order_in_section'))
+    if not rows:
+        return 10.0
+
+    if position == 'first':
+        return rows[0].order_in_section / 2
+
+    # position == 'after': anchor_row is the anchor's row with the lowest
+    # order_in_section (if the anchor has multiple rows, e.g. branching,
+    # they should all share very close values already — use the first)
+    anchor_rows = [r for r in rows if r.current_node == anchor_node]
+    if not anchor_rows:
+        return rows[-1].order_in_section + 10  # fallback, shouldn't occur
+    anchor_value = anchor_rows[0].order_in_section
+
+    higher = [r.order_in_section for r in rows if r.order_in_section > anchor_value]
+    if not higher:
+        return anchor_value + 10  # anchor is currently the last row
+    return (anchor_value + min(higher)) / 2
 
 
 # ── View: insert node ─────────────────────────────────────────────────────────
@@ -2006,12 +1993,13 @@ def tools_routing_insert(request, section_id):
     section = get_object_or_404(Section, section_id=section_id)
 
     if request.method == 'POST':
-        position            = request.POST.get('position', '').strip()
-        anchor_node         = request.POST.get('anchor_node', '').strip()
-        anchor_answer_value = request.POST.get('anchor_answer_value', '').strip() or None
-        node_type           = request.POST.get('node_type', 'question').strip()
-        new_node_id         = request.POST.get('node_id', '').strip()
-        branching           = request.POST.get('branching', 'no').strip()
+        position              = request.POST.get('position', '').strip()
+        anchor_node           = request.POST.get('anchor_node', '').strip()
+        anchor_answer_value   = request.POST.get('anchor_answer_value', '').strip() or None
+        node_type             = request.POST.get('node_type', 'question').strip()
+        new_node_id           = request.POST.get('node_id', '').strip()
+        branching             = request.POST.get('branching', 'no').strip()
+        condition_question_id = request.POST.get('condition_question_id', '').strip() or None
 
         # END selected — update the predecessor edge to None and stop.
         if not new_node_id:
@@ -2032,16 +2020,17 @@ def tools_routing_insert(request, section_id):
                         current_node=anchor_node,
                         answer_value__isnull=True,
                     ).update(next_node=None)
-            _renumber_routing(section)
             return _routing_redirect(section_id)
 
-        # Validate node exists and is not already in this section's routing
+        # Validate node exists, is in the pool, and not already in this section's routing
         if node_type == 'question':
             if not Question.objects.filter(question_id=new_node_id).exists():
                 return _routing_redirect(section_id)
         else:
             if not QuestionSet.objects.filter(set_id=new_node_id).exists():
                 return _routing_redirect(section_id)
+        if not SectionMember.objects.filter(section=section, node_id=new_node_id).exists():
+            return _routing_redirect(section_id)
         if Routing.objects.filter(section=section, current_node=new_node_id).exists():
             return _routing_redirect(section_id)
 
@@ -2068,114 +2057,83 @@ def tools_routing_insert(request, section_id):
             specific_rows = []
             default_dest = request.POST.get('single_dest', '').strip() or None
 
-        max_order = (
-            Routing.objects.filter(section=section)
-            .order_by('-order_in_section')
-            .values_list('order_in_section', flat=True)
-            .first()
-        ) or 0
+        # Compute start_order based on insert position
+        if position == 'first':
+            start_order = _next_order_value(section, position='first')
+        elif position == 'after' and anchor_node:
+            start_order = _next_order_value(section, anchor_node=anchor_node, position='after')
+        else:
+            start_order = _next_order_value(section, position='first')  # position=before: go before the first row
+
+        row_offset = [0]
 
         def _create_new_rows():
-            nonlocal max_order
             if branching == 'yes':
                 for av, dest in specific_rows:
                     Routing.objects.create(
                         section=section,
                         current_node=new_node_id,
+                        condition_question_id=condition_question_id,
                         answer_value=av,
                         next_node=dest,
-                        order_in_section=max_order + 10,
+                        order_in_section=start_order + row_offset[0],
                     )
-                    max_order += 10
+                    row_offset[0] += 1
                 # Default (unconditional) row — only when admin explicitly set one
                 if default_dest != '__NOT_SET__':
                     Routing.objects.create(
                         section=section,
                         current_node=new_node_id,
+                        condition_question_id=condition_question_id,
                         answer_value=None,
                         next_node=default_dest,
-                        order_in_section=max_order + 10,
+                        order_in_section=start_order + row_offset[0],
                     )
-                    max_order += 10
+                    row_offset[0] += 1
             else:
                 Routing.objects.create(
                     section=section,
                     current_node=new_node_id,
+                    condition_question_id=condition_question_id,
                     answer_value=None,
                     next_node=default_dest,
-                    order_in_section=max_order + 10,
+                    order_in_section=start_order + row_offset[0],
                 )
-                max_order += 10
+                row_offset[0] += 1
 
-        # ── Handle __END__ sentinel ────────────────────────────────────────────
-        if position == 'before' and anchor_node == '__END__':
-            if branching == 'no':
-                last_row = (
-                    Routing.objects
-                    .filter(section=section, next_node__isnull=True, answer_value__isnull=True)
-                    .order_by('-order_in_section')
-                    .first()
-                )
-                if last_row is not None:
-                    last_row.next_node = new_node_id
-                    last_row.save()
-            _create_new_rows()
-
-        elif position == 'first':
+        if position == 'first':
             _create_new_rows()
 
         elif position == 'before' and anchor_node:
-            if branching == 'no':
-                # All rows pointing to anchor_node → new_node_id (splice)
-                Routing.objects.filter(section=section, next_node=anchor_node).update(
-                    next_node=new_node_id
-                )
             _create_new_rows()
 
         elif position == 'after' and anchor_node:
-            if anchor_answer_value is not None:
-                # Branch insert: splice the specific condition row
-                try:
-                    cond_row = Routing.objects.get(
-                        section=section,
-                        current_node=anchor_node,
-                        answer_value=anchor_answer_value,
-                    )
-                except Routing.DoesNotExist:
-                    return _routing_redirect(section_id)
-                cond_row.next_node = new_node_id
-                cond_row.save()
-            elif branching == 'no':
-                # Simple linear after: splice the unconditional row
-                anchor_row = (
-                    Routing.objects
-                    .filter(section=section, current_node=anchor_node, answer_value__isnull=True)
-                    .first()
-                )
-                if anchor_row is None:
-                    return _routing_redirect(section_id)
-                anchor_row.next_node = new_node_id
-                anchor_row.save()
             _create_new_rows()
 
-        _renumber_routing(section)
         return _routing_redirect(section_id)
 
     # GET — build the form
     position            = request.GET.get('position', 'first')
     anchor_node         = request.GET.get('anchor_node', '')
     anchor_answer_value = request.GET.get('anchor_answer_value', '')
+    prefill_node        = request.GET.get('prefill_node', '')
 
-    existing_node_ids = set(
+    pool_members = list(SectionMember.objects.filter(section=section).order_by('added_order'))
+    pool_node_ids = [m.node_id for m in pool_members]
+    has_routing = set(
         Routing.objects.filter(section=section)
         .values_list('current_node', flat=True)
         .distinct()
     )
+    addable = [m for m in pool_members if m.node_id not in has_routing]
+
+    q_addable_ids  = {m.node_id for m in addable if m.node_type == 'Q'}
+    qs_addable_ids = {m.node_id for m in addable if m.node_type == 'S'}
     questions = sorted(
-        Question.objects.exclude(question_id__in=existing_node_ids),
+        Question.objects.filter(question_id__in=q_addable_ids),
         key=_question_sort_key,
     )
-    sets = QuestionSet.objects.exclude(set_id__in=existing_node_ids).order_by('set_id')
+    sets = QuestionSet.objects.filter(set_id__in=qs_addable_ids).order_by('set_id')
 
     # Build options map for radio/checkbox questions only
     question_options = {}
@@ -2185,14 +2143,16 @@ def tools_routing_insert(request, section_id):
             if opts:
                 question_options[q.question_id] = opts
 
-    # Build label list for destination dropdowns — all questions + sets, sorted
+    # Destination dropdowns: all pool members
+    pn_q_ids  = {m.node_id for m in pool_members if m.node_type == 'Q'}
+    pn_qs_ids = {m.node_id for m in pool_members if m.node_type == 'S'}
     routing_node_labels = (
         [
             {'id': q.question_id, 'label': f'{q.question_id} — {q.question_text[:60]}'}
-            for q in sorted(Question.objects.all(), key=_question_sort_key)
+            for q in sorted(Question.objects.filter(question_id__in=pn_q_ids), key=_question_sort_key)
         ] + [
             {'id': s.set_id, 'label': f'{s.set_id} — {s.set_title}'}
-            for s in QuestionSet.objects.order_by('set_id')
+            for s in QuestionSet.objects.filter(set_id__in=pn_qs_ids).order_by('set_id')
         ]
     )
 
@@ -2201,6 +2161,7 @@ def tools_routing_insert(request, section_id):
         'position':              position,
         'anchor_node':           anchor_node,
         'anchor_answer_value':   anchor_answer_value,
+        'prefill_node':          prefill_node,
         'questions':             questions,
         'sets':                  sets,
         'all_sets':              QuestionSet.objects.order_by('set_id'),
@@ -2231,7 +2192,10 @@ def tools_routing_delete(request, section_id):
     outgoing = _build_outgoing(rows)
     node_order = _node_first_order(rows)
 
-    if delete_mode == 'delete_all':
+    if delete_mode == 'node_only':
+        Routing.objects.filter(section=section, current_node=node_id).delete()
+
+    elif delete_mode == 'delete_all':
         reachable_from_node = _reachable_from(outgoing, node_id)
 
         # Find entry node
@@ -2362,7 +2326,6 @@ def tools_routing_delete(request, section_id):
 
             Routing.objects.filter(section=section, current_node=node_id).delete()
 
-    _renumber_routing(section)
     return redirect(routing_url)
 
 
@@ -2406,7 +2369,6 @@ def tools_routing_delete_condition(request, section_id):
     # Delete branch-only rows
     Routing.objects.filter(section=section, current_node__in=branch_only).delete()
 
-    _renumber_routing(section)
     return redirect(routing_url)
 
 
@@ -2421,11 +2383,12 @@ def tools_routing_add_condition(request, section_id):
     section = get_object_or_404(Section, section_id=section_id)
     routing_url = f'/tools/sections/{section_id}/routing/'
 
-    node_id         = request.POST.get('node_id', '').strip()
-    answer_value    = request.POST.get('answer_value', '').strip() or None
-    comparator_raw  = request.POST.get('comparator', '').strip() or None
-    threshold_raw   = request.POST.get('threshold_value', '').strip() or None
-    next_node_raw   = request.POST.get('next_node', '').strip() or None
+    node_id               = request.POST.get('node_id', '').strip()
+    condition_question_id = request.POST.get('condition_question_id', '').strip() or None
+    answer_value          = request.POST.get('answer_value', '').strip() or None
+    comparator_raw        = request.POST.get('comparator', '').strip() or None
+    threshold_raw         = request.POST.get('threshold_value', '').strip() or None
+    next_node_raw         = request.POST.get('next_node', '').strip() or None
 
     if not node_id:
         return redirect(routing_url)
@@ -2470,6 +2433,7 @@ def tools_routing_add_condition(request, section_id):
     Routing.objects.update_or_create(
         section=section,
         current_node=node_id,
+        condition_question_id=condition_question_id,
         answer_value=answer_value,
         defaults={
             'next_node':        next_node_to_store,
@@ -2479,7 +2443,6 @@ def tools_routing_add_condition(request, section_id):
         },
     )
 
-    _renumber_routing(section)
     return redirect(routing_url)
 
 
@@ -2767,7 +2730,7 @@ def tools_section_edit(request, section_id):
             section.section_name        = section_name
             section.section_type        = int(request.POST.get('section_type', 0))
             section.section_guidance    = request.POST.get('section_guidance', '').strip() or None
-            section.column_question_ids = request.POST.get('column_question_ids', '').strip() or None
+            section.display_question_ids = request.POST.get('display_question_ids', '').strip() or None
             section.totals_question_ids = request.POST.get('totals_question_ids', '').strip() or None
             section.show_confirmation   = request.POST.get('show_confirmation') == 'on'
             section.save()
@@ -2779,48 +2742,118 @@ def tools_section_edit(request, section_id):
     tree               = build_routing_tree(section)
     routing_validation = validate_section_routing(section)
     updated            = request.GET.get('updated')
+    routing_error      = request.GET.get('routing_error')
 
-    # Build routing_nodes / question_data for C2 condition forms
-    existing_node_ids = set(
-        Routing.objects.filter(section=section)
-        .values_list('current_node', flat=True)
-        .distinct()
+    # Pool members — q_map/qs_map used for labels in the pool panel
+    pool_members_raw = list(
+        SectionMember.objects.filter(section=section).order_by('added_order')
     )
-    q_map  = {q.question_id: q  for q in Question.objects.filter(question_id__in=existing_node_ids)}
-    qs_map = {qs.set_id: qs    for qs in QuestionSet.objects.filter(set_id__in=existing_node_ids)}
-    question_data = {}
-    routing_nodes = []
-    for node_id in sorted(existing_node_ids):
-        if node_id in q_map:
-            q = q_map[node_id]
-            question_data[node_id] = {'type': q.question_type, 'options': q.options or ''}
-            label = f'{node_id}  {q.question_text}'
-        elif node_id in qs_map:
-            qs = qs_map[node_id]
-            question_data[node_id] = {'type': 'set', 'options': ''}
-            label = f'{node_id}  {qs.set_title}'
-        else:
-            question_data[node_id] = {'type': '', 'options': ''}
-            label = node_id
-        routing_nodes.append({'id': node_id, 'label': label})
+    pn_q_ids  = {m.node_id for m in pool_members_raw if m.node_type == 'Q'}
+    pn_qs_ids = {m.node_id for m in pool_members_raw if m.node_type == 'S'}
+    q_map  = {q.question_id: q for q in Question.objects.filter(question_id__in=pn_q_ids)}
+    qs_map = {qs.set_id: qs   for qs in QuestionSet.objects.filter(set_id__in=pn_qs_ids)}
 
-    node_conditions = {}
-    for r in Routing.objects.filter(section=section):
-        key = r.answer_value if r.answer_value is not None else '__default__'
-        node_conditions.setdefault(r.current_node, {})[key] = r.next_node or ''
+    first_question_id = next(
+        (n['node_id'] for n in tree if n['type'] == 'question'), None
+    )
+
+    # ── Pool panel data (type-0 and type-2 sections only) ────────────────────
+    pool_node_ids = {m.node_id for m in pool_members_raw}
+    pool_members = [
+        {
+            'node_id':   m.node_id,
+            'node_type': m.node_type,
+            'label':     (q_map[m.node_id].question_text if m.node_id in q_map
+                          else qs_map[m.node_id].set_title if m.node_id in qs_map
+                          else m.node_id),
+        }
+        for m in pool_members_raw
+    ]
+
+    # Determine dept prefix for available-question filtering
+    if section.regime_id:
+        regime_obj = section.regime
+    elif section.schedule_id:
+        sched = Schedule.objects.select_related('regime').filter(
+            schedule_id=section.schedule_id).first()
+        regime_obj = sched.regime if sched else None
+    else:
+        regime_obj = None
+    dept_id = regime_obj.dept_id if regime_obj else ''
+
+    available_questions = list(
+        Question.objects.filter(question_id__startswith=f'{dept_id}_')
+        .exclude(question_id__in=pool_node_ids)
+        .order_by('question_id')
+    ) if dept_id else []
+    available_sets = list(
+        QuestionSet.objects.exclude(set_id__in=pool_node_ids).order_by('set_id')
+    )
 
     return render(request, 'core/tools_section_edit.html', {
         'section':              section,
         'tree':                 tree,
         'routing_validation':   routing_validation,
+        'first_question_id':    first_question_id,
         'errors':               errors,
         'updated':              updated,
+        'routing_error':        routing_error,
         'section_type_choices': Section.SECTION_TYPE_CHOICES,
-        'routing_nodes':        routing_nodes,
-        'question_data_json':   json.dumps(question_data),
-        'routing_nodes_json':   json.dumps(routing_nodes),
-        'node_conditions_json': json.dumps(node_conditions),
+        'pool_members':         pool_members,
+        'available_questions':  available_questions,
+        'available_sets':       available_sets,
+        'dept_id':              dept_id,
     })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION MEMBER POOL
+# ─────────────────────────────────────────────────────────────────────────────
+
+@staff_required
+def tools_section_member_add(request, section_id):
+    """POST only. Add an existing Question or Set to a section's pool."""
+    section = get_object_or_404(Section, section_id=section_id)
+    if request.method != 'POST':
+        return redirect(reverse('core:tools_section_edit', kwargs={'section_id': section_id}))
+
+    node_id   = request.POST.get('node_id', '').strip()
+    node_type = request.POST.get('node_type', '').strip()  # 'Q' or 'S'
+
+    valid = (
+        (node_type == 'Q' and Question.objects.filter(question_id=node_id).exists())
+        or (node_type == 'S' and QuestionSet.objects.filter(set_id=node_id).exists())
+    )
+    if valid and not SectionMember.objects.filter(section=section, node_id=node_id).exists():
+        max_order = SectionMember.objects.filter(section=section).aggregate(
+            m=Max('added_order'))['m'] or 0
+        SectionMember.objects.create(
+            section=section, node_id=node_id, node_type=node_type,
+            added_order=max_order + 10,
+        )
+    return redirect(
+        reverse('core:tools_section_edit', kwargs={'section_id': section_id}) + '#pool'
+    )
+
+
+@staff_required
+def tools_section_member_remove(request, section_id, node_id):
+    """POST only. Remove a pool member — blocked if referenced by routing."""
+    section = get_object_or_404(Section, section_id=section_id)
+    if request.method != 'POST':
+        return redirect(reverse('core:tools_section_edit', kwargs={'section_id': section_id}))
+
+    in_use = Routing.objects.filter(
+        Q(section=section, current_node=node_id)
+        | Q(section=section, next_node=node_id)
+        | Q(section=section, condition_question_id=node_id)
+    ).exists()
+    if not in_use:
+        SectionMember.objects.filter(section=section, node_id=node_id).delete()
+    # if in_use: silently no-op — proper warning UI is backlogged
+    return redirect(
+        reverse('core:tools_section_edit', kwargs={'section_id': section_id}) + '#pool'
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

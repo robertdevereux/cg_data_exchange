@@ -180,10 +180,13 @@ class Command(BaseCommand):
             'P1', 'P2', 'P3', 'P4', 'P5', 'P6',
         ]
         Question.objects.filter(question_id__in=old_ids).delete()
-        QuestionSet.objects.filter(set_id__in=['S1', 'S2', 'S3']).delete()
+        QuestionSet.objects.filter(set_id__in=['SET1', 'SET2', 'SET3']).delete()
         # Remove stale routing rows — current_node is a CharField (no FK cascade).
         # old_ids covers both the original Q_-prefixed node names and the retired Q1.
+        # Also purge old S-prefix set IDs that were renamed to SET-prefix.
         Routing.objects.filter(current_node__in=old_ids).delete()
+        Routing.objects.filter(current_node__in=['S1', 'S2', 'S3', 'S4', 'S5', 'S6',
+                                                  'S7', 'S8', 'S9']).delete()
 
         # ── 1. USERS ──────────────────────────────────────────────────────────
         self.stdout.write('Creating users…')
@@ -640,7 +643,7 @@ class Command(BaseCommand):
             dict(section_id='SECTIONS_S2', section_name='Your Finances',
                  section_type=1, display_order=2,
                  regime=r_sections,  schedule=None,
-                 column_question_ids='TEST_12;TEST_13;TEST_14',
+                 display_question_ids='TEST_12;TEST_13;TEST_14',
                  totals_question_ids='TEST_14'),
             dict(section_id='SECTIONS_S3', section_name='Additional Information',
                  section_type=0, display_order=3,
@@ -655,7 +658,7 @@ class Command(BaseCommand):
             dict(section_id='SCHED_S3', section_name='Accounts',
                  section_type=1, display_order=1,
                  regime=None, schedule=sched_finances,
-                 column_question_ids='TEST_12;TEST_13;TEST_14',
+                 display_question_ids='TEST_12;TEST_13;TEST_14',
                  totals_question_ids='TEST_14'),
             dict(section_id='SCHED_S4', section_name='Declaration',
                  section_type=0, display_order=2,
@@ -690,7 +693,7 @@ class Command(BaseCommand):
                 'regime':              meta_regime,
                 'schedule':            None,
                 'display_order':       2,
-                'column_question_ids': 'M_18;M_19;M_20',
+                'display_question_ids': 'M_18;M_19;M_20',
             }
         )
         Section.objects.update_or_create(
@@ -701,7 +704,7 @@ class Command(BaseCommand):
                 'regime':              meta_regime,
                 'schedule':            None,
                 'display_order':       3,
-                'column_question_ids': 'M_14;M_15;M_16;M_17',
+                'display_question_ids': 'M_14;M_15;M_16;M_17',
             }
         )
         Section.objects.update_or_create(
@@ -712,7 +715,7 @@ class Command(BaseCommand):
                 'regime':              meta_regime,
                 'schedule':            None,
                 'display_order':       4,
-                'column_question_ids': 'M_1;M_2;M_3;M_4;M_5;M_6',
+                'display_question_ids': 'M_1;M_2;M_3;M_4;M_5;M_6',
             }
         )
         Section.objects.update_or_create(
@@ -723,7 +726,7 @@ class Command(BaseCommand):
                 'regime':              meta_regime,
                 'schedule':            None,
                 'display_order':       5,
-                'column_question_ids': 'M_7;M_8;M_9',
+                'display_question_ids': 'M_7;M_8;M_9',
             }
         )
         Section.objects.update_or_create(
@@ -734,7 +737,7 @@ class Command(BaseCommand):
                 'regime':              meta_regime,
                 'schedule':            None,
                 'display_order':       6,
-                'column_question_ids': 'M_10;M_11;M_12;M_13',
+                'display_question_ids': 'M_10;M_11;M_12;M_13',
             }
         )
         Section.objects.update_or_create(
@@ -745,7 +748,7 @@ class Command(BaseCommand):
                 'regime':              meta_regime,
                 'schedule':            None,
                 'display_order':       7,
-                'column_question_ids': 'M_24;M_25;M_26;M_27',
+                'display_question_ids': 'M_24;M_25;M_26;M_27',
             }
         )
 
@@ -760,7 +763,7 @@ class Command(BaseCommand):
         #   Q8 = No  → Q9 → END
 
         s = _s('SIMPLE_S1')
-        route(s, 'S1',       None,  'TEST_2',  1, counters)
+        route(s, 'SET1',     None,  'TEST_2',  1, counters)
         route(s, 'TEST_2',   None,  'TEST_3',  2, counters)
         route(s, 'TEST_3',   'Yes', 'TEST_4',  3, counters)
         route(s, 'TEST_3',   'No',  'TEST_7',  4, counters)
@@ -773,12 +776,12 @@ class Command(BaseCommand):
         route(s, 'TEST_9',   None,  None,      11, counters)  # END
 
         # ── SECTIONS_S1: personal details with nino branch ────────────────────
-        #   S1 → TEST_2 → TEST_3
+        #   SET1 → TEST_2 → TEST_3
         #     Yes → TEST_4 → TEST_5 → TEST_6 → END
         #     No  →                   TEST_5 → TEST_6 → END
 
         s = _s('SECTIONS_S1')
-        route(s, 'S1',      None,  'TEST_2', 1, counters)
+        route(s, 'SET1',    None,  'TEST_2', 1, counters)
         route(s, 'TEST_2',  None,  'TEST_3', 2, counters)
         route(s, 'TEST_3',  'Yes', 'TEST_4', 3, counters)
         route(s, 'TEST_3',  'No',  'TEST_5', 4, counters)
@@ -801,11 +804,11 @@ class Command(BaseCommand):
         route(s, 'TEST_16', None,  None,       3, counters)  # END
 
         # ── SCHED_S1: identity — nino branch, ends at END (no address) ────────
-        #   S1 → TEST_2 → TEST_3
+        #   SET1 → TEST_2 → TEST_3
         #     Yes → TEST_4 → END
         #     No  → END
         s = _s('SCHED_S1')
-        route(s, 'S1',      None,  'TEST_2', 1, counters)
+        route(s, 'SET1',    None,  'TEST_2', 1, counters)
         route(s, 'TEST_2',  None,  'TEST_3', 2, counters)
         route(s, 'TEST_3',  'Yes', 'TEST_4', 3, counters)
         route(s, 'TEST_3',  'No',  None,     4, counters)  # END
@@ -863,12 +866,12 @@ class Command(BaseCommand):
                 )
 
         # ── Standard sets ──────────────────────────────────────────────────────
-        qset('S1', 'Your name', None, [
+        qset('SET1', 'Your name', None, [
             ('TEST_22', 1, True),   # first name
             ('TEST_23', 2, True),   # last name
         ])
 
-        qset('S2', 'Your address', None, [
+        qset('SET2', 'Your address', None, [
             ('TEST_24', 1, True),   # address line 1
             ('TEST_25', 2, False),  # address line 2 (optional)
             ('TEST_26', 3, True),   # town or city
@@ -876,7 +879,7 @@ class Command(BaseCommand):
             ('TEST_28', 5, True),   # postcode
         ])
 
-        qset('S3', 'Your bank account details',
+        qset('SET3', 'Your bank account details',
              'Enter the details from your bank statement', [
             ('TEST_29', 1, True),   # name on account
             ('TEST_30', 2, True),   # sort code
