@@ -19,8 +19,8 @@ Department apps may:
   Section etc.) for read purposes
 - Build any Layer 1 navigation pattern they choose, provided it sets the four
   SESSION_KEYS correctly
-- Use call_regime(), call_schedules(), or call_sections() as a single-call
-  shortcut that sets all session keys and returns the entry URL
+- Use call_regime() or call_core() as a single-call shortcut that sets all
+  session keys and returns the entry URL
 """
 
 import uuid
@@ -261,35 +261,6 @@ def call_regime(request, regime, actor, user, url_prefix=''):
         [{'type': 'section',  'id': sid} for sid in bare_section_ids]
     )
     return call_core(request, regime, actor, user, items, url_prefix=url_prefix)
-
-
-def call_schedules(request, regime, actor, user, schedule_ids, url_prefix='', title=None):
-    """
-    Schedule-filtered entry point.
-
-    Like call_regime but only includes sections whose schedule is in
-    schedule_ids. Useful when an intermediary has access to specific schedules
-    rather than the whole regime.
-
-    url_prefix: see call_regime.
-    """
-    items = [{'type': 'schedule', 'id': sid} for sid in schedule_ids]
-    return call_core(request, regime, actor, user, items, title=title, url_prefix=url_prefix)
-
-
-def call_sections(request, regime, actor, user, section_ids, url_prefix='', title=None):
-    """
-    Section-filtered entry point.
-
-    Like call_regime but only includes sections whose section_id is in
-    section_ids. Useful when an intermediary has access to specific sections
-    rather than the whole regime or schedule.
-
-    url_prefix: see call_regime.
-    title: optional heading for the section list page (multiple sections only).
-    """
-    items = [{'type': 'section', 'id': sid} for sid in section_ids]
-    return call_core(request, regime, actor, user, items, title=title, url_prefix=url_prefix)
 
 
 # ── Answer utilities ──────────────────────────────────────────────────────────

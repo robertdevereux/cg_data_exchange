@@ -772,14 +772,6 @@ def _get_crumbs(regime):
     ]
 
 
-def _get_verified_case(user, regime):
-    return (
-        get_cases(user, regime)
-        .filter(reference__isnull=False)
-        .first()
-    )
-
-
 def _get_verified_cases(actor, regime):
     """
     All verified IHT cases this actor can work on, most recent first.
