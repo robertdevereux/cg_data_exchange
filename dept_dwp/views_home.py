@@ -7,7 +7,7 @@ from django.shortcuts import render
 from django.urls import reverse
 
 from core.models import Regime
-from core.nav_reference import _resolve_user
+from core.nav_reference import resolve_user
 from core.session import get_acting_for_name, get_session, update_session
 
 
@@ -30,7 +30,7 @@ def dept_home(request):
     pss   = get_session(request)
     update_session(request, {'user_id': actor.pk, 'actor_id': actor.pk})
     pss = get_session(request)
-    user     = _resolve_user(pss, actor)
+    user     = resolve_user(pss, actor)
     is_agent = (actor.pk != user.pk)
 
     all_regimes = Regime.objects.filter(dept_id='DWP').order_by('display_order', 'regime_id')

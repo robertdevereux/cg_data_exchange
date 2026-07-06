@@ -9,7 +9,7 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from django.urls import reverse
 
-from core.nav_reference import _resolve_user
+from core.nav_reference import resolve_user
 from core.permissions import get_actor_accessible_regimes, get_permitted_regimes
 from core.session import get_acting_for_name, get_session
 
@@ -39,7 +39,7 @@ def dept_home(request):
     user_id  = pss.get('user_id')
 
     if user_id:
-        user = _resolve_user(pss, actor)
+        user = resolve_user(pss, actor)
         permitted_regimes = get_permitted_regimes(actor, user, dept_id='TEST')
     else:
         # No identity selected yet — show all regimes accessible to actor for anyone

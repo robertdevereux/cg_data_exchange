@@ -19,7 +19,7 @@ from .models import User
 
 # ── Shared helper ─────────────────────────────────────────────────────────────
 
-def _resolve_user(pss, actor):
+def resolve_user(pss, actor):
     """Return the User the actor is acting for, defaulting to actor themselves."""
     user_id = pss.get('user_id')
     if user_id:

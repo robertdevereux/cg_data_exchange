@@ -116,11 +116,15 @@ Bootstrap: if no verified_case and no current_action
     → set current_action = 'start'
     ↓
 if not returning_from_core:          ← ENTRY
-    start            → _entry_start()
+    start            → _entry_start()       [renders, does not redirect — shows
+                                             pre-verified home with entry button]
     deceased_details → _entry_deceased_details()
     reckoner         → _entry_reckoner()
     tailor           → _entry_tailor()
     hmrc_s4/s5/s6   → _entry_triage_assets(section_id)
+                                            [returns None if no built schedules
+                                             for this triage section; caller
+                                             falls through to _render_home()]
     None             → _render_home()
     ↓
 if returning_from_core:              ← EXIT
@@ -132,6 +136,11 @@ if returning_from_core:              ← EXIT
     ↓
 _clear_current_action()
 _render_home()
+
+Note: iht_start_new_estate is NOT dispatched by this table. It is reached
+directly via the acting-for gate's "Begin a new estate" option and bypasses
+iht_orchestrate's ENTRY logic entirely — it creates a draft case then enters
+S1 directly, without rendering the pre-verified home screen.
 ```
 
 **Why case/user resolution changed (5 July 2026):** the previous version

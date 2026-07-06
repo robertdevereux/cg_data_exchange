@@ -8,7 +8,7 @@ from django.shortcuts import render
 
 from core.interfaces import bootstrap_section_statuses, get_or_create_case
 from core.models import Regime, SectionStatus
-from core.nav_reference import _resolve_user, resolve_layer1_entry_url
+from core.nav_reference import resolve_user, resolve_layer1_entry_url
 from core.permissions import get_permitted_sections
 from core.session import get_acting_for_name, get_session, update_session
 
@@ -24,7 +24,7 @@ def regime_sections_home(request):
     """
     regime = Regime.objects.exclude(dept_id='PLATFORM').get(regime_id=_REGIME_ID)
     actor  = request.user
-    user   = _resolve_user(get_session(request), actor)
+    user   = resolve_user(get_session(request), actor)
 
     permitted = get_permitted_sections(actor, user).filter(
         Q(regime_id=_REGIME_ID) | Q(schedule__regime_id=_REGIME_ID)

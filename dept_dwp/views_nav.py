@@ -10,7 +10,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
 from core.models import Regime, SectionStatus
-from core.nav_reference import _resolve_user
+from core.nav_reference import resolve_user
 from core.permissions import get_permitted_regimes, get_permitted_sections
 from core.session import get_acting_for_name, get_session, update_session
 from core.views_layer1 import regime_schedule_sections, regime_schedules  # noqa: F401 — re-exported for urls.py
@@ -29,7 +29,7 @@ def select_regime(request):
     """
     pss   = get_session(request)
     actor = request.user
-    user  = _resolve_user(pss, actor)
+    user  = resolve_user(pss, actor)
 
     if not pss.get('user_id'):
         update_session(request, {'user_id': user.pk, 'actor_id': actor.pk})
@@ -64,7 +64,7 @@ def select_section(request, regime_id):
     """
     actor  = request.user
     pss    = get_session(request)
-    user   = _resolve_user(pss, actor)
+    user   = resolve_user(pss, actor)
     regime = get_object_or_404(Regime, regime_id=regime_id)
 
     permitted = get_permitted_sections(actor, user).filter(

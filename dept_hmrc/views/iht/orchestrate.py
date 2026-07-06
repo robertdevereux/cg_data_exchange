@@ -43,7 +43,7 @@ from core.interfaces import (
 )
 from core.models import Case, Permission, Regime, Routing, Section, SectionStatus
 from core.models import QuestionSetMember
-from core.nav_reference import _resolve_user
+from core.nav_reference import resolve_user
 from core.permissions import get_permitted_sections
 from core.session import get_acting_for_name, get_session, update_session
 from core.views_gate import choose_user_for_regime
@@ -52,6 +52,10 @@ from dept_hmrc.models import IHTReckoner
 from .matching import run_iht_matching
 from .reckoner import handle_reckoner
 from .screen import iht_screen, iht_screen_unverified
+from .session_flags import (
+    _clear_current_action, _clear_in_core,
+    _enter_core, _get_current_action, _set_current_action,
+)
 
 
 IHT_REGIME_ID = 'HMRC_IHT'
@@ -752,7 +756,7 @@ def _setup(request):
     )
     actor = request.user
     pss   = get_session(request)
-    user  = _resolve_user(pss, actor)
+    user  = resolve_user(pss, actor)
 
     crumbs = _get_crumbs(regime)
     update_session(request, {
@@ -794,31 +798,6 @@ def _get_verified_cases(actor, regime):
             Q(user=actor, regime=regime, reference__isnull=False)
         ).distinct().order_by('-started_at')
     )
-
-
-def _enter_core(request):
-    """Signal that we are sending the user into core sections."""
-    request.session['iht_in_core'] = True
-    request.session.modified = True
-
-
-def _clear_in_core(request):
-    request.session.pop('iht_in_core', None)
-    request.session.modified = True
-
-
-def _set_current_action(request, action_id):
-    request.session['iht_current_action'] = action_id
-    request.session.modified = True
-
-
-def _get_current_action(request):
-    return request.session.get('iht_current_action')
-
-
-def _clear_current_action(request):
-    request.session.pop('iht_current_action', None)
-    request.session.modified = True
 
 
 def _get_statuses(actor, user, regime):

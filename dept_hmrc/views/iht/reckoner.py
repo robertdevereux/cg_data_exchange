@@ -34,6 +34,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
 from core.interfaces import call_core, get_answers, get_cases
+from .session_flags import _enter_core
 
 IHT_REGIME_ID = 'HMRC_IHT'
 
@@ -150,7 +151,7 @@ def iht_reckoner_compute(request):
     """
     from core.models import Regime
     from core.session import get_session, update_session
-    from core.nav_reference import _resolve_user
+    from core.nav_reference import resolve_user
     from dept_hmrc.models import IHTReckoner
     from django.shortcuts import get_object_or_404
 
@@ -161,7 +162,7 @@ def iht_reckoner_compute(request):
     actor = request.user
     update_session(request, {'user_id': actor.pk, 'actor_id': actor.pk})
     pss  = get_session(request)
-    user = _resolve_user(pss, actor)
+    user = resolve_user(pss, actor)
 
     verified_case = (
         get_cases(user, regime)
@@ -227,8 +228,7 @@ def handle_reckoner(request, regime, actor, user, case):
         return get_reckoner_state(request, regime, actor, user, case)
 
     # Section not yet complete → redirect straight in
-    request.session['iht_in_core'] = True
-    request.session.modified = True
+    _enter_core(request)
     entry_url = call_core(
         request, regime, actor, user,
         items=[{'type': 'section', 'id': section_id}],

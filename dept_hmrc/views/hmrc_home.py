@@ -10,7 +10,7 @@ from django.urls import reverse
 
 from core.interfaces import call_regime
 from core.models import Regime, SectionStatus
-from core.nav_reference import _resolve_user
+from core.nav_reference import resolve_user
 from core.permissions import get_permitted_sections
 from core.session import get_acting_for_name, get_session, update_session
 
@@ -33,7 +33,7 @@ def dept_home(request):
     request.session['active_dept'] = 'HMRC'
     actor = request.user
     pss   = get_session(request)
-    user  = _resolve_user(pss, actor)
+    user  = resolve_user(pss, actor)
 
     regimes = Regime.objects.filter(dept_id='HMRC').order_by(
         'display_order', 'regime_name')
@@ -70,7 +70,7 @@ def regime_home(request, regime_id):
         Regime.objects.filter(dept_id='HMRC'), regime_id=regime_id)
     actor = request.user
     pss   = get_session(request)
-    user  = _resolve_user(pss, actor)
+    user  = resolve_user(pss, actor)
 
     entry_url = call_regime(request, regime, actor, user, url_prefix='hmrc')
     permitted = get_permitted_sections(actor, user).filter(

@@ -12,7 +12,7 @@ from django.shortcuts import get_object_or_404, render
 
 from core.interfaces import call_regime
 from core.models import Regime, SectionStatus
-from core.nav_reference import _resolve_user
+from core.nav_reference import resolve_user
 from core.permissions import get_permitted_sections
 from core.session import get_acting_for_name, get_session, update_session
 
@@ -30,7 +30,7 @@ def regime_generic_home(request, regime_id):
     )
     actor = request.user
     pss   = get_session(request)
-    user  = _resolve_user(pss, actor)
+    user  = resolve_user(pss, actor)
 
     entry_url = call_regime(request, regime, actor, user, url_prefix='dwp')
 

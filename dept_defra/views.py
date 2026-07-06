@@ -10,7 +10,7 @@ from django.urls import reverse
 from core.interfaces import call_regime
 from core.views_layer1 import regime_schedule_sections, regime_schedules  # noqa: F401 — re-exported for urls.py
 from core.models import Regime, SectionStatus
-from core.nav_reference import _resolve_user
+from core.nav_reference import resolve_user
 from core.permissions import get_permitted_sections
 from core.session import get_acting_for_name, get_session, update_session
 
@@ -25,7 +25,7 @@ def dept_home(request):
     pss   = get_session(request)
     update_session(request, {'user_id': actor.pk, 'actor_id': actor.pk})
     pss = get_session(request)
-    user  = _resolve_user(pss, actor)
+    user  = resolve_user(pss, actor)
 
     regimes = Regime.objects.filter(dept_id='DEFRA').order_by('display_order', 'regime_name')
 
@@ -54,7 +54,7 @@ def regime_home(request, regime_id):
     )
     actor = request.user
     pss   = get_session(request)
-    user  = _resolve_user(pss, actor)
+    user  = resolve_user(pss, actor)
 
     entry_url = call_regime(request, regime, actor, user, url_prefix='defra')
 
@@ -109,7 +109,7 @@ def select_section(request, regime_id):
     """
     actor  = request.user
     pss    = get_session(request)
-    user   = _resolve_user(pss, actor)
+    user   = resolve_user(pss, actor)
     regime = get_object_or_404(Regime.objects.filter(dept_id='DEFRA'), regime_id=regime_id)
 
     permitted = get_permitted_sections(actor, user).filter(

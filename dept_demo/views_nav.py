@@ -15,7 +15,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
 from core.models import Regime, SectionStatus
-from core.nav_reference import _resolve_user
+from core.nav_reference import resolve_user
 from core.permissions import get_actor_accessible_regimes, get_permitted_sections
 from core.session import get_acting_for_name, get_session, update_session
 from core.views_gate import choose_user_for_regime
@@ -118,7 +118,7 @@ def select_section(request, regime_id):
     """
     actor  = request.user
     pss    = get_session(request)
-    user   = _resolve_user(pss, actor)
+    user   = resolve_user(pss, actor)
     regime = get_object_or_404(Regime, regime_id=regime_id)
 
     permitted = get_permitted_sections(actor, user).filter(

@@ -16,7 +16,7 @@ from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 
 from core.models import Regime, Schedule, SectionStatus
-from core.nav_reference import _resolve_user
+from core.nav_reference import resolve_user
 from core.permissions import get_permitted_sections
 from core.session import get_acting_for_name, get_session, update_session
 
@@ -52,7 +52,7 @@ def regime_sections(request, regime_id):
     """
     actor  = request.user
     pss    = get_session(request)
-    user   = _resolve_user(pss, actor)
+    user   = resolve_user(pss, actor)
     regime = get_object_or_404(Regime, regime_id=regime_id)
 
     session_section_ids = pss.get('permitted_section_ids')
@@ -123,7 +123,7 @@ def regime_schedules(request, regime_id):
     """
     actor  = request.user
     pss    = get_session(request)
-    user   = _resolve_user(pss, actor)
+    user   = resolve_user(pss, actor)
     regime = get_object_or_404(Regime, regime_id=regime_id)
 
     permitted = get_permitted_sections(actor, user).filter(
@@ -198,7 +198,7 @@ def regime_schedule_sections(request, regime_id, schedule_id):
     """
     actor    = request.user
     pss      = get_session(request)
-    user     = _resolve_user(pss, actor)
+    user     = resolve_user(pss, actor)
     regime   = get_object_or_404(Regime, regime_id=regime_id)
     schedule = get_object_or_404(Schedule, schedule_id=schedule_id)
 
@@ -277,7 +277,7 @@ def regime_top_level(request, regime_id):
     """
     actor  = request.user
     pss    = get_session(request)
-    user   = _resolve_user(pss, actor)
+    user   = resolve_user(pss, actor)
     regime = get_object_or_404(Regime, regime_id=regime_id)
 
     top_level_items = pss.get('top_level_items', [])
@@ -346,13 +346,15 @@ def regime_top_level(request, regime_id):
             })
 
     regime_home_url = pss.get('regime_home_url', '/')
-    breadcrumbs     = pss.get('breadcrumbs', [])
+    base_crumbs     = pss.get('breadcrumbs', [])
     top_level_url   = reverse('core:regime_top_level', kwargs={'regime_id': regime_id})
+
+    crumbs = base_crumbs + [{'label': title or regime.regime_name, 'url': top_level_url}]
 
     update_session(request, {
         'return_url':      top_level_url,   # so section_done returns here
         'regime_home_url': regime_home_url,
-        'breadcrumbs':     breadcrumbs,
+        'breadcrumbs':     crumbs,
     })
 
     return render(request, 'core/regime_top_level.html', {
@@ -360,6 +362,6 @@ def regime_top_level(request, regime_id):
         'items':       items_data,
         'title':       title,
         'back_url':    regime_home_url,
-        'breadcrumbs': breadcrumbs,
+        'breadcrumbs': crumbs,
         'acting_for':  get_acting_for_name(pss),
     })
