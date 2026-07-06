@@ -2294,3 +2294,122 @@ class TestReckoner(TestCase):
         result = self._call_handle_reckoner()
         self.assertIsNone(result,
             'handle_reckoner must return None for the widowed route (not yet built)')
+
+
+class TestPromoteCaseToVerifiedInterface(TestCase):
+    """
+    core.interfaces.promote_case_to_verified re-keys Answer and SectionStatus
+    rows from actor to deceased, updates case.user and case.reference, and
+    creates a case-scoped Permission — all atomically.
+
+    Calls the platform interface directly (not via _promote_case_to_verified),
+    exercising the boundary that dept code is no longer allowed to cross.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        Department.objects.get_or_create(
+            dept_id='HMRC',
+            defaults={'dept_name': 'HM Revenue & Customs'},
+        )
+        cls.regime = Regime.objects.get_or_create(
+            regime_id='HMRC_IHT',
+            defaults={
+                'regime_name': 'Inheritance Tax',
+                'dept_id': 'HMRC',
+                'display_order': 99,
+            },
+        )[0]
+        cls.s1 = Section.objects.get_or_create(
+            section_id='HMRC_S1',
+            defaults={
+                'section_name': "Deceased's details",
+                'section_type': 0,
+                'regime': cls.regime,
+                'display_order': 1,
+            },
+        )[0]
+        cls.q_name = Question.objects.using('default').get_or_create(
+            question_id='HMRC_1',
+            defaults={
+                'question_text': "Deceased's full name",
+                'question_type': 'compound',
+                'options': '',
+            },
+        )[0]
+        cls.alice = User.objects.get(username='alice')
+
+    def setUp(self):
+        self.case = Case.objects.create(
+            case_id='iface-promote-test',
+            user=self.alice,
+            regime=self.regime,
+            status='draft',
+        )
+        Answer.objects.create(
+            user=self.alice, actor=self.alice,
+            regime=self.regime, case=self.case,
+            section=self.s1, question=self.q_name,
+            answer={'first_name': 'Jane', 'last_name': 'Doe'},
+        )
+        SectionStatus.objects.create(
+            user=self.alice, regime=self.regime,
+            section=self.s1, status='complete',
+        )
+        # Create the deceased User separately (as matching.py does)
+        self.deceased = User(
+            username='ihtsubject_iface-promote-test',
+            first_name='Jane', last_name='Doe',
+            is_active=False,
+        )
+        self.deceased.set_unusable_password()
+        self.deceased.save()
+
+    def tearDown(self):
+        Answer.objects.filter(case=self.case).delete()
+        SectionStatus.objects.filter(
+            regime=self.regime, user__in=[self.alice, self.deceased],
+        ).delete()
+        Permission.objects.filter(case=self.case).delete()
+        self.case.delete()
+        self.deceased.delete()
+
+    def test_answer_rows_rekeyed_to_deceased(self):
+        from core.interfaces import promote_case_to_verified
+        promote_case_to_verified(self.case, self.alice, self.deceased, 'IHT-TEST-001')
+        self.assertEqual(
+            Answer.objects.filter(case=self.case, user=self.alice).count(), 0,
+            'actor must have no Answer rows after promotion',
+        )
+        self.assertEqual(
+            Answer.objects.filter(case=self.case, user=self.deceased).count(), 1,
+            'deceased must own the Answer row after promotion',
+        )
+
+    def test_section_status_rekeyed_to_deceased(self):
+        from core.interfaces import promote_case_to_verified
+        promote_case_to_verified(self.case, self.alice, self.deceased, 'IHT-TEST-001')
+        self.assertEqual(
+            SectionStatus.objects.filter(user=self.alice, regime=self.regime).count(), 0,
+            'actor must have no SectionStatus after promotion',
+        )
+        self.assertEqual(
+            SectionStatus.objects.filter(user=self.deceased, regime=self.regime).count(), 1,
+            'deceased must own the SectionStatus after promotion',
+        )
+
+    def test_case_user_and_reference_updated(self):
+        from core.interfaces import promote_case_to_verified
+        promote_case_to_verified(self.case, self.alice, self.deceased, 'IHT-TEST-001')
+        self.case.refresh_from_db()
+        self.assertEqual(self.case.user_id, self.deceased.pk)
+        self.assertEqual(self.case.reference, 'IHT-TEST-001')
+
+    def test_permission_created_for_actor(self):
+        from core.interfaces import promote_case_to_verified
+        promote_case_to_verified(self.case, self.alice, self.deceased, 'IHT-TEST-001')
+        perm = Permission.objects.filter(
+            actor=self.alice, user=self.deceased, case=self.case,
+        ).first()
+        self.assertIsNotNone(perm, 'case-scoped Permission must exist after promotion')
+        self.assertFalse(perm.can_delegate)

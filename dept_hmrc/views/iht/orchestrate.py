@@ -39,6 +39,7 @@ from django.urls import reverse
 from core.interfaces import (
     call_core, create_case, format_answer_for_display,
     get_answers, get_asked_answers_for_section, get_cases,
+    reset_section_progress,
 )
 from core.models import Case, Permission, Regime, Routing, Section, SectionStatus
 from core.models import QuestionSetMember
@@ -257,7 +258,7 @@ def iht_start_new_estate(request):
     # Clear stale completion flags — ensures new estate never inherits progress
     # from a prior estate whose SectionStatus was not yet re-keyed (e.g. if
     # _promote_case_to_verified ran before this defensive clear was added).
-    SectionStatus.objects.filter(user=user, regime=regime).delete()
+    reset_section_progress(user, regime)
     new_case = create_case(user, regime)
     request.session['case_id'] = str(new_case.case_id)
     for key in ('iht_current_action', 'iht_in_core'):

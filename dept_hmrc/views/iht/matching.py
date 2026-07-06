@@ -1,7 +1,8 @@
 """
 dept_hmrc/views/iht/matching.py — IHT estate duplicate-check and reference assignment.
 """
-from core.models import Answer, Case, Permission, SectionStatus, User
+from core.interfaces import promote_case_to_verified
+from core.models import Case, User
 
 from .utils import _get_iht_answers
 
@@ -56,29 +57,9 @@ def _promote_case_to_verified(case, actor, deceased_name):
     deceased.set_unusable_password()
     deceased.save()
 
-    # Re-key answers and section statuses: deceased is now the subject; actor's
-    # data is no longer associated with this case, so neither pre-population
-    # nor completion flags bleed across estates.
-    # SectionStatus has a unique constraint on (user, regime, section) with no
-    # case_id — safe to re-key all of actor's IHT statuses here because only
-    # one draft is active at a time (single session case_id).
-    Answer.objects.filter(case=case, user=actor).update(user=deceased)
-    SectionStatus.objects.filter(user=actor, regime=case.regime).update(user=deceased)
-
-    # Transfer case ownership and assign reference
-    case.user      = deceased
-    case.reference = _generate_iht_reference()
-    case.save()
-
-    # Grant actor continued access to work on the deceased's case
-    Permission.objects.create(
-        actor=actor,
-        user=deceased,
-        regime=case.regime,
-        case=case,
-        section=None,
-        can_delegate=False,
-    )
+    # Re-key answers/statuses, transfer case ownership, grant actor permission —
+    # all four mutations delegated to the platform interface (atomic).
+    promote_case_to_verified(case, actor, deceased, _generate_iht_reference())
 
     return deceased
 

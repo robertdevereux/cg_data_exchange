@@ -1968,6 +1968,73 @@ class TestTableJourneyIdentityScoping(TestCase):
         )
 
 
+class TestResetSectionProgress(TestCase):
+    """
+    reset_section_progress(user, regime) deletes all SectionStatus rows for
+    the given user/regime and leaves rows for other users/regimes untouched.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.regime_a = Regime.objects.get(regime_id='TEST_SIMPLE')
+        cls.regime_b = Regime.objects.get(regime_id='TEST_SECTIONS')
+        cls.user_a = User.objects.get(username='alice')
+        cls.user_b = User.objects.get(username='carla')
+        cls.section = Section.objects.filter(regime=cls.regime_a).first()
+
+    def setUp(self):
+        SectionStatus.objects.filter(
+            user__in=[self.user_a, self.user_b],
+            regime__in=[self.regime_a, self.regime_b],
+        ).delete()
+
+    def tearDown(self):
+        SectionStatus.objects.filter(
+            user__in=[self.user_a, self.user_b],
+            regime__in=[self.regime_a, self.regime_b],
+        ).delete()
+
+    def test_deletes_matching_rows_and_leaves_others_untouched(self):
+        from core.interfaces import reset_section_progress
+
+        # Rows for user_a / regime_a — should be deleted
+        SectionStatus.objects.create(
+            user=self.user_a, regime=self.regime_a, section=self.section,
+            status='complete',
+        )
+        # Rows for user_b / regime_a — different user, must survive
+        SectionStatus.objects.create(
+            user=self.user_b, regime=self.regime_a, section=self.section,
+            status='in_progress',
+        )
+        # Rows for user_a / regime_b — different regime, must survive
+        section_b = Section.objects.filter(regime=self.regime_b).first()
+        if section_b:
+            SectionStatus.objects.create(
+                user=self.user_a, regime=self.regime_b, section=section_b,
+                status='not_started',
+            )
+
+        reset_section_progress(self.user_a, self.regime_a)
+
+        self.assertEqual(
+            SectionStatus.objects.filter(user=self.user_a, regime=self.regime_a).count(),
+            0,
+            'reset_section_progress must delete all rows for user_a/regime_a',
+        )
+        self.assertEqual(
+            SectionStatus.objects.filter(user=self.user_b, regime=self.regime_a).count(),
+            1,
+            'rows for a different user must be untouched',
+        )
+        if section_b:
+            self.assertEqual(
+                SectionStatus.objects.filter(user=self.user_a, regime=self.regime_b).count(),
+                1,
+                'rows for a different regime must be untouched',
+            )
+
+
 class TestCompletionReturnToTopLevel(TestCase):
     """
     regime_top_level must write return_url to itself so that section_done

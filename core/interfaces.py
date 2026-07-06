@@ -25,7 +25,9 @@ Department apps may:
 
 import uuid
 
-from .models import Case, SectionStatus
+from django.db import transaction
+
+from .models import Answer, Case, Permission, SectionStatus
 
 
 # ── Session contract ──────────────────────────────────────────────────────────
@@ -447,3 +449,44 @@ def format_date(answer):
     month = str(answer.get('month', '')).zfill(2)
     year  = answer.get('year', '')
     return f'{day}/{month}/{year}'
+
+
+def reset_section_progress(user, regime):
+    """
+    Clear all SectionStatus rows for this user/regime — used when starting
+    a fresh case where any stale in-progress/complete status from a prior
+    case must not carry over.
+
+    Core-owned operation: if SectionStatus ever gains related state (e.g. an
+    audit trail), this is the one place that needs to know about it.
+    """
+    SectionStatus.objects.filter(user=user, regime=regime).delete()
+
+
+@transaction.atomic
+def promote_case_to_verified(case, actor, deceased, reference):
+    """
+    Promote a draft case from the executor's identity to the deceased's,
+    once matching has confirmed which existing (or new) deceased record
+    this case belongs to.
+
+    Re-keys all Answer and SectionStatus rows from actor to deceased, updates
+    the case itself, and grants the actor permission to continue working the
+    case under the deceased's identity.
+
+    Core-owned: this touches four models in one operation and must stay
+    atomic and consistent if any of those models change shape.
+    """
+    Answer.objects.filter(case=case, user=actor).update(user=deceased)
+    SectionStatus.objects.filter(user=actor, regime=case.regime).update(user=deceased)
+    case.user = deceased
+    case.reference = reference
+    case.save()
+    Permission.objects.create(
+        actor=actor,
+        user=deceased,
+        regime=case.regime,
+        case=case,
+        section=None,
+        can_delegate=False,
+    )
