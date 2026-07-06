@@ -1804,3 +1804,266 @@ class TestConditionalTableSection(TestCase):
         self.assertNotContains(r, 'Flat table sections do not use routing')
         # The routing editor heading should be present
         self.assertContains(r, 'Routing')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Table-journey identity scoping
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestTableJourneyIdentityScoping(TestCase):
+    """
+    Table-journey DB writes (AnswerTable, AnswerTableHistory, SectionStatus)
+    must use case.user (the subject / deceased), not request.user (the actor).
+
+    Also verifies that section_start does NOT overwrite the session user_id
+    when a case_id is already in the session.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from .models import Case, Permission, AnswerTableHistory
+        r_simple = Regime.objects.get(regime_id='TEST_SIMPLE')
+
+        cls.regime = r_simple
+
+        cls.section = Section.objects.create(
+            section_id='TJ_SCOPE_S1',
+            section_name='Table Journey Scope Test',
+            section_type=1,                   # flat table section
+            regime=r_simple,
+            display_question_ids='TEST_3',
+        )
+
+        cls.actor = User.objects.get(username='carla')
+
+        # Synthetic deceased subject — case.user ≠ actor
+        cls.subject = User(
+            username='ihtsubject_tablejrny_scope',
+            first_name='Table', last_name='Subject',
+            is_active=False,
+        )
+        cls.subject.set_unusable_password()
+        cls.subject.save()
+
+        # Verified case: case.user = subject, actor = carla
+        cls.case = Case.objects.create(
+            case_id='tj-scope-test-case-001',
+            user=cls.subject,
+            regime=r_simple,
+            status='draft',
+            reference='TJ-SCOPE-001',
+        )
+
+        Permission.objects.create(
+            actor=cls.actor,
+            user=cls.subject,
+            regime=r_simple,
+            case=cls.case,
+            section=None,
+            can_delegate=False,
+        )
+
+    def setUp(self):
+        from .models import AnswerTable, AnswerTableHistory
+        self.client = Client()
+        self.client.login(username='carla', password='testpass123')
+        # Clear any rows from previous test runs
+        AnswerTable.objects.filter(case=self.case, section=self.section).delete()
+        AnswerTableHistory.objects.filter(case=self.case, section=self.section).delete()
+        SectionStatus.objects.filter(regime=self.regime, section=self.section).delete()
+
+    def _seed_session(self, extra=None):
+        """Seed PSS with a verified-case context (subject ≠ actor)."""
+        session = self.client.session
+        pss = session.setdefault('pss', {})
+        pss['user_id']   = self.subject.pk    # subject
+        pss['actor_id']  = self.actor.pk      # actor (logged-in)
+        pss['case_id']   = str(self.case.case_id)
+        pss['regime_id'] = self.regime.regime_id
+        session['case_id'] = str(self.case.case_id)
+        if extra:
+            pss.update(extra)
+        session.save()
+
+    def test_table_section_commit_writes_under_case_user(self):
+        """
+        POST to section_confirm_table writes AnswerTable, AnswerTableHistory,
+        and SectionStatus all under case.user (subject), not request.user (actor).
+        """
+        from .models import Case, AnswerTableHistory
+
+        # Pre-create an AnswerTable row under the subject so confirm_table has
+        # something to snapshot.
+        AnswerTable.objects.create(
+            user=self.subject,
+            actor=self.actor,
+            regime=self.regime,
+            case=self.case,
+            section=self.section,
+            answer=[{'TEST_3': 'Yes'}],
+        )
+
+        self._seed_session()
+        r = self.client.post(f'/section/{self.section.section_id}/confirm-table/')
+        self.assertEqual(r.status_code, 302)
+
+        # AnswerTableHistory must be owned by subject
+        subject_hist = AnswerTableHistory.objects.filter(
+            user=self.subject, case=self.case, section=self.section,
+        ).count()
+        actor_hist = AnswerTableHistory.objects.filter(
+            user=self.actor, case=self.case, section=self.section,
+        ).count()
+        self.assertEqual(subject_hist, 1,
+            'AnswerTableHistory must be owned by case.user (subject)')
+        self.assertEqual(actor_hist, 0,
+            'No AnswerTableHistory must be written under the actor')
+
+        # SectionStatus must be owned by subject
+        subject_ss = SectionStatus.objects.filter(
+            user=self.subject, regime=self.regime, section=self.section,
+            status='complete',
+        ).count()
+        actor_ss = SectionStatus.objects.filter(
+            user=self.actor, regime=self.regime, section=self.section,
+        ).count()
+        self.assertEqual(subject_ss, 1,
+            'SectionStatus must be owned by case.user (subject)')
+        self.assertEqual(actor_ss, 0,
+            'No SectionStatus must be written under the actor')
+
+    def test_section_start_does_not_overwrite_user_id(self):
+        """
+        GET section/<id>/start/ must NOT clobber pss['user_id'] when a case_id
+        is already in the session.  It should remain as subject.pk, not actor.pk.
+
+        Uses a section_type=0 section because section_start immediately redirects
+        type-1/2 sections to section_table without touching the session.
+        """
+        # Need a type=0 section so section_start runs its full logic
+        section_q, _ = Section.objects.get_or_create(
+            section_id='TJ_SCOPE_S0',
+            defaults={
+                'section_name': 'Table Journey Scope Start Test',
+                'section_type': 0,
+                'regime': self.regime,
+                'display_order': 99,
+            },
+        )
+        Routing.objects.get_or_create(
+            section=section_q, current_node='TEST_3',
+            answer_value=None, next_node=None,
+            defaults={'order_in_section': 1},
+        )
+
+        self._seed_session()
+        self.client.get(f'/section/{section_q.section_id}/start/')
+
+        # Read the session after the request
+        session = self.client.session
+        pss = session.get('pss', {})
+        self.assertEqual(
+            pss.get('user_id'), self.subject.pk,
+            'pss[user_id] must remain as subject.pk after section_start re-entry',
+        )
+
+
+class TestCompletionReturnToTopLevel(TestCase):
+    """
+    regime_top_level must write return_url to itself so that section_done
+    redirects back to the top-level list, not to regime_home_url.
+
+    This covers the fix that added `top_level_url` and wrote it via
+    update_session in core/views_layer1.py::regime_top_level.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from .models import Case
+        from core.models import Permission
+
+        cls.regime = Regime.objects.create(
+            regime_id='TEST_TOPLEVEL',
+            regime_name='Top Level Test Regime',
+            dept_id='TEST',
+            display_order=99,
+        )
+        cls.section_a = Section.objects.create(
+            section_id='TL_S_A',
+            section_name='Top Level Section A',
+            section_type=0,
+            regime=cls.regime,
+            display_order=1,
+        )
+        cls.section_b = Section.objects.create(
+            section_id='TL_S_B',
+            section_name='Top Level Section B',
+            section_type=0,
+            regime=cls.regime,
+            display_order=2,
+        )
+        cls.carla = User.objects.get(username='carla')
+        Permission.objects.create(
+            actor=cls.carla,
+            user=cls.carla,
+            regime=cls.regime,
+            section=None,
+            case=None,
+            can_delegate=False,
+        )
+
+    def setUp(self):
+        self.client = Client()
+        self.client.login(username='carla', password='testpass123')
+        self.top_url = reverse('core:regime_top_level',
+                               kwargs={'regime_id': 'TEST_TOPLEVEL'})
+        self.regime_home = '/fake-regime-home/'
+
+        session = self.client.session
+        pss = session.setdefault('pss', {})
+        pss['user_id']        = self.carla.pk
+        pss['actor_id']       = self.carla.pk
+        pss['regime_id']      = 'TEST_TOPLEVEL'
+        pss['regime_home_url'] = self.regime_home
+        pss['top_level_items'] = [
+            {'type': 'section', 'id': 'TL_S_A'},
+            {'type': 'section', 'id': 'TL_S_B'},
+        ]
+        session.save()
+
+    def tearDown(self):
+        SectionStatus.objects.filter(regime=self.regime).delete()
+
+    def test_regime_top_level_sets_return_url_to_itself(self):
+        """GET regime_top_level must write pss['return_url'] = its own URL."""
+        response = self.client.get(self.top_url)
+        self.assertEqual(response.status_code, 200)
+        pss = self.client.session.get('pss', {})
+        self.assertEqual(
+            pss.get('return_url'), self.top_url,
+            'regime_top_level must write return_url to its own URL',
+        )
+
+    def test_section_done_returns_to_top_level_not_regime_home(self):
+        """
+        After visiting the top-level list (which sets return_url), completing
+        a section should redirect back to the list, not to regime_home_url.
+        """
+        # Visit top-level list to set return_url in session
+        self.client.get(self.top_url)
+
+        # Make section B in-progress so the regime-complete rollup doesn't fire
+        SectionStatus.objects.create(
+            user=self.carla,
+            regime=self.regime,
+            section=self.section_b,
+            status='in_progress',
+        )
+
+        response = self.client.get(
+            reverse('core:section_done', kwargs={'section_id': 'TL_S_A'}),
+        )
+        self.assertRedirects(response, self.top_url, fetch_redirect_response=False,
+                             msg_prefix='section_done must return to top-level list URL')
+        self.assertNotEqual(response['Location'], self.regime_home,
+                            'section_done must NOT redirect to regime_home_url')

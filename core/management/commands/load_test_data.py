@@ -72,36 +72,6 @@ from core.models import (
 # Q30  sort code                                 — S3 member
 # Q31  account number                            — S3 member
 # Q32  building society roll number (optional)   — S3 member
-# ── META regime columns ───────────────────────────────────────────────────────
-# M_1   META question ID                          — META_ADD_QUESTIONS column
-# M_2   META question text                        — META_ADD_QUESTIONS column
-# M_3   META question type                        — META_ADD_QUESTIONS column
-# M_4   META hint text                            — META_ADD_QUESTIONS column
-# M_5   META guidance                             — META_ADD_QUESTIONS column
-# M_6   META options                              — META_ADD_QUESTIONS column
-# M_7   META set ID                               — META_ADD_SETS column
-# M_8   META set title                            — META_ADD_SETS column
-# M_9   META set hint                             — META_ADD_SETS column
-# M_10  META set ID (for member)                  — META_ADD_SETMEMBERS column
-# M_11  META question ID (for member)             — META_ADD_SETMEMBERS column
-# M_12  META display order                        — META_ADD_SETMEMBERS column
-# M_13  META required?                            — META_ADD_SETMEMBERS column
-# M_14  META section ID                           — META_ADD_SECTIONS column
-# M_15  META section name                         — META_ADD_SECTIONS column
-# M_16  META section type                         — META_ADD_SECTIONS column
-# M_17  META schedule ID                          — META_ADD_SECTIONS column
-# M_18  META schedule ID                          — META_ADD_SCHEDULES column
-# M_19  META schedule name                        — META_ADD_SCHEDULES column
-# M_20  META schedule display order               — META_ADD_SCHEDULES column
-# M_21  META regime ID                            — META_ADD_REGIME question
-# M_22  META regime name                          — META_ADD_REGIME question
-# M_23  META department ID                        — META_ADD_REGIME question
-# M_24  META section ID                           — META_ADD_ROUTING column
-# M_25  META current node                         — META_ADD_ROUTING column
-# M_26  META answer value                         — META_ADD_ROUTING column
-# M_27  META next node                            — META_ADD_ROUTING column
-# ─────────────────────────────────────────────────────────────────────────────
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _q(question_id):
@@ -408,105 +378,6 @@ class Command(BaseCommand):
         question('TEST_32', 'Building society roll number',
                  'text', hint='You can find it on your card or bank statement')
 
-        # ── META regime column questions ──────────────────────────────────────
-        # META_ADD_QUESTIONS columns
-        question('M_1', 'Question ID', 'text',
-                 hint='Unique identifier, e.g. Q99. Must not already exist.',
-                 is_platform=True)
-        question('M_2', 'Question text', 'text',
-                 hint='The question as shown to the citizen.',
-                 is_platform=True)
-        question('M_3', 'Question type', 'radio',
-                 options='text;textarea;number;radio;checkbox;date',
-                 is_platform=True)
-        question('M_4', 'Hint text', 'text',
-                 hint='Optional short hint shown below the question text.',
-                 is_platform=True)
-        question('M_5', 'Guidance', 'textarea',
-                 hint='Optional longer guidance shown above the question.',
-                 is_platform=True)
-        question('M_6', 'Options', 'text',
-                 hint='Semicolon-delimited options for radio or checkbox questions.',
-                 is_platform=True)
-
-        # META_ADD_SETS columns
-        question('M_7', 'Set ID', 'text',
-                 hint='Unique identifier, e.g. S9. Must not already exist.',
-                 is_platform=True)
-        question('M_8', 'Set title', 'text',
-                 hint='Heading shown to the citizen on the set page.',
-                 is_platform=True)
-        question('M_9', 'Set hint', 'text',
-                 hint='Optional hint shown below the set title.',
-                 is_platform=True)
-
-        # META_ADD_SETMEMBERS columns
-        question('M_10', 'Set ID', 'text',
-                 hint='The set this question belongs to.',
-                 is_platform=True)
-        question('M_11', 'Question ID', 'text',
-                 hint='The question to add to the set.',
-                 is_platform=True)
-        question('M_12', 'Display order', 'number',
-                 hint='Order within the set (1, 2, 3...).',
-                 is_platform=True)
-        question('M_13', 'Required?', 'radio',
-                 options='Yes;No',
-                 is_platform=True)
-
-        # META_ADD_SECTIONS columns
-        question('M_14', 'Section ID', 'text',
-                 hint='Unique identifier, e.g. DWP_S1.',
-                 is_platform=True)
-        question('M_15', 'Section name', 'text',
-                 hint='Name shown to the citizen.',
-                 is_platform=True)
-        question('M_16', 'Section type', 'radio',
-                 options='Standard;Table',
-                 is_platform=True)
-        question('M_17', 'Schedule ID', 'text',
-                 hint='Leave blank if this section belongs directly to the regime.',
-                 is_platform=True)
-
-        # META_ADD_SCHEDULES columns
-        question('M_18', 'Schedule ID', 'text',
-                 hint='Unique identifier, e.g. DWP_SCHED1.',
-                 is_platform=True)
-        question('M_19', 'Schedule name', 'text',
-                 hint='Name shown to the citizen.',
-                 is_platform=True)
-        question('M_20', 'Display order', 'number',
-                 hint='Order within the regime (1, 2, 3...).',
-                 is_platform=True)
-
-        # META_ADD_REGIME columns (standard section)
-        question('M_21', 'Regime ID', 'text',
-                 hint='Unique identifier, e.g. DWP_BSP. Must not already exist.',
-                 is_platform=True)
-        question('M_22', 'Regime name', 'text',
-                 hint='Full name of the service.',
-                 is_platform=True)
-        # M_23 is a radio question; options are set dynamically below after
-        # Department records are created. Re-run load_test_data after adding a
-        # new Department to keep M_23 in sync with the Department table.
-        question('M_23', 'Department ID', 'radio',
-                 hint='Select the department for this regime.',
-                 is_platform=True)
-
-        # META_ADD_ROUTING columns
-        question('M_24', 'Section ID', 'text',
-                 hint='The section this routing row belongs to.',
-                 is_platform=True)
-        question('M_25', 'Current node', 'text',
-                 hint='Q-number or S-number for this screen.',
-                 is_platform=True)
-        question('M_26', 'Answer value', 'text',
-                 hint='The answer that triggers this route. Blank means always follow this route.',
-                 is_platform=True)
-        question('M_27', 'Next node', 'text',
-                 hint='Q-number or S-number for the next screen. Blank means END.',
-                 is_platform=True)
-
         # ── 4. DEPARTMENTS ────────────────────────────────────────────────────
         Department.objects.get_or_create(
             dept_id='HMRC',
@@ -524,14 +395,6 @@ class Command(BaseCommand):
             dept_id='TEST',
             defaults={'dept_name': 'Test Department'},
         )
-
-        # Populate M_23 options from Department records so the wizard dropdown
-        # always reflects the current set of participating departments.
-        # Re-run load_test_data after adding a new Department to keep in sync.
-        dept_options = ';'.join(
-            Department.objects.order_by('dept_id').values_list('dept_id', flat=True)
-        )
-        Question.objects.filter(question_id='M_23').update(options=dept_options)
 
         # ── Platform questions (P-series) ────────────────────────────────────
         self.stdout.write('Creating platform questions…')
@@ -601,16 +464,6 @@ class Command(BaseCommand):
         r_sections  = Regime.objects.get(regime_id='TEST_SECTIONS')
         r_schedules = Regime.objects.get(regime_id='TEST_SCHEDULES')
 
-        # ── META regime ───────────────────────────────────────────────────────
-        Regime.objects.update_or_create(
-            regime_id='META',
-            defaults={
-                'regime_name':   'Platform Configuration',
-                'dept_id':       'PLATFORM',
-                'display_order': 999,
-            }
-        )
-
         # ── 5. SCHEDULES (TEST_SCHEDULES only) ───────────────────────────────
         self.stdout.write('Creating schedules…')
 
@@ -671,86 +524,6 @@ class Command(BaseCommand):
             )
             if created:
                 counters['Section'] += 1
-
-        # ── META sections ─────────────────────────────────────────────────────
-        meta_regime = Regime.objects.get(regime_id='META')
-
-        Section.objects.update_or_create(
-            section_id='META_ADD_REGIME',
-            defaults={
-                'section_name': 'Define new regime',
-                'section_type': 0,
-                'regime':       meta_regime,
-                'schedule':     None,
-                'display_order': 1,
-            }
-        )
-        Section.objects.update_or_create(
-            section_id='META_ADD_SCHEDULES',
-            defaults={
-                'section_name':        'Add schedules',
-                'section_type':        1,
-                'regime':              meta_regime,
-                'schedule':            None,
-                'display_order':       2,
-                'display_question_ids': 'M_18;M_19;M_20',
-            }
-        )
-        Section.objects.update_or_create(
-            section_id='META_ADD_SECTIONS',
-            defaults={
-                'section_name':        'Add sections',
-                'section_type':        1,
-                'regime':              meta_regime,
-                'schedule':            None,
-                'display_order':       3,
-                'display_question_ids': 'M_14;M_15;M_16;M_17',
-            }
-        )
-        Section.objects.update_or_create(
-            section_id='META_ADD_QUESTIONS',
-            defaults={
-                'section_name':        'Add questions',
-                'section_type':        1,
-                'regime':              meta_regime,
-                'schedule':            None,
-                'display_order':       4,
-                'display_question_ids': 'M_1;M_2;M_3;M_4;M_5;M_6',
-            }
-        )
-        Section.objects.update_or_create(
-            section_id='META_ADD_SETS',
-            defaults={
-                'section_name':        'Add sets',
-                'section_type':        1,
-                'regime':              meta_regime,
-                'schedule':            None,
-                'display_order':       5,
-                'display_question_ids': 'M_7;M_8;M_9',
-            }
-        )
-        Section.objects.update_or_create(
-            section_id='META_ADD_SETMEMBERS',
-            defaults={
-                'section_name':        'Add set members',
-                'section_type':        1,
-                'regime':              meta_regime,
-                'schedule':            None,
-                'display_order':       6,
-                'display_question_ids': 'M_10;M_11;M_12;M_13',
-            }
-        )
-        Section.objects.update_or_create(
-            section_id='META_ADD_ROUTING',
-            defaults={
-                'section_name':        'Add routing',
-                'section_type':        1,
-                'regime':              meta_regime,
-                'schedule':            None,
-                'display_order':       7,
-                'display_question_ids': 'M_24;M_25;M_26;M_27',
-            }
-        )
 
         # ── 7. ROUTING ────────────────────────────────────────────────────────
         self.stdout.write('Creating routing rules…')
@@ -834,16 +607,6 @@ class Command(BaseCommand):
         route(s, 'TEST_19', 'Yes', None,      1, counters)  # END
         route(s, 'TEST_19', 'No',  'TEST_20', 2, counters)
         route(s, 'TEST_20', None,  None,      3, counters)  # END
-
-        # ── META_ADD_REGIME routing (table sections need no routing) ──────────
-        meta_regime_section = Section.objects.get(section_id='META_ADD_REGIME')
-
-        # Delete stale routing for this section before recreating
-        Routing.objects.filter(section=meta_regime_section).delete()
-
-        route(meta_regime_section, 'M_21', None, 'M_22', 1, counters)
-        route(meta_regime_section, 'M_22', None, 'M_23', 2, counters)
-        route(meta_regime_section, 'M_23', None, None,   3, counters)
 
         # ── 8. QUESTION SETS ──────────────────────────────────────────────────
 

@@ -347,8 +347,10 @@ def regime_top_level(request, regime_id):
 
     regime_home_url = pss.get('regime_home_url', '/')
     breadcrumbs     = pss.get('breadcrumbs', [])
+    top_level_url   = reverse('core:regime_top_level', kwargs={'regime_id': regime_id})
 
     update_session(request, {
+        'return_url':      top_level_url,   # so section_done returns here
         'regime_home_url': regime_home_url,
         'breadcrumbs':     breadcrumbs,
     })

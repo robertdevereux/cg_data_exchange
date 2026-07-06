@@ -25,7 +25,6 @@ directly.
 core/
   models.py               — full data model (all models, incl. SectionMember)
   interfaces.py           — documented platform interface for dept apps
-  meta_processors.py      — meta processor system
   views_layer1.py         — shared orchestration views (regime_top_level,
                             regime_schedules, regime_schedule_sections,
                             regime_sections)
@@ -210,8 +209,7 @@ It is invariant — department apps do not modify it.
 - Answer capture and validation via `_process_answer` / `_process_set_answer`
 - `section_review` — shows all answers; citizen can amend
 - `section_confirm` — shows delta (changed answers) and commits on POST
-- `section_done` — completion; redirects to `post_confirm_redirect` if set,
-  otherwise to `return_url`
+- `section_done` — completion; delegates to `resolve_completion_url` (see §5)
 - Routing engine — `_evaluate_routing` evaluates Routing rules;
   `_resolve_routing_answer` determines which answer to test (current node's
   own answer, or a named `condition_question_id`)
@@ -385,28 +383,66 @@ call_core(request, items, title=None)
 ```
 Unified entry point for core execution engine. `items` is an ordered list
 of section IDs and/or schedule IDs. Handles single-item (direct) and
-multi-item (top-level page) patterns. Sets `return_url` to `regime_home_url`.
+multi-item (top-level page) patterns. Sets `return_url` to `regime_home_url`
+as the initial value; this is immediately overwritten when the citizen visits
+a Layer 1 list view (see completion routing below).
+
+### Completion routing — `resolve_completion_url`
+
+`section_done` delegates entirely to `resolve_completion_url(request, pss, section)`
+in `views_layer2.py`. This is a single function with a single precedence chain —
+one concept, one place:
+
+| Priority | Condition | Destination |
+|----------|-----------|-------------|
+| 1 | `post_confirm_redirect` in session (popped; one-shot) | that URL |
+| 2 | All `SectionStatus` rows for user+regime are `complete` | `regime_home_url` |
+| 3 | All `SectionStatus` rows for user+schedule are `complete` | `schedule_list_url` |
+| 4 | `return_url` set in session | `return_url` |
+| 5 | (none of the above) | `/` + warning log |
+
+**`post_confirm_redirect`** is a dept-set one-shot override. Set
+`request.session['post_confirm_redirect'] = '/path/'` before entering the
+section journey; it fires exactly once and bypasses all rollup logic. Not
+used in HMRC IHT (which uses the two-phase `iht_in_core` /
+`iht_current_action` pattern — see HMRC IHT Reference section 2).
+
+**`return_url`** is written by all three Layer 1 list views on every visit —
+each sets it to its own URL so `section_done` can navigate back to the list
+that sent the citizen into the section:
+
+| Layer 1 view | Written by | Sets `return_url` to |
+|---|---|---|
+| `regime_sections` | `update_session` | `/regime/<id>/sections/` |
+| `regime_schedule_sections` | `update_session` | `/regime/<id>/schedule/<id>/sections/` |
+| `regime_top_level` | `update_session` | `/regime/<id>/top/` |
+
+`call_core` also writes `return_url = regime_home_url` as an initial value,
+but this is overwritten the moment the citizen visits a list view.
+
+**Three terms for three layers:**
+- **Section-list navigation** — the citizen browsing Layer 1 list views
+  (`regime_sections`, `regime_schedule_sections`, `regime_top_level`).
+  Each view owns `return_url` while the citizen is working through its items.
+- **Completion routing** — `resolve_completion_url` deciding where to go
+  after a section completes. Uses rollup state and `return_url`.
+- **Regime orchestration** — dept-level logic in e.g. `orchestrate.py`,
+  operating above completion routing. Uses `post_confirm_redirect` or the
+  two-phase `iht_in_core`/`iht_current_action` pattern.
 
 ### Session keys written by core / read by dept
 
 | Key | Written by | Read by | Purpose |
 |-----|-----------|---------|---------|
-| `return_url` | `call_core` | `section_done` | Where to go after section completes |
-| `regime_home_url` | dept orchestrator (`_setup`) | `call_core` | Used as `return_url` |
+| `return_url` | Layer 1 list views (all three); `call_core` (initial value) | `resolve_completion_url` | Where to go after section completes (priority 4) |
+| `regime_home_url` | dept orchestrator (`_setup`) | `call_core`; `resolve_completion_url` (priority 2) | Used as `return_url` initial value; regime-complete destination |
+| `schedule_list_url` | `regime_schedule_sections` | `resolve_completion_url` (priority 3) | Schedule-complete destination |
 | `permitted_section_ids` | `call_core` | `regime_sections` | Filter section list |
 | `permitted_schedule_ids` | `call_core` | `regime_schedule_sections` | Filter schedule list |
 | `top_level_items` | `call_core` (multiple) | `regime_top_level` | Ordered mixed list |
 | `top_level_title` | `call_core` (multiple) | `regime_top_level` | Page heading |
-| `post_confirm_redirect` | dept code (optional) | `section_done` | One-shot override |
+| `post_confirm_redirect` | dept code (optional) | `resolve_completion_url` (priority 1) | One-shot override; highest priority |
 | `_table_row` | `section_table_routed_add/change` | `section_table_routed_question` | Per-row journey state (type-2 sections only) |
-
-**`post_confirm_redirect` — optional dept interception**
-
-`section_done` checks for `post_confirm_redirect` in session. If present,
-redirects there and clears the key (one-shot). The preferred dept orchestration
-pattern (used in HMRC IHT) does NOT use `post_confirm_redirect`. Instead
-it uses `iht_in_core` / `iht_current_action` session flags. See
-HMRC IHT Reference section 2 for the full two-phase pattern.
 
 **Caution on caching identity in session (added 5 July 2026):** avoid caching
 `user_id` (or any derived-from-`case.user` value) in session across a
@@ -642,7 +678,7 @@ and also use section IDs as slugs — see HMRC IHT Reference section 8a.
   producing a misleadingly low test count with no error).
 - Test dept: `dept_demo`, internal `dept_id='TEST'`, URL prefix `/demo/`
 - All core tests run against TEST data
-- Current count: 191 tests passing, 0 failures, 1 skip (pre-existing)
+- Current count: 193 tests passing, 0 failures, 1 skip (pre-existing)
 - `dept_hmrc` tests included in total
 
 ---

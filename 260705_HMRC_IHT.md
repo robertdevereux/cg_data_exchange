@@ -409,17 +409,19 @@ redirect → regime_home → iht_orchestrate (ENTRY)
 
 `_exit_reckoner` — delegates to `handle_reckoner`:
 
-`handle_reckoner` reads HMRC_13 (from S2) and HMRC_14 (from S1):
+`handle_reckoner` reads HMRC_13 (from S2), HMRC_14, and HMRC_43 (both from S1):
 - **HMRC_13 = No** → deletes any stale `IHTReckoner` row → returns None
   → tailor button appears (if `_should_show_tailor` is satisfied)
-- **HMRC_13 = Yes + HMRC_14 maps to a built section** → calls that section
-- **HMRC_13 = Yes + HMRC_14 maps to unbuilt section** → returns None
+- **HMRC_13 = Yes, HMRC_14 = No, HMRC_43 = No** → single route → HMRC_S3 (built)
+- **HMRC_13 = Yes, HMRC_14 = Yes** → married route → None (not yet built)
+- **HMRC_13 = Yes, HMRC_14 = No, HMRC_43 = Yes** → widowed route → None (not yet built)
+- **answers absent or unexpected** → None
 
-**Caution (see section 4):** `handle_reckoner`'s HMRC_14 lookup currently
-treats it as before — a single raw answer. Now that HMRC_14 is Yes/No with
-a separate HMRC_43 follow-up, `RECKONER_SECTION`'s mapping needs checking
-against the new shape before this is fully reliable — not verified as part
-of tonight's session, since reckoner logic itself wasn't touched.
+The stale `RECKONER_SECTION` dict and `HMRC14_*` string constants have been
+removed. Routing now uses explicit field-based branching on HMRC_14 + HMRC_43
+(verified 5 July 2026). The single route (HMRC_14=No, HMRC_43=No) is built
+and correctly gated; married (HMRC_14=Yes) and widowed (HMRC_14=No, HMRC_43=Yes)
+routes are not yet built and return None.
 
 **Stale IHTReckoner cleanup:** When a user changes HMRC_13 from Yes to No,
 `handle_reckoner` deletes any existing `IHTReckoner` row so the reckoner
@@ -438,10 +440,10 @@ conclusion does not persist on the home page.
 | conclusion | `not_payable` / `may_be_payable` / `knock_out` |
 | threshold | The threshold value used in the computation |
 
-**Reckoner sections** (`RECKONER_SECTION` dict in `reckoner.py` maps HMRC_14
-answers to section IDs):
-- Single/never married → HMRC_S3 (built)
-- Married/widowed → not yet built (D1)
+**Reckoner sections** (explicit branching in `reckoner.py` on HMRC_14 + HMRC_43):
+- HMRC_14=No, HMRC_43=No (single/never married) → HMRC_S3 (built)
+- HMRC_14=Yes (married) → not yet built (D1)
+- HMRC_14=No, HMRC_43=Yes (widowed) → not yet built (D1)
 
 ### Show tailor condition
 

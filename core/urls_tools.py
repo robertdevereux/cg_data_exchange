@@ -212,15 +212,4 @@ urlpatterns = [
          views_admin_tools.tools_routing_add_condition,
          name='tools_routing_add_condition'),
 
-    path('create/',
-         views_admin_tools.tools_create,
-         name='tools_create'),
-
-    path('create/save/',
-         views_admin_tools.tools_create_save,
-         name='tools_create_save'),
-
-    path('create/abandon/',
-         views_admin_tools.tools_create_abandon,
-         name='tools_create_abandon'),
 ]

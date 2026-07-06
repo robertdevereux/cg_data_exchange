@@ -2134,3 +2134,163 @@ class TestPostPromotionStatusResolution(TestCase):
             "if 'not_started', the orchestrator read user from the session "
             "(alice, who has no SectionStatus) instead of from case.user (deceased)",
         )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# handle_reckoner — explicit HMRC_14 / HMRC_43 routing
+# ══════════════════════════════════════════════════════════════════════════════
+
+@override_settings(DATABASE_ROUTERS=[])
+class TestReckoner(TestCase):
+    """
+    handle_reckoner routes based on HMRC_13 + HMRC_14 + HMRC_43.
+
+    Single route (HMRC_14=No, HMRC_43=No) → HMRC_S3 (built).
+    Married route (HMRC_14=Yes)            → None (not yet built).
+    Widowed route (HMRC_14=No, HMRC_43=Yes)→ None (not yet built).
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        Department.objects.get_or_create(
+            dept_id='HMRC',
+            defaults={'dept_name': 'HM Revenue & Customs'},
+        )
+        cls.regime = Regime.objects.create(
+            regime_id='HMRC_IHT',
+            regime_name='Inheritance Tax',
+            dept_id='HMRC',
+            display_order=99,
+        )
+        # Minimal sections needed
+        cls.s1 = Section.objects.create(
+            section_id='HMRC_S1',
+            section_name="Deceased's details",
+            section_type=0, regime=cls.regime, display_order=1,
+        )
+        cls.s2 = Section.objects.create(
+            section_id='HMRC_S2',
+            section_name='Estate ready reckoner',
+            section_type=0, regime=cls.regime, display_order=2,
+        )
+        cls.s3 = Section.objects.create(
+            section_id='HMRC_S3',
+            section_name='Initial ready reckoner questions',
+            section_type=0, regime=cls.regime, display_order=3,
+        )
+        cls.q13 = Question.objects.using('default').create(
+            question_id='HMRC_13',
+            question_text='Would you like help?',
+            question_type='radio',
+            options=(
+                "Yes, I'd like help working that out;"
+                "No, I know a full return is required and want to get started"
+            ),
+        )
+        cls.q14 = Question.objects.using('default').create(
+            question_id='HMRC_14',
+            question_text='Was the deceased married?',
+            question_type='radio',
+            options='Yes;No',
+        )
+        cls.q43 = Question.objects.using('default').create(
+            question_id='HMRC_43',
+            question_text='Was the deceased previously widowed?',
+            question_type='radio',
+            options='Yes;No',
+        )
+        cls.alice = User.objects.get(username='alice')
+        cls.case = Case.objects.create(
+            case_id='case-reckoner-routing-test',
+            user=cls.alice,
+            regime=cls.regime,
+            status='draft',
+            reference='IHT-REC-001',
+        )
+        # S1 + S2 complete so handle_reckoner actually runs
+        for sid in ['HMRC_S1', 'HMRC_S2']:
+            SectionStatus.objects.create(
+                user=cls.alice, regime=cls.regime,
+                section=Section.objects.get(section_id=sid),
+                status='complete',
+            )
+
+    def _write_answers(self, hmrc13, hmrc14=None, hmrc43=None):
+        """Write Answer rows for HMRC_13 (and optionally HMRC_14 / HMRC_43)."""
+        Answer.objects.filter(
+            user=self.alice, case=self.case, question_id__in=['HMRC_13', 'HMRC_14', 'HMRC_43']
+        ).delete()
+        Answer.objects.create(
+            user=self.alice, actor=self.alice,
+            regime=self.regime, case=self.case, section=self.s2,
+            question=self.q13, answer=hmrc13,
+        )
+        if hmrc14 is not None:
+            Answer.objects.create(
+                user=self.alice, actor=self.alice,
+                regime=self.regime, case=self.case, section=self.s1,
+                question=self.q14, answer=hmrc14,
+            )
+        if hmrc43 is not None:
+            Answer.objects.create(
+                user=self.alice, actor=self.alice,
+                regime=self.regime, case=self.case, section=self.s1,
+                question=self.q43, answer=hmrc43,
+            )
+
+    def _call_handle_reckoner(self):
+        """Call handle_reckoner with a minimal mock request (no redirect needed)."""
+        from unittest.mock import MagicMock
+        from dept_hmrc.views.iht.reckoner import handle_reckoner
+        from core.models import SectionStatus
+
+        # handle_reckoner checks SectionStatus for section_id when routing to S3
+        # so we need to make sure there's no 'complete' status for S3
+        SectionStatus.objects.filter(
+            user=self.alice, regime=self.regime, section=self.s3,
+        ).delete()
+
+        class _FakeSession(dict):
+            modified = False
+
+        request = MagicMock()
+        request.session = _FakeSession()
+        request.path = '/'
+
+        return handle_reckoner(
+            request, self.regime, self.alice, self.alice, self.case
+        )
+
+    def test_hmrc14_no_hmrc43_no_routes_to_s3(self):
+        """HMRC_13=Yes, HMRC_14=No, HMRC_43=No → single route → redirects into HMRC_S3."""
+        self._write_answers(
+            hmrc13="Yes, I'd like help working that out",
+            hmrc14='No',
+            hmrc43='No',
+        )
+        result = self._call_handle_reckoner()
+        # handle_reckoner returns a redirect (HttpResponseRedirect) when
+        # routing into S3, not None
+        self.assertIsNotNone(result,
+            'handle_reckoner must return a redirect for the single route (HMRC_S3)')
+
+    def test_hmrc14_yes_routes_to_none(self):
+        """HMRC_13=Yes, HMRC_14=Yes → married route not yet built → returns None."""
+        self._write_answers(
+            hmrc13="Yes, I'd like help working that out",
+            hmrc14='Yes',
+        )
+        result = self._call_handle_reckoner()
+        self.assertIsNone(result,
+            'handle_reckoner must return None for the married route (not yet built)')
+
+    def test_hmrc14_no_hmrc43_yes_routes_to_none(self):
+        """HMRC_13=Yes, HMRC_14=No, HMRC_43=Yes → widowed route not yet built → returns None."""
+        self._write_answers(
+            hmrc13="Yes, I'd like help working that out",
+            hmrc14='No',
+            hmrc43='Yes',
+        )
+        result = self._call_handle_reckoner()
+        self.assertIsNone(result,
+            'handle_reckoner must return None for the widowed route (not yet built)')

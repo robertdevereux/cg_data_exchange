@@ -279,7 +279,7 @@ def _commit_table_row(request, section, case, regime, pss, row_answers, row_inde
         actor = request.user
 
     answer_table, _ = AnswerTable.objects.get_or_create(
-        user=request.user, case=case, section=section,
+        user=case.user, case=case, section=section,
         defaults={'actor': actor, 'regime': regime, 'answer': []},
     )
 
@@ -294,7 +294,7 @@ def _commit_table_row(request, section, case, regime, pss, row_answers, row_inde
     answer_table.save(update_fields=['answer', 'updated_at'])
 
     SectionStatus.objects.update_or_create(
-        user=request.user, regime=regime, section=section,
+        user=case.user, regime=regime, section=section,
         defaults={'status': 'in_progress'},
     )
 
@@ -388,7 +388,7 @@ def section_start(request, section_id):
 
     # ── Update section status ─────────────────────────────────────────────────
     ss, _ = SectionStatus.objects.get_or_create(
-        user=request.user, regime=regime, section=section,
+        user=case.user, regime=regime, section=section,
         defaults={'status': 'not_started'},
     )
     if ss.status == 'not_started':
@@ -396,8 +396,9 @@ def section_start(request, section_id):
         ss.save(update_fields=['status'])
 
     # ── Write everything to session ───────────────────────────────────────────
-    update_session(request, {
-        'user_id':          request.user.pk,
+    # Only write user_id if no case_id was already in session (i.e. bootstrap
+    # path). When arriving via call_core, the correct user_id is already set.
+    session_update = {
         'actor_id':         actor_id,
         'regime_id':        regime.regime_id,
         'case_id':          case.case_id,
@@ -408,7 +409,10 @@ def section_start(request, section_id):
         'question_to_set':  question_to_set,
         'asked_ids':        asked_ids,
         'basic_answers':    basic_answers,
-    })
+    }
+    if not pss.get('case_id'):
+        session_update['user_id'] = case.user.pk
+    update_session(request, session_update)
 
     if go_to_review:
         return redirect('core:section_review', section_id=section_id)
@@ -889,9 +893,14 @@ def section_review(request, section_id):
     case_id = pss.get('case_id')
     history_by_qid = {}
     if case_id:
+        try:
+            _review_case = Case.objects.get(case_id=case_id)
+            _review_user = _review_case.user
+        except Case.DoesNotExist:
+            _review_user = request.user
         for h in (
             AnswerHistory.objects
-            .filter(user=request.user, case_id=case_id, section=section)
+            .filter(user=_review_user, case_id=case_id, section=section)
             .select_related('question', 'actor')
             .order_by('-confirmed_at')
         ):
@@ -1070,11 +1079,6 @@ def _commit_section_answers(request, section):
             defaults={'status': 'complete'},
         )
 
-    # ── META processor hook ───────────────────────────────────────────────────
-    if section.section_id.startswith('META_'):
-        from .meta_processors import dispatch_meta_processor
-        dispatch_meta_processor(section, case, actor)
-
 
 @login_required
 @require_POST
@@ -1138,7 +1142,7 @@ def section_table(request, section_id):
     # ── Existing rows ─────────────────────────────────────────────────────────
     try:
         answer_table = AnswerTable.objects.get(
-            user=request.user, case=case, section=section,
+            user=case.user, case=case, section=section,
         )
         rows = answer_table.answer  # list of dicts
     except AnswerTable.DoesNotExist:
@@ -1263,7 +1267,7 @@ def section_table_add(request, section_id):
 
         # Append row to AnswerTable
         answer_table, _ = AnswerTable.objects.get_or_create(
-            user=request.user, case=case, section=section,
+            user=case.user, case=case, section=section,
             defaults={'actor': actor, 'regime': regime, 'answer': []},
         )
         answer_table.answer.append(row)
@@ -1271,7 +1275,7 @@ def section_table_add(request, section_id):
 
         # At least one row → in_progress (confirm will set complete)
         SectionStatus.objects.update_or_create(
-            user=request.user, regime=regime, section=section,
+            user=case.user, regime=regime, section=section,
             defaults={'status': 'in_progress'},
         )
 
@@ -1377,7 +1381,7 @@ def section_table_routed_change(request, section_id, row_index):
 
     try:
         answer_table = AnswerTable.objects.get(
-            user=request.user, case=case, section=section,
+            user=case.user, case=case, section=section,
         )
     except AnswerTable.DoesNotExist:
         return redirect('core:section_table', section_id=section_id)
@@ -1608,7 +1612,7 @@ def section_table_row_detail(request, section_id, row_index):
 
     try:
         answer_table = AnswerTable.objects.get(
-            user=request.user, case=case, section=section,
+            user=case.user, case=case, section=section,
         )
     except AnswerTable.DoesNotExist:
         return redirect('core:section_table', section_id=section_id)
@@ -1670,7 +1674,7 @@ def section_table_delete(request, section_id, row_index):
 
     try:
         answer_table = AnswerTable.objects.get(
-            user=request.user, case=case, section=section,
+            user=case.user, case=case, section=section,
         )
     except AnswerTable.DoesNotExist:
         return redirect('core:section_table', section_id=section_id)
@@ -1684,7 +1688,7 @@ def section_table_delete(request, section_id, row_index):
     # If no rows remain, revert section to in_progress
     if not rows:
         SectionStatus.objects.update_or_create(
-            user=request.user, regime=regime, section=section,
+            user=case.user, regime=regime, section=section,
             defaults={'status': 'in_progress'},
         )
 
@@ -1721,11 +1725,11 @@ def section_confirm_table(request, section_id):
     with transaction.atomic():
         try:
             answer_table = AnswerTable.objects.get(
-                user=request.user, case=case, section=section,
+                user=case.user, case=case, section=section,
             )
             # Archive current rows as a history snapshot
             AnswerTableHistory.objects.create(
-                user=request.user,
+                user=case.user,
                 actor=actor,
                 regime=regime,
                 case=case,
@@ -1737,14 +1741,9 @@ def section_confirm_table(request, section_id):
             pass   # Nothing to snapshot
 
         SectionStatus.objects.update_or_create(
-            user=request.user, regime=regime, section=section,
+            user=case.user, regime=regime, section=section,
             defaults={'status': 'complete'},
         )
-
-    # ── META processor hook ───────────────────────────────────────────────────
-    if section.section_id.startswith('META_'):
-        from .meta_processors import dispatch_meta_processor
-        dispatch_meta_processor(section, case, actor)
 
     return redirect('core:section_done', section_id=section_id)
 

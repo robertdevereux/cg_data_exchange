@@ -12,17 +12,20 @@ HMRC_13 answer values:
   "Yes, I'd like help working that out"
   "No, I know a full return is required and want to get started"
 
-HMRC_14 answer values (marital status):
-  "Single"
-  "Married or in a civil partnership"
-  "Widowed or a surviving civil partner"
+HMRC_14 answer values (marital status — Yes/No question):
+  "Yes" — Married or in a civil partnership
+  "No"  — Not married / not in a civil partnership
+
+HMRC_43 answer values (widowed — Yes/No question):
+  "Yes" — Widowed or a surviving civil partner
+  "No"  — Neither married nor widowed (single route)
 
 Section routing:
-  HMRC_13 = No                         → None (main flow — home page renders)
-  HMRC_13 = Yes + HMRC_14 = Single     → HMRC_S3
-  HMRC_13 = Yes + HMRC_14 = Married    → None (Part 2 — not yet built)
-  HMRC_13 = Yes + HMRC_14 = Widowed    → None (Part 3 — not yet built)
-  HMRC_13 missing / HMRC_14 missing    → None (home page renders with warning)
+  HMRC_13 != Yes                                  → None (main flow)
+  HMRC_14 = Yes                                   → None (married — not yet built)
+  HMRC_14 = No, HMRC_43 = Yes                     → None (widowed — not yet built)
+  HMRC_14 = No, HMRC_43 = No                      → HMRC_S3 (single route — built)
+  answers absent or unexpected                    → None
 """
 
 from django.contrib.auth.decorators import login_required
@@ -37,18 +40,6 @@ IHT_REGIME_ID = 'HMRC_IHT'
 # HMRC_13 answer value constants
 HMRC13_YES = "Yes, I'd like help working that out"
 HMRC13_NO  = "No, I know a full return is required and want to get started"
-
-# HMRC_14 answer value constants
-HMRC14_SINGLE  = "Neither of the above — for example single, divorced, or living with a partner but not married"
-HMRC14_MARRIED = "Married, with their spouse surviving them"
-HMRC14_WIDOWED = "Themselves a widow or widower, their spouse having died before them and not subsequently remarried"
-
-# Reckoner section IDs by marital status
-RECKONER_SECTION = {
-    HMRC14_SINGLE: 'HMRC_S3',
-    # HMRC14_MARRIED: 'HMRC_S4',
-    # HMRC14_WIDOWED: 'HMRC_S5',
-}
 
 
 
@@ -198,10 +189,10 @@ def handle_reckoner(request, regime, actor, user, case):
       HttpResponseRedirect  — if we should go straight into a reckoner section
       None                  — if the home page should render normally
     """
-    ans    = get_answers(case, ['HMRC_13', 'HMRC_14'])
-    hmrc13 = ans['HMRC_13']
-    hmrc14 = ans['HMRC_14']
-
+    ans    = get_answers(case, ['HMRC_13', 'HMRC_14', 'HMRC_43'])
+    hmrc13 = ans.get('HMRC_13')
+    hmrc14 = ans.get('HMRC_14')
+    hmrc43 = ans.get('HMRC_43')
 
     # HMRC_13 = No (or missing) → clear any stale reckoner conclusion, home page renders
     if hmrc13 != HMRC13_YES:
@@ -210,12 +201,18 @@ def handle_reckoner(request, regime, actor, user, case):
             IHTReckoner.objects.filter(case=case).delete()
         return None
 
-    # HMRC_13 = Yes → look up which reckoner section to call
-    section_id = RECKONER_SECTION.get(hmrc14)
+    # HMRC_13 = Yes → determine which reckoner route applies
+    if hmrc14 == 'Yes':
+        section_id = None          # married route — not yet built
+    elif hmrc14 == 'No' and hmrc43 == 'Yes':
+        section_id = None          # widowed route — not yet built
+    elif hmrc14 == 'No' and hmrc43 == 'No':
+        section_id = 'HMRC_S3'    # single route — built
+    else:
+        section_id = None          # answers absent or unexpected value
 
     if section_id is None:
-        # Married or Widowed — reckoner parts not yet built;
-        # home page renders with "not yet available" messaging
+        # Route not yet built; home page renders with "not yet available" messaging
         return None
 
     # If section already complete → post-section orchestration

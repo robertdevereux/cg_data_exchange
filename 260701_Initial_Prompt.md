@@ -47,6 +47,16 @@ codebase before starting Claude Code work.
 **`.claude/` directory** is gitignored. Claude Code worktrees must never
 be committed to the repo.
 
+**Session commit rule (standing):** Commit to git at the end of every
+verified, test-passing session — before starting the next session, and
+*especially* before any worktree is created for a subsequent task.
+A worktree always branches from the last commit, never from uncommitted
+working-tree state. Uncommitted changes present in main when a worktree
+is created will be invisible to that worktree; copying the worktree back
+to main will silently overwrite them. The canonical close-out sequence is:
+run full test suite → confirm zero failures → `git add` relevant files →
+`git commit` → then hand off to the next session.
+
 **Database note:** The user table is `core_user` (not `auth_user`).
 Example: `SELECT id FROM core_user WHERE username = 'alice';`
 

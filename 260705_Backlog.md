@@ -264,8 +264,6 @@ arises in another regime, consider scoping it by section_id. Not urgent.
   `table_routed_set.html`, `question.html`, and `question_set.html` share
   question-field markup. Extract to `_question_field.html` include.
 
-- **Hide or remove old META wizard at `/tools/create/`** — superseded.
-
 - **Remove `get_or_create_case()`** — deprecated, still used by TEST/demo
   harness only. Remove when harness is updated.
 
@@ -282,6 +280,10 @@ arises in another regime, consider scoping it by section_id. Not urgent.
 ---
 
 ## Completed (5 July 2026 session)
+
+- **Removed META mechanism in full (2026-07-05)** — deleted `meta_processors.py`,
+  `tools_create.html`, the three `tools_create*` views, and all META regime /
+  sections / M_N questions in `load_test_data.py`.
 
 This was a long session covering a housekeeping detour, a large routing-UX
 overhaul, and the IHT actor/subject identity split. Full technical detail
