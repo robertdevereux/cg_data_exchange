@@ -124,12 +124,6 @@ Shows dropdown of subject user's cases for the selected regime.
 Full scope matrix in Core Platform Reference section 6.
 Prompt already drafted — ready to fire at CC.
 
-### New, 5 July 2026: Migrate `dept_dwp` to shared `choose_user_for_regime`
-`dept_dwp` has its own older, non-regime-scoped `choose_user` picker that
-predates the shared routine promoted to `core/views_gate.py` this week.
-Migrate it to the shared implementation so acting-for behaviour is
-consistent platform-wide. See Core Platform Reference section 6a.
-
 ---
 
 ## SOON — Documentation
@@ -166,14 +160,10 @@ Salesforce data model. Phase 1 data model section needs revisiting.
 
 ## LATER
 
-### D4: Build DEFRA Rural Payments regime
-DEFRA has a stub RP regime. Build at least one section with routing to
-demonstrate DEFRA as a second working dept.
-
 ### D5: Cross-department pre-population demo
-Once HMRC IHT and DEFRA RP both have sections using P_1 (name) and/or
-P_3 (DOB), demonstrate pre-population. This is the PoC's centrepiece
-capability.
+Once a second live dept app exists alongside HMRC, demonstrate pre-population
+on P_1 (name) and/or P_3 (DOB). This is the PoC's centrepiece capability.
+Currently deferred — HMRC is the only live dept.
 
 ### D7: IHT S1 amend — conflict handling
 When an executor amends deceased's details (S1 View/amend) and the new
@@ -267,8 +257,6 @@ arises in another regime, consider scoping it by section_id. Not urgent.
 - **Remove `get_or_create_case()`** — deprecated, still used by TEST/demo
   harness only. Remove when harness is updated.
 
-- **Rationalise DWP app structure** — has legacy nav/ and regime/ subfolders,
-  not yet aligned to canonical flat structure.
 
 - **Consistency checker for QuestionSet nodes** — one skipped test.
   Complete when QuestionSet usage grows.
@@ -280,6 +268,13 @@ arises in another regime, consider scoping it by section_id. Not urgent.
 ---
 
 ## Completed (5 July 2026 session)
+
+- **Removed `dept_defra` and `dept_dwp` in full (2026-07-07)** — both apps had
+  zero models and zero migrations; deleted directories, removed INSTALLED_APPS
+  entries and URL includes, stripped DWP/DEFRA user/department/permission
+  fixture blocks from `load_test_data.py`, fixed one trivially-unused
+  `dwp_alice` reference in `dept_hmrc/tests.py`. HMRC is now the only live
+  dept. Pre-removal audit in `260707_DEFRA_DWP_Audit.md`.
 
 - **Removed META mechanism in full (2026-07-05)** — deleted `meta_processors.py`,
   `tools_create.html`, the three `tools_create*` views, and all META regime /
@@ -530,9 +525,6 @@ summary here for backlog tracking.
 - Consistency checker: mixed `condition_question_id` values per node warns
   but does not block; only the first `condition_question_id` found is used
   by `_resolve_routing_answer` (sufficient for current patterns).
-- `dept_defra` has no acting-for identity gate at all — fine today (no
-  multi-user scenario exists there yet), but will need one the moment it
-  does.
 - Reckoner's `RECKONER_SECTION` HMRC_14 mapping not yet re-verified against
   the new Yes/No + HMRC_43 shape (see D1).
 

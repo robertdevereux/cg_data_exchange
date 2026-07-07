@@ -12,10 +12,9 @@ Verified: Content checked against file_dump.txt and live session by Claude on 5 
 interfaces that department apps call. It does not know about individual tax
 regimes or departments.
 
-Department apps (dept_hmrc, dept_defra, etc.) own their own orchestration
-logic, question content, and home page UX. They call into core via the
-documented interface in `core/interfaces.py`. They never query core models
-directly.
+Department apps (e.g. `dept_hmrc`) own their own orchestration logic, question
+content, and home page UX. They call into core via the documented interface in
+`core/interfaces.py`. They never query core models directly.
 
 ---
 
@@ -153,7 +152,7 @@ All IDs use underscore separator and are auto-generated — never typed by admin
 | `P_N` | Platform person questions | P_1, P_6 |
 | `O_N` | Platform organisation questions | (none yet) |
 | `M_N` | Platform META/wizard questions | M_1–M_27 |
-| `{DEPT}_N` | Department questions | HMRC_1, DEFRA_1 |
+| `{DEPT}_N` | Department questions | HMRC_1 |
 | `{DEPT}_S{N}` | Section IDs | HMRC_S1, HMRC_S3 |
 | `{DEPT}_SCH{N}` | Schedule IDs | HMRC_SCH1 |
 | `SET{N}` | QuestionSet IDs (changed 1 July 2026, was `S{N}`) | SET1, SET7 |
@@ -506,9 +505,8 @@ actor is structurally never the subject. See HMRC IHT Reference for the
 full estate-identity lifecycle (synthetic deceased `User` creation,
 `Answer` re-keying, case-scoped `Permission` grant).
 
-**Known gap (backlog item):** `dept_dwp` has its own older, non-regime-
-scoped `choose_user` implementation that predates this shared routine and
-has not been migrated to it.
+The next dept app added to the platform should wire its identity gate through
+`choose_user_for_regime` from the start.
 
 ---
 
@@ -678,8 +676,8 @@ and also use section IDs as slugs — see HMRC IHT Reference section 8a.
   producing a misleadingly low test count with no error).
 - Test dept: `dept_demo`, internal `dept_id='TEST'`, URL prefix `/demo/`
 - All core tests run against TEST data
-- Current count: 193 tests passing, 0 failures, 1 skip (pre-existing)
 - `dept_hmrc` tests included in total
+- Count updated each session; see most recent commit message for current figure
 
 ---
 

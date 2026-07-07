@@ -567,12 +567,7 @@ class TestIHTCasePicker(TestCase):
     def test_zero_verified_cases_bootstrap(self):
         """With no verified cases, the orchestrator bootstraps the start flow
         rather than redirecting to the picker."""
-        # Use a user with no verified cases (but no cases at all — fresh user)
-        # dwp_alice has no HMRC IHT cases
-        other_client = Client()
-        other_client.login(username='dwp_alice', password='testpass123')
-        # dwp_alice has no permission for this regime, so we can't easily test
-        # the full flow. Instead directly test _get_verified_cases returns empty.
+        # Directly test _get_verified_cases returns empty for a fresh user.
         from dept_hmrc.views.iht.orchestrate import _get_verified_cases
         cases = list(_get_verified_cases(self.carla, self.regime))
         # Sanity: carla has 2. Now test with a queryset that would be empty.

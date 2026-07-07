@@ -42,9 +42,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'core',
     'dept_demo',
-    'dept_dwp',
     'dept_hmrc',
-    'dept_defra',
 ]
 
 ACTIVE_DEPT = os.environ.get('ACTIVE_DEPT', 'HMRC')
