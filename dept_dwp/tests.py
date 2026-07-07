@@ -171,6 +171,24 @@ class TestDWPRegimeHome(TestCase):
         self.assertEqual(r.status_code, 302)
         self.assertIn('/accounts/login/', r['Location'])
 
+    def test_call_core_return_url_set_from_pss_regime_home_url(self):
+        """
+        call_core reads regime_home_url from PSS (not raw request.session).
+        regime_generic_home pre-writes PSS regime_home_url = request.path before
+        calling call_regime, so call_core sets return_url to the regime home URL.
+
+        This test confirms the non-IHT PSS-read path: the pre-write ensures
+        PSS has the correct URL when call_core runs, and return_url reflects it.
+        """
+        regime_home = '/dwp/regime/TEST_SIMPLE/'
+        self.client.get(regime_home)
+        pss = self.client.session.get('pss', {})
+        self.assertEqual(
+            pss.get('return_url'),
+            regime_home,
+            'call_core must set return_url from PSS regime_home_url',
+        )
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # E. select_schedule and select_section

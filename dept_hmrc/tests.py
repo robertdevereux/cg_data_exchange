@@ -1210,6 +1210,21 @@ class TestStartNewEstate(TestCase):
             'regime_home_url must be the orchestrator URL, not the new-estate URL',
         )
 
+    def test_return_url_set_to_orchestrator_via_pss(self):
+        """
+        call_core reads regime_home_url from PSS and writes it as return_url.
+        iht_start_new_estate pre-writes PSS regime_home_url to the orchestrator
+        URL before calling call_core, so return_url must be the orchestrator URL
+        (not /hmrc/iht/cases/new/).
+        """
+        self.client.get('/hmrc/iht/cases/new/')
+        pss = self.client.session.get('pss', {})
+        self.assertEqual(
+            pss.get('return_url'),
+            HOME_URL,
+            'call_core must set return_url from PSS regime_home_url (orchestrator URL)',
+        )
+
     def test_sets_current_action_to_start(self):
         """
         iht_current_action must be 'start' after iht_start_new_estate so that

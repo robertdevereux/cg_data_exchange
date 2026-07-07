@@ -169,7 +169,7 @@ def call_core(request, regime, actor, user, items, title=None, url_prefix=''):
     """
     from django.db.models import Q
     from .permissions import get_permitted_sections
-    from .session import update_session
+    from .session import get_session, update_session
 
     session_case_id = request.session.get('case_id')
     base_qs = get_permitted_sections(actor, user, case_id=session_case_id).filter(
@@ -200,7 +200,8 @@ def call_core(request, regime, actor, user, items, title=None, url_prefix=''):
         elif item['type'] == 'section' and item['id'] in permitted_section_set:
             ordered_items.append(item)
 
-    regime_home_url = request.session.get('regime_home_url', request.path)
+    pss = get_session(request)
+    regime_home_url = pss.get('regime_home_url', request.path)
 
     update_session(request, {
         'user_id':                user.pk,

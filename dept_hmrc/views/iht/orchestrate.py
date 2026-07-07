@@ -268,16 +268,13 @@ def iht_start_new_estate(request):
     for key in ('iht_current_action', 'iht_in_core'):
         request.session.pop(key, None)
     # _setup captured regime_home_url from this view's own request.path
-    # (/hmrc/iht/cases/new/), not the orchestrator URL.  Override it in both
-    # the PSS (read by section_done when all regime sections are complete) and
-    # the top-level session (read by call_core to set PSS return_url for the
-    # mid-journey redirect).  Without this, completing S1 sends the user back
-    # here, creating a second draft case on every S1 completion.
+    # (/hmrc/iht/cases/new/), not the orchestrator URL.  Override it in PSS so
+    # call_core sets return_url to the orchestrator — without this, completing
+    # S1 sends the user back here and creates a second draft case.
     orchestrator_url = reverse(
         'dept_hmrc:regime_home', kwargs={'regime_id': regime.regime_id}
     )
-    update_session(request, {'regime_home_url': orchestrator_url})  # PSS
-    request.session['regime_home_url'] = orchestrator_url           # top-level for call_core
+    update_session(request, {'regime_home_url': orchestrator_url})
     # Set current_action so _exit_start fires when the user returns from S1.
     # Without this the orchestrator has no context on return and falls through
     # to _render_home with verified_case=None → AttributeError.

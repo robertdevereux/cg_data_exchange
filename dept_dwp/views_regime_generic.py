@@ -32,10 +32,12 @@ def regime_generic_home(request, regime_id):
     pss   = get_session(request)
     user  = resolve_user(pss, actor)
 
+    # Pre-write regime_home_url so call_core (inside call_regime) reads the
+    # correct URL from PSS rather than falling back to request.path.
+    update_session(request, {'regime_home_url': request.path})
     entry_url = call_regime(request, regime, actor, user, url_prefix='dwp')
 
-    # Set breadcrumbs and regime_home_url in session for core Pattern C views.
-    # call_regime() does not set these, so we add them here.
+    # Set breadcrumbs and remaining session keys for core Pattern C views.
     regime_home_url = request.path
     update_session(request, {
         'regime_home_url': regime_home_url,

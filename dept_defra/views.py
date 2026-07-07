@@ -56,6 +56,9 @@ def regime_home(request, regime_id):
     pss   = get_session(request)
     user  = resolve_user(pss, actor)
 
+    # Pre-write regime_home_url so call_core (inside call_regime) reads the
+    # correct URL from PSS rather than falling back to request.path.
+    update_session(request, {'regime_home_url': request.path})
     entry_url = call_regime(request, regime, actor, user, url_prefix='defra')
 
     # Completion status
