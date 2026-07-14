@@ -1,5 +1,5 @@
 # cg_data_exchange — Initial Prompt for New Claude Sessions
-Date: 1 July 2026
+Date: 14 July 2026
 
 ---
 
@@ -27,6 +27,8 @@ The auth conflict arises when both a claude.ai token and `ANTHROPIC_API_KEY` are
 ```
 Never use `python manage.py test`, `source activate`, or `conda run`.
 Correct conda environment is `env_python_django_psql` (with `_psql` suffix).
+
+Never run two manage.py test invocations against the Neon test DB concurrently. Sequential only. Several test classes (TestRoutingAdminTools, TestConditionalTableSection, likely others) use fixed-ID fixtures in setUpTestData and will fail with spurious unique-constraint errors under concurrent execution — this is a known, understood test-infrastructure limitation, not a code bug.
 
 **Load environment variables locally:**
 ```
@@ -60,13 +62,11 @@ run full test suite → confirm zero failures → `git add` relevant files →
 **Database note:** The user table is `core_user` (not `auth_user`).
 Example: `SELECT id FROM core_user WHERE username = 'alice';`
 
-**Render:** Four services, all from the same repo, differentiated by env
-vars set in the Render dashboard:
+**Render:** Two active services (DEMO and HMRC), both from the same repo,
+differentiated by env vars set in the Render dashboard:
 ```
 https://cg-data-exchange.onrender.com         (DEMO/TEST)
 https://cg-data-exchange-hmrc.onrender.com    (HMRC)
-https://cg-data-exchange-defra.onrender.com   (DEFRA)
-https://cg-data-exchange-dwp.onrender.com     (DWP)
 ```
 Auto-deploy on push. Transient failures: manual redeploy in Render dashboard.
 
@@ -87,7 +87,7 @@ a new operating model for citizen-government data exchange.
   that dept apps call
 - Shared admin tooling for configuration
 
-**Department apps** (`dept_hmrc`, `dept_defra`, `dept_dwp`, `dept_demo`)
+**Department apps** (`dept_hmrc`, `dept_demo`)
 own their orchestration logic, home page UX, and any dept-specific models.
 They call into core via `interfaces.py`. They never query core models
 directly. `dept_hmrc` has `models.py` with `IHTReckoner` — the canonical
@@ -111,8 +111,6 @@ core/                 — Platform app (data model + execution engine)
   templatetags/       — Markdown rendering
 core/templates/core/  — All execution engine and admin templates
 dept_hmrc/            — HMRC department app
-dept_defra/           — DEFRA department app
-dept_dwp/             — DWP department app (legacy structure, not rationalised)
 dept_demo/            — Demo/test dept (internal dept_id='TEST', /demo/ prefix)
 ```
 
@@ -176,28 +174,38 @@ presentation.
 
 | Document | File | Purpose |
 |----------|------|---------|
-| Initial Prompt | `260701_Initial_Prompt.md` | This file — read first in every session |
-| Core Platform Reference | `260701_Core_Platform_Reference.md` | Stable platform reference — data model, interfaces, design decisions |
-| HMRC IHT Reference | `260701_HMRC_IHT.md` | Complete IHT technical reference — action buttons, matching, reckoner, triage, asset buttons |
+| Initial Prompt | `260714_Initial_Prompt.md` | This file — read first in every session |
+| Core Platform Reference | `260714_Core_Platform_Reference.md` | Stable platform reference — data model, interfaces, design decisions |
+| HMRC IHT Reference | `260714_HMRC_IHT.md` | Complete IHT technical reference — action buttons, matching, reckoner, triage, asset buttons |
+| Core Map | `260714_Core_Core_Map.md` | File-by-file map of core/ internals |
 | IHT Journey Architecture | `260628_iht-journey-architecture.md` | Question-level design for IHT asset declaration journey |
-| Backlog | `260701_Backlog.md` | Active task list with completed sprint record |
+| Backlog | `260714_Backlog.md` | Active task list with completed sprint record |
 | file_dump.txt | `file_dump.txt` | Full current codebase (.py and .html) — regenerate before CC work |
 
 **Reading order for a new session:** this file → Core Platform Reference →
 HMRC IHT Reference → Backlog → file_dump.txt (as needed for specific files).
 
-All project documents are prefixed `260701_` as of 1 July 2026.
+All active project documents are prefixed `260714_` or later
+(IHT Journey Architecture is the one standing exception, still current at `260628_`).
 
 **Superseded documents** (archive, do not read):
 - `260616_IHT_Orchestration_Logic.md` — replaced by HMRC IHT Reference
 - `260616_IHT_Tailoring_Flow.md` — replaced by HMRC IHT Reference
+- `260616_HMRC_Reference.md` — superseded
 - `260619_Initial_Prompt.md` — superseded
 - `260619_Core_Platform_Reference.md` — superseded
 - `260619_HMRC_IHT.md` — superseded
 - `260619_Backlog.md` — superseded
-- `260616_HMRC_Reference.md` — superseded
-- `260620_Initial_Prompt.md` — superseded by this file
+- `260620_Initial_Prompt.md` — superseded
 - `260620_Core_Platform_Reference.md` — superseded
 - `260620_HMRC_IHT.md` — superseded
 - `260628_Backlog.md` — superseded
 - `260628_Core_Platform_Reference.md` — superseded
+- `260701_Initial_Prompt.md` — superseded by this file
+- `260701_Core_Platform_Reference.md` — superseded by 260705_
+- `260701_HMRC_IHT.md` — superseded by 260705_
+- `260701_Backlog.md` — superseded by 260705_
+- `260705_Core_Platform_Reference.md` — superseded by 260714_
+- `260705_HMRC_IHT.md` — superseded by 260714_
+- `260705_Core_Core_Map.md` — superseded by 260714_
+- `260705_Backlog.md` — superseded by 260714_

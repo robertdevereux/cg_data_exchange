@@ -378,13 +378,49 @@ get_permitted_sections(user, regime, case=None)
 Returns queryset of Sections the user may access.
 
 ```python
-call_core(request, items, title=None)
+format_date(answer)
 ```
-Unified entry point for core execution engine. `items` is an ordered list
-of section IDs and/or schedule IDs. Handles single-item (direct) and
-multi-item (top-level page) patterns. Sets `return_url` to `regime_home_url`
-as the initial value; this is immediately overwritten when the citizen visits
-a Layer 1 list view (see completion routing below).
+Formats a raw date answer `{day, month, year}` dict into a display string.
+Used internally by `format_answer_for_display`; also available directly.
+
+```python
+reset_section_progress(user, regime)
+```
+**(New, July 2026.)** Deletes all `SectionStatus` rows for the given
+user+regime. Called by `iht_start_new_estate` to clear progress when the
+actor starts a completely fresh estate (multi-estate picker flow). Replaces
+raw `SectionStatus.objects.filter(...).delete()` calls that previously
+appeared in orchestrate.py.
+
+```python
+promote_case_to_verified(case, actor, deceased, reference)
+```
+**(New, July 2026.)** Atomically re-keys all `Answer` and `SectionStatus`
+rows from the draft user to the verified deceased identity, updates
+`case.user` and `case.reference`, and creates a case-scoped `Permission`
+granting the actor access to the now-verified case. Decorated with
+`@transaction.atomic`. Does **not** re-key `AnswerHistory` rows.
+Called via the thin wrapper `matching._promote_case_to_verified`, which
+creates the deceased `User`, generates an IHT reference, and then delegates
+here. Do not call directly from dept code — use the matching wrapper.
+
+```python
+call_core(request, regime, actor, user, items, title=None, url_prefix='')
+```
+Unified entry point for core execution engine. `regime`, `actor`, and `user`
+are the three identity parameters resolved by the dept orchestrator before
+calling core. `items` is an ordered list of section IDs and/or schedule IDs.
+`url_prefix` scopes dept action URLs (e.g. `'hmrc'`). Handles single-item
+(direct) and multi-item (top-level page) patterns. Sets `return_url` to
+`regime_home_url` as the initial value; this is immediately overwritten when
+the citizen visits a Layer 1 list view (see completion routing below).
+
+```python
+call_regime(request, regime, actor, user, url_prefix='')
+```
+Thin wrapper around `call_core`. Derives `items` from the regime's top-level
+structure (all schedules and bare sections, ordered). Dept code can call
+either; `call_regime` is simpler when the full regime top level is wanted.
 
 ### Completion routing — `resolve_completion_url`
 
@@ -431,17 +467,49 @@ but this is overwritten the moment the citizen visits a list view.
 
 ### Session keys written by core / read by dept
 
+All keys below (except `_table_row`) live in the **PSS namespace**
+(`request.session['pss']`). Read and write them via `get_session(request)`
+and `update_session(request, {...})` from `core/session.py` — never as
+`request.session['key']` directly.
+
 | Key | Written by | Read by | Purpose |
 |-----|-----------|---------|---------|
 | `return_url` | Layer 1 list views (all three); `call_core` (initial value) | `resolve_completion_url` | Where to go after section completes (priority 4) |
-| `regime_home_url` | dept orchestrator (`_setup`) | `call_core`; `resolve_completion_url` (priority 2) | Used as `return_url` initial value; regime-complete destination |
+| `regime_home_url` | dept orchestrator (`_setup`) via `update_session` | `call_core`; `resolve_completion_url` (priority 2) | Used as `return_url` initial value; regime-complete destination |
 | `schedule_list_url` | `regime_schedule_sections` | `resolve_completion_url` (priority 3) | Schedule-complete destination |
 | `permitted_section_ids` | `call_core` | `regime_sections` | Filter section list |
 | `permitted_schedule_ids` | `call_core` | `regime_schedule_sections` | Filter schedule list |
 | `top_level_items` | `call_core` (multiple) | `regime_top_level` | Ordered mixed list |
 | `top_level_title` | `call_core` (multiple) | `regime_top_level` | Page heading |
 | `post_confirm_redirect` | dept code (optional) | `resolve_completion_url` (priority 1) | One-shot override; highest priority |
-| `_table_row` | `section_table_routed_add/change` | `section_table_routed_question` | Per-row journey state (type-2 sections only) |
+| `_table_row` | `section_table_routed_add/change` | `section_table_routed_question` | Per-row journey state (type-2 sections); raw session key, NOT in PSS |
+
+### Breadcrumb mechanism
+
+Breadcrumbs are built in two stages:
+
+**Stage 1 — base crumbs (Layer 1 views):** The dept orchestrator sets
+`base_crumbs` in PSS before calling `call_core`; this is a list of
+`{label, url}` dicts ending at the regime home. Layer 1 list views then
+extend this list per the rules below. The extended list is written back
+to `pss['breadcrumbs']` (not `pss['base_crumbs']`).
+
+| View | Breadcrumb behaviour |
+|------|---------------------|
+| `regime_sections` | Reads from session, passes through **unchanged**, writes back unchanged |
+| `regime_schedules` | Reads from session; does **not** write back |
+| `regime_schedule_sections` | Truncates to the regime home entry (finds `regime_home_url` in `base_crumbs`, slices to that point), then appends the schedule name crumb |
+| `regime_top_level` | Appends the title/regime name crumb **without truncation** — base_crumbs + new crumb directly |
+
+**Stage 2 — section name (Layer 2):** `_build_crumbs(pss, final_label)` in
+`views_layer2.py` appends the current section name as an ephemeral final
+crumb at every render. This append is never saved to session — it exists
+only for the current response.
+
+**Known asymmetry:** `regime_top_level` does not truncate, while
+`regime_schedule_sections` does. This is an observed difference in the
+current code, not a documented design choice; worth unifying if it causes
+a breadcrumb trail bug.
 
 **Caution on caching identity in session (added 5 July 2026):** avoid caching
 `user_id` (or any derived-from-`case.user` value) in session across a

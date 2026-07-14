@@ -1,5 +1,5 @@
 # cg_data_exchange — Backlog
-Date: 5 July 2026
+Date: 9 July 2026
 Status: Live working document — update as items are completed or added
 
 ---
@@ -45,8 +45,8 @@ definitions are available:
 diverge in behaviour (the former shows an interim pre-verified screen, the
 latter skips straight into S1). Likely fix: `iht_start_new_estate` becomes
 `_entry_start`'s path with a flag, rather than a separate implementation.
-See HMRC IHT Reference section 2. Good candidate for the "coherence audit"
-session below, or can be picked off on its own.
+See HMRC IHT Reference section 2. **Confirmed as a live duplication by the
+coherence audit (Item 2, 7 July 2026)**, not just the original observation.
 
 ### New, 4 July 2026, still open: Triage-set completion gating
 The three triage-set action-list rows (Common assets / Pensions / Other)
@@ -57,35 +57,17 @@ is a real bug in `_should_show_tailor`/`_triage_set_rollup`, or a vacuous
 a fresh estate (check the three rows *before* touching Tailor at all).
 See HMRC IHT Reference sections 7–8.
 
-### New, 5 July 2026: Coherence/architecture audit session
-After a long, productive but reactive session (multiple interlocking fixes
-to routing tools, identity handling, and session state), worth a dedicated
-session — **no new features, only finding and reporting drift** — before
-further build work:
-- Grep every `request.user` use across `core` and `dept_*` apps; check each
-  against whether it should be `case.user`-scoped instead (the exact bug
-  class found and fixed twice on 5 July 2026 — see Core Platform Reference
-  section 4a). Report findings; do not fix inline.
-- Look for other "two paths, one concept" duplications like `_entry_start`
-  vs `iht_start_new_estate` across `orchestrate.py`, now that it has grown
-  organically across several sessions.
-- Diff the HMRC IHT Reference doc's description of ENTRY/EXIT against what
-  `orchestrate.py` actually does, line by line — the doc has drifted from
-  the code before (the phantom `ScheduleSection` model was one instance)
-  and may have again.
-
 ---
 
 ## SOON
 
 ### D1: Build IHT Reckoner Parts 1 and 2
-Part 1 (deceased survived by spouse) and Part 2 (widowed).
-Both need flow documents equivalent to `IHT_Reckoner_Part3_Flow-2.md`
-before building. Key points outlined in that doc. **Also now needs**:
-`RECKONER_SECTION`'s HMRC_14 lookup was written for the old three-way
-single/married/widowed answer; HMRC_14 is now Yes/No with a separate
-HMRC_43 follow-up (see HMRC IHT Reference section 4) — check this mapping
-still resolves correctly before relying on it.
+The single route (Part 3: `reckoner_single`, `HMRC_S3`) is built and
+correctly gated. Parts 1 (married/civil partnership) and 2 (widowed) still
+to build. Both need flow documents equivalent to `IHT_Reckoner_Part3_Flow-2.md`
+before building; key points outlined in that doc. The HMRC_14/HMRC_43
+(Yes/No) reckoner routing has been verified as correct — no pre-work needed
+on that mapping before starting.
 
 ### New, 5 July 2026: Derived marital-status helper
 Anything needing "is this estate married / widowed / single-or-divorced"
@@ -124,6 +106,18 @@ Shows dropdown of subject user's cases for the selected regime.
 Full scope matrix in Core Platform Reference section 6.
 Prompt already drafted — ready to fire at CC.
 
+### New, 7 July 2026: Formalise orchestrate.py's direct core-internals access
+Per Coherence Audit Item 8: `orchestrate.py` currently reads `Section`,
+`Routing`, `QuestionSetMember`, and `Regime` directly from `core.models`,
+and imports `resolve_user` from `core.nav_reference` (a non-interfaces path).
+Decide which of these reads should become documented `interfaces.py` helpers
+versus which are legitimately structural (i.e. the dept layer reading its
+own regime structure, not citizen data). Then implement: add helpers to
+`interfaces.py` for any reads that belong there; leave direct imports only
+for what's genuinely outside the data-access boundary. The correctness rule
+(`case.user` vs `request.user`) already documented in Core Platform Reference
+section 4a is the model for what a documented boundary looks like.
+
 ---
 
 ## SOON — Documentation
@@ -155,6 +149,24 @@ Apply and save as v0.3.
 ### DOC G4: Salesforce Implementation Plan — significant update likely
 Two-tier question bank and Case/Permission changes have implications for the
 Salesforce data model. Phase 1 data model section needs revisiting.
+
+### New, 7 July 2026: "How to build a new department app" guide
+With `dept_defra` and `dept_dwp` gone, HMRC/IHT is the only worked example
+of the orchestrator boundary-controller pattern. Before institutional memory
+of the pattern lives only in one file, document it explicitly:
+- The three mandatory session keys (`regime_home_url`, `return_url`,
+  `user_id`/`actor_id`) and who writes/reads each
+- ENTRY/EXIT distinction: what the orchestrator must do on each side of a
+  `call_core` call
+- `call_core`'s contract: what it reads from PSS, what it writes back
+- The identity gate (`choose_user_for_regime`) and when to use it
+- How to wire the two-phase pattern (`iht_in_core` / `iht_current_action`)
+  for action buttons
+- URL structure and namespace conventions
+
+Then **prove the guide's completeness by building one small fresh second
+dept from it** — a minimal scaffold with one regime, one section, and a
+working orchestrator — rather than leaving it as untested documentation.
 
 ---
 
@@ -265,6 +277,69 @@ arises in another regime, consider scoping it by section_id. Not urgent.
   "All other answers → [NEXT]" even when there is no branching. Cosmetic
   only, not a bug. Fix when convenient.
 
+- **New, 7 July 2026: Split `views_admin_tools.py`** — flagged early in the
+  audit/tidy session; at 3,300+ lines it is the largest file in the codebase
+  and blends question, section, routing, regime, schedule, and permission
+  wizard logic in one module. Natural split: one file per wizard domain.
+  Low risk (internal to admin; no public interface), but deferred as
+  non-urgent housekeeping.
+
+---
+
+## Completed (7 July 2026 — audit and tidy session)
+
+- **Completion routing unified (`resolve_completion_url`)** — single
+  precedence chain (post_confirm_redirect → all-complete → schedule-complete
+  → return_url → fallback) documented and enforced. `regime_top_level` gaps
+  fixed: `return_url` now written correctly and breadcrumb appended on every
+  visit.
+
+- **META mechanism fully removed** — code (meta_processors.py,
+  tools_create views, templates) and live data (META regime, sections,
+  M_N questions in load_test_data.py).
+
+- **Table-journey `request.user` → `case.user` fix** — 16 instances across
+  `views_layer2.py` corrected to use `case.user` for Answer/SectionStatus
+  reads and writes, per the correctness rule in Core Platform Reference
+  section 4a.
+
+- **Reckoner routing corrected to HMRC_14/HMRC_43 (Yes/No shape)** — the
+  single-estate route (`reckoner_single`, `HMRC_S3`) built and verified.
+  Married (Part 1) and widowed (Part 2) correctly gated as not-yet-built;
+  `RECKONER_SECTION` mapping re-verified against new Yes/No + HMRC_43 shape.
+
+- **`interfaces.reset_section_progress` and `interfaces.promote_case_to_verified`
+  added** — replacing raw ORM mutations previously scattered across
+  `orchestrate.py` and `matching.py`. Dept code now calls documented
+  interface functions for these operations rather than writing to core
+  models directly.
+
+- **Dead code removed** — `_get_verified_case` (orchestrate.py),
+  `call_schedules` and `call_sections` (interfaces.py),
+  `select_schedule` and `select_section` (nav_reference.py).
+
+- **`call_core` fixed to read `regime_home_url` from PSS** — previously read
+  from raw `request.session`; now reads from `get_session(request)` (PSS
+  namespace). Pre-write ordering fixed in DWP, DEFRA, and HMRC generic views
+  so the URL is in PSS before `call_regime` is called. Verified across all
+  three dept flows.
+
+- **`dept_defra` and `dept_dwp` removed entirely** — pre-removal audit in
+  `260707_DEFRA_DWP_Audit.md`; no models, no migrations, no DB table drops
+  required. 18 DWP tests removed; 187 tests passing post-removal.
+
+- **Coherence/architecture audit run** (`260706_Coherence_Audit.md`) — 8
+  findings. Resolved in this session: Items 1–7 (request.user bugs, dead
+  code, session-key inconsistency, reckoner routing, interface boundary
+  violations, duplicate-path documentation). Carried forward: Item 8
+  (formalise orchestrate.py's direct core-internals access — see SOON above).
+
+- **Standing rules added to `260701_Initial_Prompt.md`:**
+  - Commit at end of every verified session before any worktree is created.
+  - Never run concurrent `manage.py test` invocations against the Neon test
+    DB — several test classes use fixed-ID fixtures in `setUpTestData` and
+    will produce spurious unique-constraint errors under concurrent execution.
+
 ---
 
 ## Completed (5 July 2026 session)
@@ -344,7 +419,7 @@ summary here for backlog tracking.
   `choose_user_for_regime` — now regime-scoped (fires *after* regime
   selection, not before) rather than showing every acting-for relationship
   a user has platform-wide. `dept_demo` and `dept_hmrc` both migrated to
-  it; `dept_defra` and `dept_dwp` not yet (see SOON, above).
+  it (`dept_defra` and `dept_dwp` were removed before migration).
 
 - **HMRC IHT deceased-identity split built.** Each verified estate now
   gets its own synthetic, login-incapable `User` (the deceased) distinct
@@ -525,8 +600,6 @@ summary here for backlog tracking.
 - Consistency checker: mixed `condition_question_id` values per node warns
   but does not block; only the first `condition_question_id` found is used
   by `_resolve_routing_answer` (sufficient for current patterns).
-- Reckoner's `RECKONER_SECTION` HMRC_14 mapping not yet re-verified against
-  the new Yes/No + HMRC_43 shape (see D1).
 
 ---
 

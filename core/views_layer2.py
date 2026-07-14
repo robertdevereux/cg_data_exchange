@@ -4,9 +4,10 @@ Layer 2: Section Processing Engine
 Everything that happens inside a Section once a citizen has selected it.
 
 Responsibility boundary
-  Layer 1 (not yet built) gets the citizen to the right section and
-  sets the outer PSS session context (user_id, actor_id, regime_id,
-  case_id, schedule_id).
+  Layer 1 (views_layer1.py + interfaces.call_core) gets the citizen to the
+  right section and sets the outer PSS session context: user_id, actor_id,
+  regime_id, case_id (all via call_core) and schedule_id (via
+  regime_schedule_sections; None when there is no enclosing schedule).
 
   Layer 2 (this file) takes over at section_start and owns the full
   journey:  start → question(s) → review → confirm → done.

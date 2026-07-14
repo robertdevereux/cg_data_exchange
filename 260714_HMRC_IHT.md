@@ -1,6 +1,6 @@
 # HMRC IHT — Technical Reference
-Date: 1 July 2026
-Status: Current — reflects code as at end of 1 July 2026 session
+Date: 5 July 2026
+Status: Current — reflects code as at end of 5 July 2026 session
 
 This document covers the IHT (Inheritance Tax) regime implementation in full.
 
@@ -14,7 +14,11 @@ is deferred.
 
 **Key concepts:**
 - **Estate** — the deceased person's assets and liabilities
-- **Executor** — the person completing the submission (the platform user)
+- **Executor (actor)** — the person completing the submission (logged in)
+- **Deceased (user/subject)** — **(new concept, 5 July 2026)** a synthetic,
+  login-incapable `User` record created once an estate is verified,
+  representing the deceased. `case.user` points at this record, not at the
+  executor. See section 3a below for the full lifecycle.
 - **IHT reference** — a unique reference (IHT-000000001 format) assigned once
   the estate is verified as unique in the system
 - **Verified case** — a Case record with a non-null reference; the estate has
@@ -25,7 +29,8 @@ is deferred.
 dept_hmrc/views/iht/
   orchestrate.py   — regime controller; all dispatch logic
   screen.py        — rendering only; decorates lean action state
-  matching.py      — duplicate checking and reference generation (functions only)
+  matching.py      — duplicate checking, reference generation, and
+                     (new) deceased-identity promotion
   reckoner.py      — reckoner dispatch and threshold computation
   utils.py         — answer extraction helpers
 ```
@@ -44,7 +49,17 @@ into core sections.
 `return_url = regime_home_url`; `iht_orchestrate` does post-processing
 then renders home.
 
-Two session flags control dispatch:
+Three session keys drive the two-phase dispatch:
+
+| Key | Who sets it | Who reads it | Purpose |
+|-----|------------|--------------|---------|
+| `return_url` (PSS) | `call_core` (sets to `regime_home_url`) | core execution engine (`section_done`) | Ensures core always returns to `iht_orchestrate` after a section completes |
+| `iht_in_core` | `_enter_core` (sets True before every `call_core` call) | `iht_orchestrate` (pops on every visit) | Distinguishes ENTRY (False/absent) from EXIT (True, then immediately cleared) |
+| `iht_current_action` | The thin action button view (e.g. `iht_action_reckoner`) | `iht_orchestrate` (ENTRY branch — selects `_entry_*`; EXIT branch — selects `_exit_*`) then cleared | Identifies which action button pair is active |
+
+**Timing note:** `iht_in_core` is set *just before* calling `call_core`, and popped *on the very next visit* to `iht_orchestrate` (i.e., when core returns). `iht_current_action` persists across the full round-trip and is cleared by `iht_orchestrate` after the exit handler runs. `return_url` is set by `call_core` and immediately overwritten by any Layer 1 list view visited during the journey — but in all HMRC IHT flows the journey ends with `section_done`, which reads the current `return_url` (still `regime_home_url` if no Layer 1 view was visited) and redirects back here.
+
+Two session flags control dispatch (summary):
 
 | Flag | Purpose |
 |------|---------|
@@ -69,9 +84,17 @@ happens in `iht_orchestrate` on return from core. `call_core` sets
 **ENTRY functions always send users into core first.** An `_entry_*`
 function must never do routing logic — it calls `_enter_core` then
 `call_core` and redirects. All post-section logic belongs in `_exit_*`.
-(Historical note: `_entry_reckoner` previously combined entry and routing
-logic because S2 was a gate question. This was simplified when S2 was
-redesigned — see section 6.)
+
+**Known tech debt, not yet resolved (flagged 5 July 2026):** there are
+currently **two different code paths for starting a new estate**:
+`_entry_start` (the original bootstrap path — renders an interim
+"pre-verified" screen via `iht_screen_unverified` before entering S1) and
+`iht_start_new_estate` (added for the multi-estate picker's "Begin a new
+estate" option — skips the interim screen and enters S1 directly). These
+diverge in behaviour and should be reconciled, most likely by having
+`iht_start_new_estate` become `_entry_start`'s path with a flag rather than
+a separate implementation. Left as a backlog item for a dedicated review
+rather than fixed reactively tonight.
 
 ---
 
@@ -80,21 +103,38 @@ redesigned — see section 6.)
 ```
 Every visit to /hmrc/regime/HMRC_IHT/
     ↓
-_setup() — regime, actor, user, session, crumbs
+_setup() — regime, actor, pss, crumbs (NOT user — see below)
     ↓
-active_items = _get_active_triage_items(verified_case)
-pop iht_in_core → returning_from_core
-read iht_current_action → current_action
+if no user_id in session → _iht_gate() (acting-for / estate picker)
+    ↓
+current_action = read iht_current_action
+returning_from_core = pop iht_in_core
+    ↓
+Resolve case + user from the DATABASE, not session cache (changed 5 July 2026):
+    case_id = session.get('case_id')
+    case = Case.objects.filter(case_id=case_id, regime=regime).first()
+    if case:
+        user = case.user            ← authoritative; correct whether
+        verified_case = case if case.reference else None   draft or verified
+    elif other verified cases exist for this actor:
+        → _iht_gate()  (re-show the picker; case_id was cleared)
+    else:
+        user = <actor's own default user>
+        verified_case = None
     ↓
 Bootstrap: if no verified_case and no current_action
     → set current_action = 'start'
     ↓
 if not returning_from_core:          ← ENTRY
-    start            → _entry_start()
+    start            → _entry_start()       [renders, does not redirect — shows
+                                             pre-verified home with entry button]
     deceased_details → _entry_deceased_details()
     reckoner         → _entry_reckoner()
     tailor           → _entry_tailor()
     hmrc_s4/s5/s6   → _entry_triage_assets(section_id)
+                                            [returns None if no built schedules
+                                             for this triage section; caller
+                                             falls through to _render_home()]
     None             → _render_home()
     ↓
 if returning_from_core:              ← EXIT
@@ -106,7 +146,133 @@ if returning_from_core:              ← EXIT
     ↓
 _clear_current_action()
 _render_home()
+
+Note: iht_start_new_estate is NOT dispatched by this table. It is reached
+directly via the acting-for gate's "Begin a new estate" option and bypasses
+iht_orchestrate's ENTRY logic entirely — it creates a draft case then enters
+S1 directly, without rendering the pre-verified home screen.
 ```
+
+**Why case/user resolution changed (5 July 2026):** the previous version
+cached `user_id` in session (set once by the acting-for gate) and separately
+tried to match `session['case_id']` against a list of verified cases. This
+broke the moment a draft case was promoted to verified mid-session — the
+newly-promoted case's owner (`case.user`) is the deceased, not the cached
+actor id, so the match failed, `user` silently fell back to the actor, and
+the just-completed section showed as "Not started" (the actor genuinely has
+no `SectionStatus` rows for a case they no longer own). The fix removes the
+cache: `user` is now derived fresh from `case.user`, read straight from the
+database, on every request. See Core Platform Reference section 5 for the
+general principle this illustrates.
+
+---
+
+## 3a. Deceased identity lifecycle (new, 5 July 2026)
+
+Every IHT case needs a distinct **subject** identity (the deceased),
+separate from the **actor** (the executor), for two reasons: (1) it is the
+architecturally honest model — the answers are about the deceased, not the
+executor — and (2) without it, the platform's cross-case pre-population
+feature (`section_question`'s "suggested from a prior case" banner, which
+is deliberately actor-scoped platform-wide) would silently offer up one
+deceased person's name/DOB/NINO as a suggested answer when the same
+executor starts a *second* estate. This was a real, observed bug before
+the fix landed.
+
+**Sequence, tied to matching (`_exit_start` in `orchestrate.py`,
+`_promote_case_to_verified` in `matching.py`):**
+
+1. Executor answers S1. Answers are captured **provisionally under the
+   actor** (`user=actor`) — at this point we don't yet know if this is a
+   new person (matching hasn't run), so there's no identity to create yet.
+2. `run_iht_matching(draft_case)` runs.
+3. **Duplicate found** → the draft's `Answer` rows (owned by the actor) are
+   deleted, the draft `Case` itself is deleted, `case_id` is cleared from
+   session, and the dead-end page is shown. Nothing is left behind that
+   could later surface as a pre-population suggestion on the actor's own
+   future estates.
+4. **Unique** → `matching._promote_case_to_verified(case, actor, deceased_name)`,
+   a thin coordinator in `matching.py` that:
+   - Creates a new, **inactive** `User` (`username='ihtsubject_<case pk>'`,
+     `set_unusable_password()`, no email needed) representing the deceased,
+     using the name captured in HMRC_1.
+   - Generates the IHT reference string.
+   - Then delegates to `interfaces.promote_case_to_verified(case, actor,
+     deceased, reference)`, which atomically (`@transaction.atomic`):
+     - Re-keys the case's already-written `Answer` and `SectionStatus` rows
+       from the actor to the new `User`. **`AnswerHistory` rows are NOT
+       re-keyed** — they remain owned by the actor; this is an accepted
+       limitation, not a bug.
+     - Sets `case.user` to the deceased identity and `case.reference` to the
+       generated reference.
+     - Grants the actor a case-scoped `Permission`
+       (`actor=<executor>, user=<deceased>, regime=HMRC_IHT, case=<case>,
+       section=None` — the "all sections of that specific case" shape
+       already supported by the Permission model, no schema change needed).
+5. From this point on, every read/write of this case's answers uses
+   `case.user` (the deceased), never the actor — see the correctness rule
+   in Core Platform Reference section 4a.
+
+**Amending an already-verified estate** (`_exit_deceased_details`) does
+not repeat identity creation — the case already has its deceased identity;
+matching simply re-runs against the amended answers to catch a newly-
+created conflict.
+
+**Cleanup script convention:** any one-off data-fix script touching IHT
+cases should be written as a Django management command, run once, then
+**deleted** — this was the pattern used twice on 5 July 2026 (QuestionSet
+ID rename; stale pre-fix-estate cleanup) and should be followed for any
+future one-off fix rather than left as permanent, unused code.
+
+---
+
+## 3b. Acting-for gate and the estate picker
+
+**(Replaces the earlier `iht_case_picker`/`iht_select_case` design from
+1 July 2026, itself replaced on 5 July 2026 — see below.)**
+
+IHT uses the platform's shared, regime-scoped acting-for gate
+(`core.views_gate.choose_user_for_regime` — see Core Platform Reference
+section 6a) via a thin wrapper:
+
+```python
+def _iht_gate(request, regime):
+    new_url  = reverse('dept_hmrc:iht_start_new_estate')
+    self_url = f"{reverse('core:select_self')}?{urlencode({'next': new_url})}"
+    return choose_user_for_regime(
+        request, regime=regime,
+        leading_option={'label': 'Begin a new estate', 'action_url': self_url},
+        next_url=reverse('dept_hmrc:regime_home', kwargs={'regime_id': regime.regime_id}),
+    )
+```
+
+**IHT never offers "Myself"** as the leading option, unlike every other
+regime — structurally, the executor is never the subject. The leading
+option is always "Begin a new estate," present even when the executor has
+no other estates yet (this is how the very first estate gets started).
+Named candidates beyond the leading option are the executor's other
+verified estates, sourced from their case-scoped `Permission` rows, each
+labelled with the deceased's name (read from the synthetic `User`'s
+`first_name`/`last_name`, set at promotion — see 3a). Selecting one writes
+that Permission's `case_id` into session and proceeds straight to that
+estate's home page — no second, IHT-specific picker page in between.
+
+**Auto-skip rule (inherited from the shared gate):** with zero prior
+estates, "Begin a new estate" is the only candidate, so the screen is
+skipped entirely and the executor goes straight into starting one. With
+one or more prior estates, the screen always shows (never auto-skips),
+since "begin a new estate" vs "continue an existing one" is a genuine
+choice — this was a deliberate correction after an earlier version
+special-cased the "exactly one prior estate" case to auto-skip it, which
+incorrectly removed the only way to start a *second* estate.
+
+**Retired, 5 July 2026:** the earlier `iht_case_picker`/`iht_select_case`
+views, built on 1 July as IHT-specific multi-case disambiguation before
+the deceased-identity split existed. Once every estate has its own
+synthetic subject, that disambiguation problem is already solved one level
+up by the shared gate — the IHT-specific picker was doing the same job
+worse (e.g. a picker offering only "James Bond" as a redundant confirmation
+after already selecting "James Bond" at the gate).
 
 ---
 
@@ -124,19 +290,41 @@ provides the deceased's details so the estate can be identified.
 4. Renders `iht_screen_unverified` — pre-verified home page showing the
    "Create a new draft estate submission" entry button
 
-**S1 questions** (HMRC_S1 — "Create a new draft estate submission"):
-| ID | Question |
-|----|----------|
-| HMRC_1 | Title |
-| HMRC_2 | First name |
-| HMRC_3 | Last name |
-| HMRC_4 | Date of birth |
-| HMRC_5 | Date of death |
-| HMRC_14 | At the time of their death, was the deceased... (marital status) |
+`iht_start_new_estate` (reached via the acting-for gate's "Begin a new
+estate" option) does the equivalent job for the multi-estate case, but
+currently skips step 4 and enters S1 directly — see the tech-debt note in
+section 2 above. It also calls `reset_section_progress(user, regime)` before
+creating the new Case, to clear any stale `SectionStatus` rows left by a
+previous incomplete draft on the same actor account.
 
-Note: HMRC_14 (marital status) was moved into S1 from S2 so it is collected
-as part of deceased's details, where it conceptually belongs. It is
-architecturally significant — it determines which reckoner journey fires.
+**S1 questions (HMRC_S1), current structure as of 5 July 2026:**
+
+| ID | Question | Type | Notes |
+|----|----------|------|-------|
+| HMRC_1 | Deceased's name | personal_name | Used by matching (last name) |
+| HMRC_2 | Deceased's date of death | date | Used by matching (dod_raw) |
+| HMRC_3 | Deceased's date of birth | date | |
+| HMRC_4 | Deceased's National Insurance number | text | |
+| HMRC_14 | At the time of their death, was the deceased married, or in a civil partnership? | radio (Yes/No) | Branching |
+| HMRC_43 | Had the deceased previously been married or in a civil partnership that ended on the death of their spouse or civil partner? | radio (Yes/No) | Only asked if HMRC_14 = No |
+| HMRC_5 | Did the deceased leave a will? | radio | |
+
+Routing: HMRC_1 → HMRC_2 → HMRC_3 → HMRC_4 → HMRC_14 → **[Yes]** HMRC_5 /
+**[No]** HMRC_43 → HMRC_5 → END.
+
+**This replaces an earlier, inaccurate version of this table** that showed
+separate Title/First name/Last name questions and a different HMRC_2–5
+mapping — that had drifted from reality independently of tonight's work.
+HMRC_14 was restructured on 5 July 2026 from a three-way
+single/married/widowed choice into two sequential Yes/No questions
+(HMRC_14 + HMRC_43), built using the newly-fixed section-routing admin
+tools (see Core Platform Reference section 8). **Downstream impact not yet
+addressed:** anything needing "is this estate married / widowed / single-
+or-divorced" as one concept (e.g. the reckoner section-selection logic in
+section 6, and the Q1 marital gate described in the IHT journey
+architecture doc informing D18) will need a small derived helper reading
+both HMRC_14 and HMRC_43 together, rather than one raw answer. Not built
+yet — flagged for whenever that logic is next touched.
 
 ### Exit
 
@@ -144,15 +332,21 @@ architecturally significant — it determines which reckoner journey fires.
 1. Finds the draft case (reference still null)
 2. Calls `run_iht_matching(draft_case)` — compares last name + date of death
    against all other verified cases
-3. **If duplicate** → renders `duplicate.html` — dead end, user told estate
-   already exists
-4. **If unique** → calls `_generate_iht_reference()`, assigns reference to
-   case, flashes confirmation message, redirects to regime home
+3. **If duplicate** → deletes the draft's `Answer` rows and the draft `Case`
+   itself, clears `case_id` from session, renders `duplicate.html` — dead
+   end, user told estate already exists (see section 3a)
+4. **If unique** → `_promote_case_to_verified` creates the deceased
+   identity, re-keys answers, assigns reference (see section 3a), flashes
+   confirmation message, redirects to regime home
 
 Reference format: `IHT-000000001` (sequential, zero-padded to 9 digits).
 
 **Matching logic** (`run_iht_matching`):
-- Compares `last_name` and `dod_raw` from `_get_iht_answers`
+- Compares `last_name` and `dod_raw`, read via direct `get_answers(case,
+  ['HMRC_1', 'HMRC_2'])` — **deliberately left using this direct extraction
+  rather than the new `get_asked_answers_for_section` helper** (see section
+  8 below), since this is structural data extraction for an algorithm, not
+  display formatting.
 - Excludes the current case from comparison
 - Returns `('unique', None)` or `('duplicate', matching_case)`
 
@@ -177,6 +371,14 @@ redirect → regime_home → iht_orchestrate (ENTRY)
 1. `_enter_core` — sets `iht_in_core = True`
 2. `call_core([{'type': 'section', 'id': 'HMRC_S1'}])` — sends user into S1 (re-entry, shows review)
 
+**Depends on the `case.user` fix (5 July 2026):** `section_start`'s
+existing-answers check previously read `Answer.objects.filter(user=
+request.user, ...)` — since `request.user` is the actor, not `case.user`,
+this always found nothing for a verified case (whose answers belong to the
+deceased), sending the executor to a blank HMRC_1 instead of the review
+page. Fixed in `core/views_layer2.py`; see Core Platform Reference section
+4a for the full correctness rule.
+
 ### Exit
 
 `_exit_deceased_details`:
@@ -195,18 +397,11 @@ redirect → regime_home → iht_orchestrate (ENTRY)
 and what type of estate it is. The answers then route to the appropriate
 reckoner journey or directly to the asset selector.
 
-### IHT home page display
-
-The IHT home page displays deceased's details including marital status:
-- Name, Date of birth, Date of death, National Insurance number
-- Marital status (HMRC_14 — now collected in S1)
-- IHT reference
-
 ### Section structure
 
 | Section | Name | Questions |
 |---------|------|-----------|
-| HMRC_S1 | Create a new draft estate submission | HMRC_1–5 + HMRC_14 |
+| HMRC_S1 | Create a new draft estate submission | HMRC_1–4, HMRC_14, HMRC_43, HMRC_5 — see section 4 |
 | HMRC_S2 | Ready Reckoner Access | HMRC_13 only |
 | HMRC_S3 | Ready reckoner 1A | Reckoner questions (single/never married) |
 
@@ -217,7 +412,7 @@ The IHT home page displays deceased's details including marital status:
 | ID | Question | Role |
 |----|----------|------|
 | HMRC_13 | Would you like help working out if IHT is payable? | Reckoner gateway |
-| HMRC_14 | At the time of their death, was the deceased... | Marital status; selects reckoner section; collected in S1 |
+| HMRC_14 | At the time of their death, was the deceased married, or in a civil partnership? | Now Yes/No; selects reckoner section; collected in S1 — see section 4 |
 
 ### Action button view
 
@@ -234,18 +429,23 @@ redirect → regime_home → iht_orchestrate (ENTRY)
 2. `call_core([{'type': 'section', 'id': 'HMRC_S2'}])` — always sends user
    into S2 (the single-question reckoner preference section)
 
-The user always sees S2 on entry — whether starting fresh, amending HMRC_13,
-or correcting marital status (HMRC_14, now in S1 via Deceased's details).
-
 ### Exit
 
 `_exit_reckoner` — delegates to `handle_reckoner`:
 
-`handle_reckoner` reads HMRC_13 (from S2) and HMRC_14 (from S1):
+`handle_reckoner` reads HMRC_13 (from S2), HMRC_14, and HMRC_43 (both from S1):
 - **HMRC_13 = No** → deletes any stale `IHTReckoner` row → returns None
   → tailor button appears (if `_should_show_tailor` is satisfied)
-- **HMRC_13 = Yes + HMRC_14 maps to a built section** → calls that section
-- **HMRC_13 = Yes + HMRC_14 maps to unbuilt section** → returns None
+- **HMRC_13 = Yes, HMRC_14 = No, HMRC_43 = No** → single route → HMRC_S3 (built)
+- **HMRC_13 = Yes, HMRC_14 = Yes** → married route → None (not yet built)
+- **HMRC_13 = Yes, HMRC_14 = No, HMRC_43 = Yes** → widowed route → None (not yet built)
+- **answers absent or unexpected** → None
+
+The stale `RECKONER_SECTION` dict and `HMRC14_*` string constants have been
+removed. Routing now uses explicit field-based branching on HMRC_14 + HMRC_43
+(verified 5 July 2026). The single route (HMRC_14=No, HMRC_43=No) is built
+and correctly gated; married (HMRC_14=Yes) and widowed (HMRC_14=No, HMRC_43=Yes)
+routes are not yet built and return None.
 
 **Stale IHTReckoner cleanup:** When a user changes HMRC_13 from Yes to No,
 `handle_reckoner` deletes any existing `IHTReckoner` row so the reckoner
@@ -264,10 +464,10 @@ conclusion does not persist on the home page.
 | conclusion | `not_payable` / `may_be_payable` / `knock_out` |
 | threshold | The threshold value used in the computation |
 
-**Reckoner sections** (`RECKONER_SECTION` dict in `reckoner.py` maps HMRC_14
-answers to section IDs):
-- Single/never married → HMRC_S3 (built)
-- Married/widowed → not yet built (D1)
+**Reckoner sections** (explicit branching in `reckoner.py` on HMRC_14 + HMRC_43):
+- HMRC_14=No, HMRC_43=No (single/never married) → HMRC_S3 (built)
+- HMRC_14=Yes (married) → not yet built (D1)
+- HMRC_14=No, HMRC_43=Yes (widowed) → not yet built (D1)
 
 ### Show tailor condition
 
@@ -309,8 +509,9 @@ changes needed.
 | HMRC_S5 | Pensions and life assurance | HMRC_24–30 |
 | HMRC_S6 | Other assets and liabilities | HMRC_32–39 |
 
-Each section contains one QuestionSet. All questions are `radio_inline`
-type (Yes/No on one line). The user works through each section in any order.
+Each section contains one QuestionSet (ID convention `SET{N}` — see Core
+Platform Reference section 3). All questions are `radio_inline` type
+(Yes/No on one line). The user works through each section in any order.
 On completing all three, they are returned to the IHT home page.
 
 **Triage questions — HMRC_S4 (Common assets and liabilities):**
@@ -356,6 +557,16 @@ Note: HMRC_20 (jointly owned assets) excluded pending design — see D13.
 
 The home page then shows triage set rows (see section 8 below).
 
+**Open issue, not yet investigated (raised 4 July 2026, still open):** the
+three triage-set action-list rows (Common assets / Pensions / Other) were
+observed showing as "Complete" with active "View/amend"-style links before
+"Tailor your submission" had genuinely been completed for that estate. Not
+yet established whether this is a real gating bug in `_should_show_tailor`/
+`_triage_set_rollup`, or whether it was vacuously "complete" because zero
+Yes-answers means zero required detail sections. Needs a deliberate
+before/after test (fresh estate, check the three rows *before* touching
+Tailor at all) to isolate — deferred past tonight's session.
+
 ### Dynamic question lookup
 
 `_get_triage_question_ids(section_id)` reads question IDs dynamically from
@@ -385,6 +596,32 @@ now driven by `QUESTION_SCHEDULE_MAP` and `_get_built_schedule_items`
 ---
 
 ## 8. Home page
+
+### Deceased-details display — now routing-driven (changed 5 July 2026)
+
+The "This estate relates to" summary previously hand-mapped a fixed list
+of five question IDs (`HMRC_1–4, HMRC_14`) to named template fields —
+which could not reflect HMRC_14's new Yes/No shape, could not show the new
+HMRC_43 follow-up at all, and displayed a hardcoded "Marital status" label
+regardless of the question actually asked. `_render_home` now builds this
+list generically:
+
+```python
+hmrc_s1 = Section.objects.get(section_id='HMRC_S1')
+deceased_rows = [
+    {'label': row['question_text'],
+     'value': format_answer_for_display(row['question_type'], row['answer'])}
+    for row in get_asked_answers_for_section(verified_case, hmrc_s1)
+]
+```
+
+using the two new shared `core.interfaces` functions (see Core Platform
+Reference section 5). This walks HMRC_S1's actual routing against the
+case's confirmed answers, so the displayed rows always match the path
+genuinely taken — HMRC_43 appears only when HMRC_14 was answered "No."
+The IHT reference number remains a separate, hardcoded template field
+(case metadata, not a question answer) — matching's own raw extraction of
+`last_name`/`dod_raw` is likewise untouched (see section 4).
 
 ### Action list build
 
@@ -428,6 +665,10 @@ entry in `TRIAGE_SETS`. Status rolls up from `_triage_set_rollup`:
 | All Yes with complete detail sections | complete |
 | Otherwise | in_progress |
 
+**See the open issue flagged in section 7** — this rollup's real-world
+behaviour on a genuinely fresh, pre-tailor estate has not yet been
+confirmed correct.
+
 Each row's URL is computed dynamically by `_get_built_schedule_items`:
 - If at least one schedule for that set has a section built → real action URL
 - If no schedules built yet → `#` (no Start link shown)
@@ -458,14 +699,20 @@ are built.
 
 ```python
 def _get_triage_sets():
-    from core.models import ScheduleSection
+    """
+    Section has a direct FK to Schedule (with display_order on Section
+    itself) — there is no separate ScheduleSection join model. (Corrected
+    2 July 2026 — an earlier version of this function imported a
+    ScheduleSection model that does not exist, which crashed the entire
+    app at startup, not just this function, since TRIAGE_SETS is built at
+    module import time.)
+    """
     from django.db.models import F
     return list(
-        ScheduleSection.objects
+        Section.objects
         .filter(schedule_id='HMRC_SCH1')
-        .select_related('section')
         .order_by('display_order')
-        .values('section_id', name=F('section__section_name'))
+        .values('section_id', name=F('section_name'))
     )
 
 TRIAGE_SETS = _get_triage_sets()
@@ -598,3 +845,6 @@ See Core Platform Reference section 5 for full detail.
 | Jointly owned assets triage design | D13 |
 | Nil rate band transfers | D14 |
 | IHT405 property sections (type-2 table sections) | D18 — NOW |
+| Reconcile `_entry_start` vs `iht_start_new_estate` duplication | new, 5 July 2026 |
+| Triage-set "complete" gating before Tailor is genuinely done | new, 4 July 2026, still open |
+| Derived married/widowed/single helper reading HMRC_14+HMRC_43 together | new, 5 July 2026 |
