@@ -178,7 +178,6 @@ presentation.
 | Core Platform Reference | `260729_Build_CORE_data_model_and_interfaces.md` | Platform reference — data model, interfaces, execution engine, design decisions |
 | HMRC IHT Reference | `260729_Build_HMRC_IHT.md` | Complete IHT technical reference — action buttons, matching, reckoner, triage, asset buttons |
 | Core Map | `260729_Build_CORE_codebase_file_map.md` | File-by-file map of core/ internals |
-| IHT Journey Architecture | `260628_iht-journey-architecture.md` | Question-level design for IHT asset declaration journey |
 | Backlog | `260730_Backlog.md` | Active task list with completed sprint record |
 | file_dump.txt | `file_dump.txt` | Full current codebase (.py and .html) — regenerate before CC work |
 
@@ -189,8 +188,7 @@ HMRC IHT Reference → Backlog → file_dump.txt (as needed for specific files).
 separate set of non-technical documents for stakeholder communication. They
 are not part of the build-reference reading order.
 
-All active build-reference documents are prefixed `260714_`, `260729_`, or `260730_`
-(IHT Journey Architecture is the one standing exception, still current at `260628_`).
+All active build-reference documents are prefixed `260714_`, `260729_`, or `260730_`.
 
 **Superseded documents** (archive, do not read):
 - `260616_IHT_Orchestration_Logic.md` — replaced by HMRC IHT Reference
@@ -218,3 +216,5 @@ All active build-reference documents are prefixed `260714_`, `260729_`, or `2607
 - `260714_Build_CORE_codebase_file_map.md` — superseded by 260729_
 - `260714_Backlog.md` — superseded by 260730_
 - `260714_Initial_Prompt.md` — superseded by 260730_
+- `260628_iht-journey-architecture.md` — superseded by 260729_Paper_3_Annex_3B_IHT_design_technical.md
+- `260726_ownership_marital_template-4.md` — superseded by 260729_Paper_3_Annex_3B_IHT_design_technical.md
