@@ -1,6 +1,6 @@
 # HMRC IHT — Technical Reference
-Date: 5 July 2026
-Status: Current — reflects code as at end of 5 July 2026 session
+Date: 29 July 2026
+Status: Current — reflects code as at 29 July 2026
 
 This document covers the IHT (Inheritance Tax) regime implementation in full.
 
@@ -85,16 +85,16 @@ happens in `iht_orchestrate` on return from core. `call_core` sets
 function must never do routing logic — it calls `_enter_core` then
 `call_core` and redirects. All post-section logic belongs in `_exit_*`.
 
-**Known tech debt, not yet resolved (flagged 5 July 2026):** there are
-currently **two different code paths for starting a new estate**:
-`_entry_start` (the original bootstrap path — renders an interim
-"pre-verified" screen via `iht_screen_unverified` before entering S1) and
-`iht_start_new_estate` (added for the multi-estate picker's "Begin a new
-estate" option — skips the interim screen and enters S1 directly). These
-diverge in behaviour and should be reconciled, most likely by having
-`iht_start_new_estate` become `_entry_start`'s path with a flag rather than
-a separate implementation. Left as a backlog item for a dedicated review
-rather than fixed reactively tonight.
+**Known tech debt, not yet resolved (flagged 5 July 2026, confirmed by
+coherence audit 7 July 2026):** there are currently **two different code
+paths for starting a new estate**: `_entry_start` (the original bootstrap
+path — renders an interim "pre-verified" screen via `iht_screen_unverified`
+before entering S1) and `iht_start_new_estate` (added for the multi-estate
+picker's "Begin a new estate" option — skips the interim screen and enters
+S1 directly). These diverge in behaviour and should be reconciled, most
+likely by having `iht_start_new_estate` become `_entry_start`'s path with a
+flag rather than a separate implementation. Left as a backlog item for a
+dedicated review.
 
 ---
 
@@ -812,8 +812,9 @@ Note: `radio_inline` not yet supported in type-2 row journey templates
 ## 10. `call_core` — the unified core entry point
 
 `call_core` in `core/interfaces.py` is the single entry point for all dept
-navigation into core. It replaces `call_regime`, `call_schedules`, and
-`call_sections` (which remain as thin wrappers for backward compatibility).
+navigation into core. It replaced `call_regime`, `call_schedules`, and
+`call_sections`. `call_schedules` and `call_sections` have been removed.
+`call_regime` remains as a thin convenience wrapper.
 
 `call_core(request, regime, actor, user, items, title=None, url_prefix='')`
 
@@ -844,7 +845,7 @@ See Core Platform Reference section 5 for full detail.
 | S1 amend conflict — `duplicate_amend.html` template and answer restoration | D7 |
 | Jointly owned assets triage design | D13 |
 | Nil rate band transfers | D14 |
-| IHT405 property sections (type-2 table sections) | D18 — NOW |
-| Reconcile `_entry_start` vs `iht_start_new_estate` duplication | new, 5 July 2026 |
+| IHT405 property sections (type-2 table sections) — **planning scripts created** (`agent*.py`, `load_iht405_data.py` in project root, untracked/uncommitted); actual sections not yet built in DB. `load_iht405_data.py` has question ID conflicts with existing HMRC_1–HMRC_5 questions that must be resolved before it can be run. | D18 — NOW |
+| Reconcile `_entry_start` vs `iht_start_new_estate` duplication | confirmed by coherence audit 7 July 2026 |
 | Triage-set "complete" gating before Tailor is genuinely done | new, 4 July 2026, still open |
 | Derived married/widowed/single helper reading HMRC_14+HMRC_43 together | new, 5 July 2026 |

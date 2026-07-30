@@ -1,14 +1,12 @@
 # cg_data_exchange — "Core Core" Map
-Date: 5 July 2026
+Date: 29 July 2026
 Scope: `core` app's data model + execution engine + platform interface only.
 **Deliberately excludes** `views_admin_tools.py`, `urls_tools.py`, `admin.py`
 (admin tooling) and `management/commands/load_test_data.py` — separate
 problem, separate session.
-Source: `file_dump.txt` (function/class inventory) cross-checked against
-Core Platform Reference and HMRC IHT Reference. **Caveat:** `file_dump.txt`
-is a snapshot — recommend CC confirm this still matches the live repo
-(regenerate `file_dump.txt`) before treating anything below as gospel,
-especially the "possible dead code" notes.
+Source: `file_dump.txt` regenerated 29 July 2026, cross-checked against
+Core Platform Reference and HMRC IHT Reference. All "possible dead code"
+flags from the previous version have been resolved (see §11).
 
 ---
 

@@ -1,7 +1,7 @@
 # cg_data_exchange — Core Platform Reference
-Date: 5 July 2026
-Status: Stable reference — update only when the core app itself changes
-Verified: Content checked against file_dump.txt and live session by Claude on 5 July 2026
+Date: 29 July 2026
+Status: Current — reflects code as at 29 July 2026
+Verified: Content reconciled against file_dump.txt by Claude on 29 July 2026
 
 ---
 
@@ -151,7 +151,6 @@ All IDs use underscore separator and are auto-generated — never typed by admin
 |--------|-------|---------|
 | `P_N` | Platform person questions | P_1, P_6 |
 | `O_N` | Platform organisation questions | (none yet) |
-| `M_N` | Platform META/wizard questions | M_1–M_27 |
 | `{DEPT}_N` | Department questions | HMRC_1 |
 | `{DEPT}_S{N}` | Section IDs | HMRC_S1, HMRC_S3 |
 | `{DEPT}_SCH{N}` | Schedule IDs | HMRC_SCH1 |
@@ -217,24 +216,23 @@ It is invariant — department apps do not modify it.
 `section_done` without showing the review page. On re-entry (existing answers
 found by `section_start`), the user is shown the review page and can amend.
 
-**CRITICAL correctness rule (added 5 July 2026): use `case.user`, never
-`request.user`, for any read or write of a case's own `Answer`,
-`AnswerHistory`, or `SectionStatus` rows.** `request.user` is the *actor* —
-the person currently logged in and providing answers. `case.user` is the
-*subject* — the citizen the answers are about. For most regimes these are
-identical, which let this distinction go unenforced for a long time. HMRC
-IHT (see HMRC IHT Reference) is the first regime where they genuinely
-differ — the actor is the executor, the subject is a synthetic identity
-representing the deceased — and two real bugs were found and fixed on 5
-July 2026 where `views_layer2.py` used `request.user` where `case.user` was
-required (`section_start`'s existing-answer lookup, and five sites inside
-`_commit_section_answers`). The one deliberate, correct exception is
-cross-case pre-population in `section_question` (the "suggested from a
-prior case" banner), which is intentionally actor-scoped — it is asking
-"what has this *actor* answered elsewhere," not "what does this case's
-subject know." Any new code touching `Answer`/`AnswerHistory`/
-`SectionStatus` should default to `case.user` unless it is specifically
-doing actor-scoped pre-population.
+**CRITICAL correctness rule: use `case.user`, never `request.user`, for any
+read or write of a case's own `Answer`, `AnswerHistory`, or `SectionStatus`
+rows.** `request.user` is the *actor* — the person currently logged in and
+providing answers. `case.user` is the *subject* — the citizen the answers
+are about. For most regimes these are identical, which let this distinction
+go unenforced for a long time. HMRC IHT is the first regime where they
+genuinely differ — the actor is the executor, the subject is a synthetic
+identity representing the deceased. Two real bugs were found and fixed on 5
+July 2026 (`section_start`'s existing-answer lookup, and five sites inside
+`_commit_section_answers`). A full sweep on 7 July 2026 corrected 16 total
+sites across `views_layer2.py`. The rule is now enforced throughout. The one
+deliberate, correct exception is cross-case pre-population in `section_question`
+(the "suggested from a prior case" banner), which is intentionally actor-scoped
+— it is asking "what has this *actor* answered elsewhere," not "what does this
+case's subject know." Any new code touching `Answer`/`AnswerHistory`/
+`SectionStatus` should default to `case.user` unless it is specifically doing
+actor-scoped pre-population.
 
 ### 4b. Routing engine
 
@@ -422,11 +420,12 @@ Thin wrapper around `call_core`. Derives `items` from the regime's top-level
 structure (all schedules and bare sections, ordered). Dept code can call
 either; `call_regime` is simpler when the full regime top level is wanted.
 
-### Completion routing — `resolve_completion_url`
+### Completion routing — `section_done` precedence chain
 
-`section_done` delegates entirely to `resolve_completion_url(request, pss, section)`
-in `views_layer2.py`. This is a single function with a single precedence chain —
-one concept, one place:
+`section_done` in `views_layer2.py` contains the full completion-routing logic
+inline (there is no separately named `resolve_completion_url` function in the
+code — the Backlog used that name to describe the concept). Single precedence
+chain, one place:
 
 | Priority | Condition | Destination |
 |----------|-----------|-------------|
@@ -438,9 +437,10 @@ one concept, one place:
 
 **`post_confirm_redirect`** is a dept-set one-shot override. Set
 `request.session['post_confirm_redirect'] = '/path/'` before entering the
-section journey; it fires exactly once and bypasses all rollup logic. Not
-used in HMRC IHT (which uses the two-phase `iht_in_core` /
-`iht_current_action` pattern — see HMRC IHT Reference section 2).
+section journey; `section_done` pops it from raw `request.session` (not PSS)
+so it fires exactly once and bypasses all rollup logic. Not used in HMRC IHT
+(which uses the two-phase `iht_in_core` / `iht_current_action` pattern — see
+HMRC IHT Reference section 2).
 
 **`return_url`** is written by all three Layer 1 list views on every visit —
 each sets it to its own URL so `section_done` can navigate back to the list
@@ -467,22 +467,22 @@ but this is overwritten the moment the citizen visits a list view.
 
 ### Session keys written by core / read by dept
 
-All keys below (except `_table_row`) live in the **PSS namespace**
-(`request.session['pss']`). Read and write them via `get_session(request)`
-and `update_session(request, {...})` from `core/session.py` — never as
-`request.session['key']` directly.
+Most keys live in the **PSS namespace** (`request.session['pss']`). Read and
+write them via `get_session(request)` and `update_session(request, {...})`
+from `core/session.py`. Two exceptions use raw `request.session` directly
+and are noted in the table.
 
 | Key | Written by | Read by | Purpose |
 |-----|-----------|---------|---------|
-| `return_url` | Layer 1 list views (all three); `call_core` (initial value) | `resolve_completion_url` | Where to go after section completes (priority 4) |
-| `regime_home_url` | dept orchestrator (`_setup`) via `update_session` | `call_core`; `resolve_completion_url` (priority 2) | Used as `return_url` initial value; regime-complete destination |
-| `schedule_list_url` | `regime_schedule_sections` | `resolve_completion_url` (priority 3) | Schedule-complete destination |
+| `return_url` | Layer 1 list views (all three); `call_core` (initial value) | `section_done` (priority 4) | Where to go after section completes |
+| `regime_home_url` | dept orchestrator (`_setup`) via `update_session` | `call_core`; `section_done` (priority 2) | Used as `return_url` initial value; regime-complete destination |
+| `schedule_list_url` | `regime_schedule_sections` | `section_done` (priority 3) | Schedule-complete destination |
 | `permitted_section_ids` | `call_core` | `regime_sections` | Filter section list |
 | `permitted_schedule_ids` | `call_core` | `regime_schedule_sections` | Filter schedule list |
 | `top_level_items` | `call_core` (multiple) | `regime_top_level` | Ordered mixed list |
 | `top_level_title` | `call_core` (multiple) | `regime_top_level` | Page heading |
-| `post_confirm_redirect` | dept code (optional) | `resolve_completion_url` (priority 1) | One-shot override; highest priority |
-| `_table_row` | `section_table_routed_add/change` | `section_table_routed_question` | Per-row journey state (type-2 sections); raw session key, NOT in PSS |
+| `post_confirm_redirect` | dept code (optional) — **raw `request.session`, not PSS** | `section_done` (priority 1, popped immediately) | One-shot override; highest priority |
+| `_table_row` | `section_table_routed_add/change` — **raw `request.session`, not PSS** | `section_table_routed_question` | Per-row journey state (type-2 sections only) |
 
 ### Breadcrumb mechanism
 
