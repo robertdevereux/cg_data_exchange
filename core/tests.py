@@ -1668,6 +1668,27 @@ class TestConditionalTableSection(TestCase):
             answer_value=None, next_node=None, order_in_section=10,
         )
 
+        # Section for routing-error (silent-END) test: routing only covers 'Yes',
+        # so submitting 'No' has no match — should surface error, not commit row.
+        cls.re_question = Question.objects.create(
+            question_id='CTS_RE_Q1',
+            question_text='Is this a test?',
+            question_type='radio',
+            answer_type='text',
+            options='Yes;No',
+        )
+        cls.re_section = Section.objects.create(
+            section_id='CTS_TEST_S3',
+            section_name='Routing Error Test',
+            section_type=2,
+            regime=r_simple,
+            display_question_ids='CTS_RE_Q1',
+        )
+        Routing.objects.create(
+            section=cls.re_section, current_node='CTS_RE_Q1',
+            answer_value='Yes', next_node=None, order_in_section=10,
+        )
+
         carla = User.objects.get(username='carla')
         cls.case, _ = Case.objects.get_or_create(
             user=carla, regime=r_simple,
@@ -1838,6 +1859,33 @@ class TestConditionalTableSection(TestCase):
         self.assertContains(r, 'govuk-radios--inline')
         self.assertContains(r, 'type="radio"')
         self.assertNotContains(r, 'type="text"')
+
+    def test_routing_mismatch_surfaces_error_and_does_not_commit_row(self):
+        """
+        Part B silent-END fix: when an answer has no matching routing row
+        (data error), section_table_routed_question must re-render the page
+        with a routing_error message and must NOT commit a row to AnswerTable.
+        Submitting 'No' to CTS_RE_Q1 has no routing coverage (only 'Yes' is
+        defined), so it must be caught and surfaced rather than silently
+        treated as END and committed.
+        """
+        carla = User.objects.get(username='carla')
+        # Initiate row journey
+        self.client.get(f'/section/{self.re_section.section_id}/table/add-routed/')
+        # Submit answer with no routing coverage
+        r = self.client.post(
+            f'/section/{self.re_section.section_id}/table/add-routed/CTS_RE_Q1/',
+            {'CTS_RE_Q1': 'No'},
+        )
+        # Must re-render (200), not redirect (302)
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'There is a configuration problem')
+        # Must not have committed a row
+        self.assertEqual(
+            AnswerTable.objects.filter(user=carla, section=self.re_section).count(),
+            0,
+            'No AnswerTable row should be committed on a routing mismatch',
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

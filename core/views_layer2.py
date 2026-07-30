@@ -1511,7 +1511,41 @@ def section_table_routed_question(request, section_id, question_or_set_id):
             all_answers = {**{k: v for k, v in row_data.items() if not k.startswith('_')},
                            **field_values}
             routing_answer = _resolve_routing_answer(routing_table, node_id, all_answers)
-            next_node, _ = _evaluate_routing(routing_table, node_id, routing_answer)
+            next_node, found = _evaluate_routing(routing_table, node_id, routing_answer)
+
+            if not found:
+                logger.error(
+                    'section_table_routed_question: no matching route for section=%s '
+                    'node=%s routing_answer=%r — routing data error, row not committed.',
+                    section_id, node_id, routing_answer,
+                )
+                meta = set_table[node_id]
+                member_dicts = []
+                for m in meta['members']:
+                    qid = m['question_id']
+                    member_dicts.append({
+                        'question_id':   qid,
+                        'question_text': m['question_text'],
+                        'question_type': m['question_type'],
+                        'hint':          m['hint'],
+                        'options':       [o.strip() for o in m['options'].split(';') if o.strip()],
+                        'required':      m['required'],
+                        'current_value': field_values.get(qid, ''),
+                    })
+                context = {
+                    'section':    section,
+                    'set_id':     node_id,
+                    'set_title':  meta['set_title'],
+                    'set_hint':   meta['set_hint'],
+                    'members':    member_dicts,
+                    'back_url':   back_url,
+                    'acting_for': get_acting_for_name(pss),
+                    'routing_error': (
+                        'There is a configuration problem with this section. '
+                        'Your answer could not be processed. Please contact support.'
+                    ),
+                }
+                return render(request, 'core/table_routed_set.html', context)
 
             # Save field values into row_data
             row_data.update(field_values)
@@ -1525,7 +1559,34 @@ def section_table_routed_question(request, section_id, question_or_set_id):
             all_answers = {**{k: v for k, v in row_data.items() if not k.startswith('_')},
                            node_id: answer}
             routing_answer = _resolve_routing_answer(routing_table, node_id, all_answers)
-            next_node, _ = _evaluate_routing(routing_table, node_id, routing_answer)
+            next_node, found = _evaluate_routing(routing_table, node_id, routing_answer)
+
+            if not found:
+                logger.error(
+                    'section_table_routed_question: no matching route for section=%s '
+                    'node=%s routing_answer=%r — routing data error, row not committed.',
+                    section_id, node_id, routing_answer,
+                )
+                question_dict = {
+                    'question_id':   node_id,
+                    'question_text': q_meta['question_text'],
+                    'question_type': q_meta['question_type'],
+                    'guidance':      q_meta['guidance'],
+                    'hint':          q_meta['hint'],
+                    'options':       [o.strip() for o in q_meta['options'].split(';') if o.strip()],
+                    'current_value': answer,
+                }
+                context = {
+                    'section':    section,
+                    'question':   question_dict,
+                    'back_url':   back_url,
+                    'acting_for': get_acting_for_name(pss),
+                    'routing_error': (
+                        'There is a configuration problem with this section. '
+                        'Your answer could not be processed. Please contact support.'
+                    ),
+                }
+                return render(request, 'core/table_routed_question.html', context)
 
             row_data[node_id] = answer
 
