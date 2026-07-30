@@ -14,7 +14,7 @@
 
         <div class="govuk-form-group">
 
-          {% if question.question_type == "radio" %}
+          {% if question.question_type == "radio" or question.question_type == "radio_inline" %}
           <fieldset class="govuk-fieldset">
             <legend class="govuk-fieldset__legend govuk-fieldset__legend--l">
               <h1 class="govuk-fieldset__heading">{{ question.question_text }}</h1>
@@ -22,7 +22,7 @@
             {% if question.hint %}
             <div class="govuk-hint">{{ question.hint }}</div>
             {% endif %}
-            <div class="govuk-radios" data-module="govuk-radios">
+            <div class="govuk-radios{% if question.question_type == 'radio_inline' %} govuk-radios--inline{% endif %}" data-module="govuk-radios">
               {% for option in question.options %}
               <div class="govuk-radios__item">
                 <input class="govuk-radios__input"

@@ -1648,6 +1648,26 @@ class TestConditionalTableSection(TestCase):
             answer_value=None, next_node=None, order_in_section=30,
         )
 
+        # Section for radio_inline rendering test (D20)
+        cls.ri_question = Question.objects.create(
+            question_id='CTS_RI_Q1',
+            question_text='What is the ownership type?',
+            question_type='radio_inline',
+            answer_type='text',
+            options='Sole;Joint',
+        )
+        cls.ri_section = Section.objects.create(
+            section_id='CTS_TEST_S2',
+            section_name='Radio Inline Table Test',
+            section_type=2,
+            regime=r_simple,
+            display_question_ids='CTS_RI_Q1',
+        )
+        Routing.objects.create(
+            section=cls.ri_section, current_node='CTS_RI_Q1',
+            answer_value=None, next_node=None, order_in_section=10,
+        )
+
         carla = User.objects.get(username='carla')
         cls.case, _ = Case.objects.get_or_create(
             user=carla, regime=r_simple,
@@ -1804,6 +1824,20 @@ class TestConditionalTableSection(TestCase):
         self.assertNotContains(r, 'Flat table sections do not use routing')
         # The routing editor heading should be present
         self.assertContains(r, 'Routing')
+
+    def test_radio_inline_question_renders_inline_class_not_text_input(self):
+        """
+        D20: table_routed_question.html must render govuk-radios--inline for
+        radio_inline questions, not fall through to the plain <input type="text">
+        fallback.
+        """
+        r = self.client.get(
+            f'/section/{self.ri_section.section_id}/table/add-routed/CTS_RI_Q1/'
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'govuk-radios--inline')
+        self.assertContains(r, 'type="radio"')
+        self.assertNotContains(r, 'type="text"')
 
 
 # ─────────────────────────────────────────────────────────────────────────────

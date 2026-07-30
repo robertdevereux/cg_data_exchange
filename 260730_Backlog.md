@@ -237,9 +237,14 @@ Type-2 table row set pages (`table_routed_set.html`) currently have no
 field-level error display for required fields. Add same validation pattern
 as `question_set.html`.
 
-### D20: `radio_inline` in row journey templates
-`radio_inline` question type not yet rendered in `table_routed_question.html`
-or `table_routed_set.html`. Add when a form requires it.
+### ~~D20: `radio_inline` in row journey templates~~ — **Complete (30 July 2026)**
+Fixed: `table_routed_question.html` branch condition merged to include
+`radio_inline`; `govuk-radios--inline` CSS class now applied conditionally.
+`table_routed_set.html` was already correct. 1 new test
+(`test_radio_inline_question_renders_inline_class_not_text_input`). 188 tests
+passing (1 skipped). Prerequisite for D18 (IHT405 property sections), where
+ownership-type and the Qa/Qb marital-status branch (step 2/3a in Annex 3B
+row template) are both `radio_inline` questions.
 
 ### DOC G6: README
 Government-audience README: what the PoC is, how to run it, architecture
@@ -528,6 +533,20 @@ summary here for backlog tracking.
 
 ---
 
+## Completed (30 July 2026)
+
+- **D20 — `radio_inline` in type-2 row journey templates** — Fixed:
+  `table_routed_question.html` branch condition updated to
+  `question.question_type == "radio" or question.question_type == "radio_inline"`;
+  `govuk-radios--inline` CSS class added conditionally. `table_routed_set.html`
+  was already correct (used as reference). 1 new test in
+  `TestConditionalTableSection`. 188 tests passing (1 skipped). Prerequisite
+  for D18 (IHT405 property sections): ownership-type and the Qa/Qb
+  marital-status branch (step 2/3a in Annex 3B row template) are both
+  `radio_inline` questions.
+
+---
+
 ## Completed (28 June 2026 sprint)
 
 - **Routing `condition_question_id`** — new nullable field on `Routing` model
@@ -597,7 +616,7 @@ summary here for backlog tracking.
 - `duplicate_amend.html` template missing — referenced in orchestrate.py
   `_render_duplicate_amend` but not yet built (see D7).
 - Type-2 table row set pages: no field-level validation errors (see D19).
-- `radio_inline` not yet supported in type-2 row journey templates (see D20).
+- ~~`radio_inline` not yet supported in type-2 row journey templates~~ — fixed D20 (30 July 2026).
 - Consistency checker: mixed `condition_question_id` values per node warns
   but does not block; only the first `condition_question_id` found is used
   by `_resolve_routing_answer` (sufficient for current patterns).
