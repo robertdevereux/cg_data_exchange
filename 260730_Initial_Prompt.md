@@ -1,5 +1,5 @@
 # cg_data_exchange — Initial Prompt for New Claude Sessions
-Date: 14 July 2026
+Date: 30 July 2026
 
 ---
 
@@ -174,7 +174,7 @@ presentation.
 
 | Document | File | Purpose |
 |----------|------|---------|
-| Initial Prompt | `260714_Initial_Prompt.md` | This file — read first in every session |
+| Initial Prompt | `260730_Initial_Prompt.md` | This file — read first in every session |
 | Core Platform Reference | `260729_Build_CORE_data_model_and_interfaces.md` | Platform reference — data model, interfaces, execution engine, design decisions |
 | HMRC IHT Reference | `260729_Build_HMRC_IHT.md` | Complete IHT technical reference — action buttons, matching, reckoner, triage, asset buttons |
 | Core Map | `260729_Build_CORE_codebase_file_map.md` | File-by-file map of core/ internals |
@@ -217,3 +217,4 @@ All active build-reference documents are prefixed `260714_`, `260729_`, or `2607
 - `260714_Build_HMRC_IHT.md` — superseded by 260729_
 - `260714_Build_CORE_codebase_file_map.md` — superseded by 260729_
 - `260714_Backlog.md` — superseded by 260730_
+- `260714_Initial_Prompt.md` — superseded by 260730_
