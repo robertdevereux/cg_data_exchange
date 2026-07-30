@@ -1,5 +1,5 @@
 # cg_data_exchange — Backlog
-Date: 9 July 2026
+Date: 30 July 2026
 Status: Live working document — update as items are completed or added
 
 ---
@@ -288,11 +288,12 @@ arises in another regime, consider scoping it by section_id. Not urgent.
 
 ## Completed (7 July 2026 — audit and tidy session)
 
-- **Completion routing unified (`resolve_completion_url`)** — single
-  precedence chain (post_confirm_redirect → all-complete → schedule-complete
-  → return_url → fallback) documented and enforced. `regime_top_level` gaps
-  fixed: `return_url` now written correctly and breadcrumb appended on every
-  visit.
+- **Completion routing unified** — single precedence chain
+  (post_confirm_redirect → all-complete → schedule-complete → return_url →
+  fallback) documented and enforced, inline in `section_done` (there is no
+  separately named `resolve_completion_url` function — that name was used in
+  this entry as a concept label only). `regime_top_level` gaps fixed:
+  `return_url` now written correctly and breadcrumb appended on every visit.
 
 - **META mechanism fully removed** — code (meta_processors.py,
   tools_create views, templates) and live data (META regime, sections,
