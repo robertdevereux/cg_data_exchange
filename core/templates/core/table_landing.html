@@ -27,15 +27,11 @@
             {% endfor %}
             <td class="govuk-table__cell">
               {% if is_routed %}
-                <a class="govuk-link" href="{{ row.change_url }}">Change</a>
+                <a class="govuk-link" href="{{ row.view_url }}">View/amend</a>
                 &nbsp;|&nbsp;
               {% endif %}
               <a class="govuk-link" href="{{ row.delete_url }}"
                  onclick="return confirm('Delete this row?');">Delete</a>
-              {% if row.detail_url %}
-                &nbsp;|&nbsp;
-                <a class="govuk-link" href="{{ row.detail_url }}">Other details</a>
-              {% endif %}
             </td>
           </tr>
           {% endfor %}

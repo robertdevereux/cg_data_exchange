@@ -1192,12 +1192,7 @@ def section_table(request, section_id):
             'delete_url': f'/section/{section_id}/table/delete/{i}/',
         }
         if is_routed:
-            row_dict['change_url'] = f'/section/{section_id}/table/change/{i}/'
-            # detail_url only shown when there are answers beyond the display columns
-            display_qids_set = {q.question_id for q in ordered_columns}
-            has_extras = any(k not in display_qids_set for k in row)
-            if has_extras:
-                row_dict['detail_url'] = f'/section/{section_id}/table/row-detail/{i}/'
+            row_dict['view_url'] = f'/section/{section_id}/table/row-review/{i}/'
         display_rows.append(row_dict)
 
     add_url = (
@@ -1730,6 +1725,195 @@ def section_table_row_detail(request, section_id, row_index):
 # ─────────────────────────────────────────────────────────────────────────────
 # 10.  TABLE ROW DELETE
 # ─────────────────────────────────────────────────────────────────────────────
+# 10b.  TABLE ROW REVIEW (check-your-answers for one type-2 row)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@login_required
+def section_table_row_review(request, section_id, row_index):
+    """
+    Check-your-answers page for a single type-2 row.
+
+    Replays routing on the saved answers to reconstruct asked_ids, then builds
+    the same `rows` list that section_review builds for type-0 sections.
+    Renders review.html with confirm_url=None (no confirm step — user picks a
+    field to change or goes back to the table).
+    """
+    from .interfaces import format_answer_for_display
+    section = get_object_or_404(Section, section_id=section_id)
+    pss     = get_session(request)
+    regime  = section.get_regime()
+    if regime is None:
+        raise Http404('Section is not yet assigned to a regime.')
+
+    case_id = pss.get('case_id')
+    try:
+        case = Case.objects.get(case_id=case_id)
+    except Case.DoesNotExist:
+        return redirect('core:section_table', section_id=section_id)
+
+    try:
+        answer_table = AnswerTable.objects.get(user=case.user, case=case, section=section)
+    except AnswerTable.DoesNotExist:
+        return redirect('core:section_table', section_id=section_id)
+
+    rows_data = answer_table.answer
+    if row_index < 0 or row_index >= len(rows_data):
+        return redirect('core:section_table', section_id=section_id)
+
+    saved_row = rows_data[row_index]
+
+    routing_rows = (
+        Routing.objects
+        .filter(section=section)
+        .order_by('order_in_section')
+    )
+    tables = _build_section_tables(routing_rows)
+    if not tables['first_node']:
+        return redirect('core:section_table', section_id=section_id)
+
+    routing_table  = tables['routing_table']
+    question_table = tables['question_table']
+    set_table      = tables['set_table']
+
+    # Reconstruct asked_ids by replaying routing on saved answers
+    asked_ids = []
+    node = tables['first_node']
+    while node is not None:
+        asked_ids.append(node)
+        routing_answer = _resolve_routing_answer(routing_table, node, dict(saved_row))
+        next_node, found = _evaluate_routing(routing_table, node, routing_answer)
+        if not found:
+            break
+        node = next_node
+
+    # Build rows list in the same format expected by review.html
+    rows = []
+    for node_id in asked_ids:
+        amend_url = f'/section/{section_id}/table/amend/{row_index}/{node_id}/'
+        if node_id in set_table:
+            meta = set_table[node_id]
+            member_rows = []
+            for m in meta['members']:
+                qid    = m['question_id']
+                answer = saved_row.get(qid, '')
+                member_rows.append({
+                    'question_id':   qid,
+                    'question_text': m['question_text'],
+                    'answer':        format_answer_for_display(m.get('question_type', ''), answer),
+                    'change_url':    amend_url,
+                    'history':       [],
+                })
+            rows.append({
+                'type':        'set',
+                'set_id':      node_id,
+                'set_title':   meta.get('set_title', ''),
+                'member_rows': member_rows,
+            })
+        else:
+            q_meta = question_table.get(node_id, {})
+            answer  = saved_row.get(node_id, '')
+            rows.append({
+                'type':          'question',
+                'question_id':   node_id,
+                'question_text': q_meta.get('question_text', node_id),
+                'answer':        format_answer_for_display(q_meta.get('question_type', ''), answer),
+                'change_url':    amend_url,
+                'history':       [],
+            })
+
+    from django.urls import reverse as _reverse
+    context = {
+        'section':     section,
+        'rows':        rows,
+        'confirm_url': None,
+        'back_url':    _reverse('core:section_table', kwargs={'section_id': section_id}),
+        'breadcrumbs': _build_crumbs(pss, f'Record {row_index + 1}'),
+        'acting_for':  get_acting_for_name(pss),
+    }
+    return render(request, 'core/review.html', context)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 10c.  TABLE ROW AMEND (per-node entry point for type-2 row amendment)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@login_required
+def section_table_routed_amend(request, section_id, row_index, node_id):
+    """
+    Entry point to amend a specific node in a saved type-2 row.
+
+    Like section_table_routed_change but:
+    - Redirects to node_id specifically (not always first_node).
+    - Truncates asked_ids at node_id before seeding the session, so that
+      the re-walk from node_id builds the correct new tail.  This ensures
+      stale downstream answers (from the old routing branch) are dropped at
+      commit time by the asked_ids pruning logic in section_table_routed_question.
+    """
+    section = get_object_or_404(Section, section_id=section_id)
+    pss     = get_session(request)
+    regime  = section.get_regime()
+    if regime is None:
+        raise Http404('Section is not yet assigned to a regime.')
+
+    case_id = pss.get('case_id')
+    try:
+        case = Case.objects.get(case_id=case_id)
+    except Case.DoesNotExist:
+        return redirect('core:section_table', section_id=section_id)
+
+    try:
+        answer_table = AnswerTable.objects.get(user=case.user, case=case, section=section)
+    except AnswerTable.DoesNotExist:
+        return redirect('core:section_table', section_id=section_id)
+
+    rows_data = answer_table.answer
+    if row_index < 0 or row_index >= len(rows_data):
+        return redirect('core:section_table', section_id=section_id)
+
+    saved_row = rows_data[row_index]
+
+    routing_rows = (
+        Routing.objects
+        .filter(section=section)
+        .order_by('order_in_section')
+    )
+    tables = _build_section_tables(routing_rows)
+    if not tables['first_node']:
+        return redirect('core:section_table', section_id=section_id)
+
+    routing_table = tables['routing_table']
+
+    # Replay routing to reconstruct the full asked_ids path
+    asked_ids = []
+    node = tables['first_node']
+    while node is not None:
+        asked_ids.append(node)
+        routing_answer = _resolve_routing_answer(routing_table, node, dict(saved_row))
+        next_node, found = _evaluate_routing(routing_table, node, routing_answer)
+        if not found:
+            break
+        node = next_node
+
+    # Truncate at node_id: keep only nodes up to and including it.
+    # Nodes after node_id were on the old path; the re-walk from node_id
+    # will append the correct new nodes, so stale ones are not present
+    # in asked_ids at commit time.
+    if node_id in asked_ids:
+        idx = asked_ids.index(node_id)
+        asked_ids = asked_ids[:idx + 1]
+
+    # Seed session with saved answers, truncated path, and row index
+    row_data = dict(saved_row)
+    row_data['_asked_ids'] = asked_ids
+    row_data['_row_index'] = row_index
+    _table_row_ns_set(request, section_id, row_data)
+
+    return redirect('core:section_table_routed_question',
+                    section_id=section_id, question_or_set_id=node_id)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 10.  TABLE ROW DELETE
 
 @login_required
 def section_table_delete(request, section_id, row_index):

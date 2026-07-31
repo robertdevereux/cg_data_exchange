@@ -1840,6 +1840,36 @@ class TestConditionalTableSection(TestCase):
             answer_value=None, next_node=None, order_in_section=20,
         )
 
+        # Section for amend-and-reroute test (D22)
+        # Path A: CTS_TEST_SET1 → TEST_3=Yes → TEST_11 → END
+        # Path B: CTS_TEST_SET1 → TEST_3=No  → END
+        # Amending TEST_3 from Yes→No verifies:
+        #   - set-member answers (before TEST_3) retained
+        #   - stale TEST_11 answer (beyond TEST_3 on old path) dropped
+        cls.amend_section = Section.objects.create(
+            section_id='CTS_TEST_S5',
+            section_name='Amend Reroute Test',
+            section_type=2,
+            regime=r_simple,
+            display_question_ids='TEST_3',
+        )
+        Routing.objects.create(
+            section=cls.amend_section, current_node='CTS_TEST_SET1',
+            answer_value=None, next_node='TEST_3', order_in_section=10,
+        )
+        Routing.objects.create(
+            section=cls.amend_section, current_node='TEST_3',
+            answer_value='Yes', next_node='TEST_11', order_in_section=20,
+        )
+        Routing.objects.create(
+            section=cls.amend_section, current_node='TEST_3',
+            answer_value='No', next_node=None, order_in_section=30,
+        )
+        Routing.objects.create(
+            section=cls.amend_section, current_node='TEST_11',
+            answer_value=None, next_node=None, order_in_section=40,
+        )
+
         carla = User.objects.get(username='carla')
         cls.case, _ = Case.objects.get_or_create(
             user=carla, regime=r_simple,
@@ -1859,6 +1889,9 @@ class TestConditionalTableSection(TestCase):
         ).delete()
         AnswerTable.objects.filter(
             user=carla, section=self.sm_section,
+        ).delete()
+        AnswerTable.objects.filter(
+            user=carla, section=self.amend_section,
         ).delete()
         session = self.client.session
         session['case_id']  = self.case.case_id
@@ -1962,30 +1995,31 @@ class TestConditionalTableSection(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, 'TEST_3')
 
-    # ── Test 8: Landing page shows Change link for routed rows ───────────────
+    # ── Test 8: Landing page shows View/amend link for routed rows ──────────
 
-    def test_landing_page_shows_change_link(self):
-        """Table landing for section_type=2 includes a Change link for each row."""
+    def test_landing_page_shows_view_amend_link(self):
+        """Table landing for section_type=2 includes a View/amend link for each row."""
         self._add_yes_row()
         r = self.client.get('/section/CTS_TEST_S1/table/')
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, '/table/change/0/')
+        self.assertContains(r, '/table/row-review/0/')
+        self.assertContains(r, 'View/amend')
 
-    # ── Test 9: detail_url only present when row has extra fields ─────────────
+    # ── Test 9: View/amend link present for all routed rows ──────────────────
 
-    def test_detail_url_present_for_yes_row(self):
-        """Yes row has TEST_11 (extra field) → detail_url shown on landing."""
+    def test_view_amend_link_present_for_yes_row(self):
+        """Yes row → View/amend link shown on landing (all routed rows get one)."""
         self._add_yes_row()
         r = self.client.get('/section/CTS_TEST_S1/table/')
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, '/table/row-detail/0/')
+        self.assertContains(r, '/table/row-review/0/')
 
-    def test_detail_url_absent_for_no_row(self):
-        """No row has only TEST_3 (display field) → no Other details link."""
+    def test_view_amend_link_present_for_no_row(self):
+        """No row → View/amend link also shown (all routed rows get one regardless of extras)."""
         self._add_no_row()
         r = self.client.get('/section/CTS_TEST_S1/table/')
         self.assertEqual(r.status_code, 200)
-        self.assertNotContains(r, 'row-detail')
+        self.assertContains(r, '/table/row-review/0/')
 
     # ── Test 10: tools_section_edit shows routing editor for section_type=2 ──
 
@@ -2085,6 +2119,100 @@ class TestConditionalTableSection(TestCase):
         self.assertEqual(row['CTS_SM_Q1'], 'Alice')
         self.assertEqual(row['CTS_SM_Q2'], 'REF-001')
         self.assertEqual(row['CTS_RE_Q1'], 'Yes')
+
+    def test_row_review_page_shows_all_asked_questions(self):
+        """
+        D22a — row-review page lists every node visited on the row's path.
+
+        Adds a Yes-branch row (SET → TEST_3=Yes → TEST_11) to CTS_TEST_S5,
+        then GETs the row-review page and asserts all four question answers
+        appear and amend change links are present for TEST_3 and TEST_11.
+        """
+        sid = self.amend_section.section_id  # CTS_TEST_S5
+
+        # Add row via the Yes path
+        self.client.get(f'/section/{sid}/table/add-routed/')
+        self.client.post(
+            f'/section/{sid}/table/add-routed/CTS_TEST_SET1/',
+            {'CTS_SM_Q1': 'Alice', 'CTS_SM_Q2': 'REF-001'},
+        )
+        self.client.post(f'/section/{sid}/table/add-routed/TEST_3/', {'TEST_3': 'Yes'})
+        self.client.post(f'/section/{sid}/table/add-routed/TEST_11/', {'TEST_11': '9999'})
+
+        r = self.client.get(f'/section/{sid}/table/row-review/0/')
+        self.assertEqual(r.status_code, 200)
+
+        # All four answer values must appear
+        self.assertContains(r, 'Alice')
+        self.assertContains(r, 'REF-001')
+        self.assertContains(r, 'Yes')
+        self.assertContains(r, '9999')
+
+        # Amend change links for Q-nodes (set node shares amend URL with its members)
+        self.assertContains(r, f'/section/{sid}/table/amend/0/TEST_3/')
+        self.assertContains(r, f'/section/{sid}/table/amend/0/TEST_11/')
+
+        # "Back to list" link present (no confirm button)
+        self.assertContains(r, f'/section/{sid}/table/')
+        self.assertNotContains(r, 'Confirm and continue')
+
+    def test_amend_reroutes_drops_stale_answer_retains_set_member(self):
+        """
+        D22b — per-node amend with routing change: stale downstream answers
+        dropped, set-member answers from earlier nodes retained.
+
+        Initial path: CTS_TEST_SET1 → TEST_3=Yes → TEST_11=9999
+        Amend TEST_3 via the new amend entry point → change to No → END.
+
+        Expected committed row:
+          - CTS_SM_Q1, CTS_SM_Q2 present (set members precede TEST_3; retained)
+          - TEST_3 = 'No'
+          - TEST_11 absent (was only on the old Yes branch; stale tail dropped)
+
+        This exercises the stale-tail truncation in section_table_routed_amend
+        (asked_ids truncated at TEST_3 before session seeding) combined with the
+        set-member key expansion fix in section_table_routed_question (D21).
+        """
+        carla = User.objects.get(username='carla')
+        sid = self.amend_section.section_id
+
+        # 1. Add row via Yes path (SET → TEST_3=Yes → TEST_11=9999)
+        self.client.get(f'/section/{sid}/table/add-routed/')
+        self.client.post(
+            f'/section/{sid}/table/add-routed/CTS_TEST_SET1/',
+            {'CTS_SM_Q1': 'Alice', 'CTS_SM_Q2': 'REF-001'},
+        )
+        self.client.post(f'/section/{sid}/table/add-routed/TEST_3/', {'TEST_3': 'Yes'})
+        self.client.post(f'/section/{sid}/table/add-routed/TEST_11/', {'TEST_11': '9999'})
+
+        # Confirm row committed with the stale value before amending
+        at = AnswerTable.objects.get(user=carla, section=self.amend_section)
+        self.assertIn('TEST_11', at.answer[0])
+
+        # 2. Use per-node amend entry point for TEST_3 (mid-row, not first node)
+        r = self.client.get(f'/section/{sid}/table/amend/0/TEST_3/')
+        self.assertEqual(r.status_code, 302)
+        self.assertIn('TEST_3', r['Location'])
+
+        # 3. Submit TEST_3=No → routes directly to END → row re-committed
+        self.client.post(f'/section/{sid}/table/add-routed/TEST_3/', {'TEST_3': 'No'})
+
+        # 4. Re-read committed row
+        at.refresh_from_db()
+        row = at.answer[0]
+
+        # Set members must survive (they are before the amendment point)
+        self.assertIn('CTS_SM_Q1', row, 'Set member CTS_SM_Q1 must be retained after reroute')
+        self.assertIn('CTS_SM_Q2', row, 'Set member CTS_SM_Q2 must be retained after reroute')
+        self.assertEqual(row['CTS_SM_Q1'], 'Alice')
+        self.assertEqual(row['CTS_SM_Q2'], 'REF-001')
+
+        # TEST_3 must reflect the new answer
+        self.assertIn('TEST_3', row)
+        self.assertEqual(row['TEST_3'], 'No')
+
+        # TEST_11 must be absent — it was only on the old Yes branch
+        self.assertNotIn('TEST_11', row, 'Stale answer TEST_11 must be dropped after reroute to No')
 
 
 # ─────────────────────────────────────────────────────────────────────────────

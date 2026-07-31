@@ -86,6 +86,14 @@ urlpatterns = [
          views_layer2.section_table_row_detail,
          name='section_table_row_detail'),
 
+    path('section/<str:section_id>/table/row-review/<int:row_index>/',
+         views_layer2.section_table_row_review,
+         name='section_table_row_review'),
+
+    path('section/<str:section_id>/table/amend/<int:row_index>/<str:node_id>/',
+         views_layer2.section_table_routed_amend,
+         name='section_table_routed_amend'),
+
     path('section/<str:section_id>/confirm-table/',
          views_layer2.section_confirm_table,
          name='section_confirm_table'),
