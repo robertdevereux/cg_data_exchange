@@ -12,7 +12,7 @@ import json
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from .models import Answer, AnswerHistory, AnswerTable, Question, QuestionSet, QuestionSetMember, Regime, Routing, Section, SectionMember, SectionStatus, User
+from .models import Answer, AnswerHistory, AnswerTable, Question, QuestionSet, QuestionSetMember, Regime, Routing, Schedule, Section, SectionMember, SectionStatus, User
 from .permissions import get_permitted_sections
 
 
@@ -1269,6 +1269,37 @@ class TestRoutingAdminTools(TestCase):
         # The rendered page must NOT contain a bracketed header for TEST_7
         content = r.content.decode()
         self.assertNotIn('[TEST_7]', content)
+
+    def test_section_edit_available_questions_populated_via_schedule_regime(self):
+        """
+        tools_section_edit must populate available_questions for a section whose
+        regime_id is NULL but whose schedule links to a regime (the HMRC_S8 pattern).
+        Regression guard: dept_id derivation must traverse section → schedule → regime,
+        not just section → regime.
+        """
+        # Use SCHED_PERSONAL (linked to TEST_SCHEDULES, dept_id='TEST')
+        schedule = Schedule.objects.get(schedule_id='SCHED_PERSONAL')
+        section = Section.objects.create(
+            section_id='RT_SCHED_ONLY_S1',
+            section_name='Schedule-only section',
+            section_type=0,
+            regime=None,
+            schedule=schedule,
+        )
+        r = self.client.get(f'/tools/sections/{section.section_id}/edit/')
+        self.assertEqual(r.status_code, 200)
+        available = r.context['available_questions']
+        self.assertTrue(
+            len(available) > 0,
+            'available_questions must be non-empty for a schedule-linked section '
+            f'(dept_id should be TEST via schedule→regime; got {available!r})',
+        )
+        # All returned questions should carry the dept prefix
+        for q in available:
+            self.assertTrue(
+                q.question_id.startswith('TEST_'),
+                f'Unexpected question {q.question_id!r} in available_questions',
+            )
 
 
 class TestRoutedTableSection(TestCase):

@@ -535,6 +535,26 @@ summary here for backlog tracking.
 
 ## Completed (30 July 2026)
 
+- **Platform fix — silent-END on routing data errors (type-2 row journeys)** —
+  `section_table_routed_question` discarded the `found` flag returned by
+  `_evaluate_routing`, so a routing configuration error (no matching row for a
+  given answer) was indistinguishable from a legitimate END — the partial row
+  was silently committed and the user redirected to the section list with no
+  error shown. Surfaced via HMRC_S8/property testing: HMRC_46's
+  `Question.options` wording had drifted from its `Routing.answer_value`
+  entries (`'Sole ownership'` → `'Sole ownership of the deceased'`;
+  `'Joint tenants'` → `'Joint names'`). Fixed: `found` is now captured at
+  both call sites (S-node and Q-node paths); on `False`, the row is not
+  committed, the mismatch is logged server-side (section, node, routing answer),
+  and the page re-renders with a `routing_error` banner instead. Commit
+  `86b713a`. 1 test added confirming the error path; 189 tests passing (1
+  skipped). **General implication:** any type-2 section is exposed to this
+  failure mode if a question's options text and its routing table's
+  `answer_value` entries ever drift apart. A pre-build check (question options
+  vs routing values, exact string match) for future sections (D2 and beyond)
+  would catch this class of error early — this fix surfaces it at runtime
+  rather than preventing it.
+
 - **D20 — `radio_inline` in type-2 row journey templates** — Fixed:
   `table_routed_question.html` branch condition updated to
   `question.question_type == "radio" or question.question_type == "radio_inline"`;
