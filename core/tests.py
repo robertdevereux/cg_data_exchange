@@ -1432,6 +1432,24 @@ class TestRoutedTableSection(TestCase):
             order_in_section=30,
         )
 
+        # Section for numeric formatting / totals test
+        # display_question_ids and totals_question_ids both = TEST_11 (number type)
+        cls.num_section = Section.objects.create(
+            section_id='RT2_NUM_S1',
+            section_name='Numeric Format Test',
+            section_type=2,
+            regime=r_simple,
+            display_question_ids='TEST_11',
+            totals_question_ids='TEST_11',
+        )
+        Routing.objects.create(
+            section=cls.num_section,
+            current_node='TEST_11',
+            answer_value=None,
+            next_node=None,
+            order_in_section=10,
+        )
+
     def setUp(self):
         self.client = Client()
         self.client.login(username='carla', password='testpass123')
@@ -1530,6 +1548,57 @@ class TestRoutedTableSection(TestCase):
         r = self.client.get('/section/RT2_TEST_S1/table/row-detail/0/')
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, '5678')
+
+    def test_numeric_column_totals_are_comma_formatted_and_right_aligned(self):
+        """
+        Number-type display columns must render with comma thousands separator,
+        2 decimal places, and the govuk-table__cell--numeric / --header--numeric
+        classes for right-alignment — both in per-row cells and the totals row.
+
+        Adds two rows (250,000 + 300,000 = 550,000) to RT2_NUM_S1 and asserts:
+          - Each row cell shows '250,000.00' / '300,000.00'
+          - Totals row shows '550,000.00'
+          - The numeric CSS class is present for the header and cells
+        """
+        from .models import Case
+        carla = User.objects.get(username='carla')
+        r_simple = Regime.objects.get(regime_id='TEST_SIMPLE')
+        case, _ = Case.objects.get_or_create(
+            user=carla, regime=r_simple,
+            defaults={'case_id': '00000000-0000-0000-0000-000000000002', 'status': 'draft'},
+        )
+        AnswerTable.objects.filter(user=carla, section=self.num_section).delete()
+
+        session = self.client.session
+        session['case_id']  = case.case_id
+        session['user_id']  = carla.pk
+        session['actor_id'] = carla.pk
+        session['regime_id'] = r_simple.regime_id
+        session.save()
+
+        sid = self.num_section.section_id  # RT2_NUM_S1
+
+        # Add first row: 250,000
+        self.client.get(f'/section/{sid}/table/add-routed/')
+        self.client.post(f'/section/{sid}/table/add-routed/TEST_11/', {'TEST_11': '250000'})
+
+        # Add second row: 300,000
+        self.client.get(f'/section/{sid}/table/add-routed/')
+        self.client.post(f'/section/{sid}/table/add-routed/TEST_11/', {'TEST_11': '300000'})
+
+        r = self.client.get(f'/section/{sid}/table/')
+        self.assertEqual(r.status_code, 200)
+
+        # Per-row values: comma-formatted
+        self.assertContains(r, '250,000.00')
+        self.assertContains(r, '300,000.00')
+
+        # Totals row: comma-formatted sum
+        self.assertContains(r, '550,000.00')
+
+        # Right-alignment CSS classes present
+        self.assertContains(r, 'govuk-table__header--numeric')
+        self.assertContains(r, 'govuk-table__cell--numeric')
 
 
 class TestConditionQuestionId(TestCase):

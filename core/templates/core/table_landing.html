@@ -14,7 +14,7 @@
         <thead class="govuk-table__head">
           <tr class="govuk-table__row">
             {% for col in columns %}
-            <th scope="col" class="govuk-table__header">{{ col.question_text }}</th>
+            <th scope="col" class="govuk-table__header{% if col.question_type == 'number' %} govuk-table__header--numeric{% endif %}">{{ col.question_text }}</th>
             {% endfor %}
             <th scope="col" class="govuk-table__header">Action</th>
           </tr>
@@ -22,8 +22,8 @@
         <tbody class="govuk-table__body">
           {% for row in display_rows %}
           <tr class="govuk-table__row">
-            {% for val in row.values %}
-            <td class="govuk-table__cell">{{ val }}</td>
+            {% for v in row.values %}
+            <td class="govuk-table__cell{% if v.align == 'right' %} govuk-table__cell--numeric{% endif %}">{{ v.text }}</td>
             {% endfor %}
             <td class="govuk-table__cell">
               {% if is_routed %}
@@ -39,10 +39,10 @@
         {% if has_totals %}
         <tfoot>
           <tr class="govuk-table__row">
-            {% for val in totals_row %}
-            <td class="govuk-table__cell govuk-!-font-weight-bold"
+            {% for v in totals_row %}
+            <td class="govuk-table__cell govuk-!-font-weight-bold{% if v.align == 'right' %} govuk-table__cell--numeric{% endif %}"
                 style="border-top: 2px solid #b1b4b6;">
-              {{ val }}
+              {{ v.text }}
             </td>
             {% endfor %}
             <td class="govuk-table__cell"

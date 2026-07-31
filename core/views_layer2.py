@@ -1160,26 +1160,29 @@ def section_table(request, section_id):
                 pass
         raw_totals[qid] = total
 
-    # Format totals as always 2 dp (financial data)
+    # Format totals with comma thousands separator and 2 dp
     totals_formatted = {
-        qid: f'{v:.2f}'
+        qid: f'{v:,.2f}'
         for qid, v in raw_totals.items()
     }
 
-    # Pre-ordered list aligned to columns (empty string for non-total columns)
+    # Build totals_row as structured dicts carrying text + alignment
     totals_row = [
-        totals_formatted[q.question_id] if q.question_id in totals_formatted else ''
+        {
+            'text':  totals_formatted[q.question_id] if q.question_id in totals_formatted else '',
+            'align': 'right' if q.question_type == 'number' else 'left',
+        }
         for q in ordered_columns
     ]
-    has_totals = any(v != '' for v in totals_row)
+    has_totals = any(v['text'] != '' for v in totals_row)
 
     # ── Build display rows (values in column order) ───────────────────────────
-    def _fmt(val, qid):
-        """Format numeric columns (those in total_qids) to 2 dp; pass others through."""
-        if qid not in total_qids:
+    def _fmt(val, is_numeric):
+        """Format number-type values with comma separator and 2 dp; pass others through."""
+        if not is_numeric:
             return val if val not in (None, '') else '—'
         try:
-            return f'{float(val):.2f}'
+            return f'{float(val):,.2f}'
         except (ValueError, TypeError):
             return val if val not in (None, '') else '—'
 
@@ -1187,8 +1190,14 @@ def section_table(request, section_id):
     display_rows = []
     for i, row in enumerate(rows):
         row_dict = {
-            'index':      i,
-            'values':     [_fmt(row.get(q.question_id), q.question_id) for q in ordered_columns],
+            'index':  i,
+            'values': [
+                {
+                    'text':  _fmt(row.get(q.question_id), q.question_type == 'number'),
+                    'align': 'right' if q.question_type == 'number' else 'left',
+                }
+                for q in ordered_columns
+            ],
             'delete_url': f'/section/{section_id}/table/delete/{i}/',
         }
         if is_routed:
