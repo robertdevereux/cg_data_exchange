@@ -170,3 +170,31 @@ This register is illustrative; HMRC determines the correct configuration for eac
 
 - **Per-asset-class valuation-evidence substitutes** (Part 1.4, Part 6) — need working through class by class with policy input, not assumed generic.
 - **Second-death data carry-forward** (Part 4.1) — Option A vs Option B, and if Option A, the consent/governance model required.
+
+---
+
+## Addendum: 31 July 2026 — Three corrections found during live build of HMRC_S8 (property section)
+
+The following corrections apply to sections 1.1 and 2.2 as written. In each case the built routing differs from the document, and the built routing is the better design. The document should be updated on next formal revision; this addendum records the corrections in the interim.
+
+### A. Ownership follow-ups fire before value and Fork 1, not after them (corrects step ordering in 1.1 and 2.2)
+
+The row shape table in section 1.1 places ownership follow-ups (step 4/6: holder count, share percentage, spouse-co-owner check) after step 3 (value) and the marital-status branch (step 3a). Section 2.2's fork table places Fork 1 "at Q3, once value is answered," implying that a Qa = No branch skips straight to step 5 (valuation evidence) without firing ownership follow-ups.
+
+The built routing is different: ownership follow-ups complete as a block immediately after the ownership-type question (step 2), before value is asked at all. Fork 1 (Qa) fires only after ownership follow-ups are complete.
+
+**Why the built order is correct:** the ownership share percentage is needed on every row regardless of marital status, because it feeds the tenants-in-common partial-interest discount calculation on all deep-path rows. Placing Fork 1 before step 4 — as the document implies — would skip the share-percentage question for an unmarried deceased's co-owned assets on the Qa = No branch, leaving the discount calculation without the data it needs.
+
+Corrected row sequence: *ownership type → ownership follow-ups → value → Fork 1 → (3a → Fork 2) → valuation evidence.*
+
+### B. Within the tenants-in-common branch, the spouse-co-owner check precedes the equal-share gateway (routing engine constraint)
+
+Section 1.1's implicit ordering within the tenants-in-common sub-branch places the equal-share gateway before the spouse-co-owner question. The built routing reverses this.
+
+The routing engine's single-condition-per-node constraint means each node tests exactly one question's answer. A node testing "are the shares equal?" cannot simultaneously know whether the co-owner is a spouse — that would require a compound condition. The spouse-co-owner question must therefore precede the equal-share gateway so the routing tree remains a series of single-condition forks. The document's implied ordering would require a compound condition that the engine cannot express.
+
+### C. Tenure and letting status sit inside the "no professional valuation" branch — design change, not bug fix
+
+Sections 1.1 and 5 describe substitute valuation-evidence questions (lease length, damage, special factors) as part of the no-valuation branch, which is correct. Tenure (leasehold/freehold) and letting status were originally conceived as unconditional — asked on every row regardless of whether a professional valuation exists. The built routing places them inside the "no professional valuation" branch alongside the other substitute-evidence questions.
+
+**This is a deliberate design change confirmed by testing:** where a professional valuation exists, it is accepted at face value and no further granular property-detail questions are needed. Tenure and letting status are only relevant when HMRC must make its own rough assessment; asking them when a valuation exists adds executor burden with no benefit. The configuration register in section 6 should note this when formally revised: for the property class, tenure and letting questions belong in the no-valuation branch only.

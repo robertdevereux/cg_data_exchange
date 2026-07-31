@@ -16,29 +16,8 @@ Status: Live working document — update as items are completed or added
 
 ## NOW
 
-### D18: Configure and test IHT405 property sections
-IHT405 boxes 6 and 7 (deceased's residence; other land and buildings) are
-the first real type-2 (Table with routing) sections. **Status update, 5
-July 2026: the admin-tooling blockers that were in the way of building
-this comfortably have now been resolved** — the section-membership pool
-(`SectionMember`), the routing insert/delete overhaul, and admin-controlled
-`order_in_section` placement (see Core Platform Reference sections 3 and 8)
-were all built and tested this week specifically to make this kind of
-build tractable. D18 itself has **not** been started. Once question
-definitions are available:
-1. Create HMRC questions for core property columns + two gateway Yes/No
-   questions (special factors; sale/intent to sell)
-2. Create QuestionSets for the core columns and any follow-up groups
-   (note: QuestionSet IDs are now `SET{N}`, not `S{N}` — see Core Platform
-   Reference section 3)
-3. Configure routing for each section (S_core → conditional branches per
-   routing table in the conditional table spec) — add each question/set to
-   the section's pool first, then wire routing using the simplified
-   insert/delete tools
-4. Set `display_question_ids` to core columns + gateway questions
-5. Set `totals_question_ids` to open market value question
-6. Manual smoke test: add/change/delete rows; verify "Other details" link;
-   verify sparse rows; verify totals
+### ~~D18: Configure and test IHT405 property sections~~ — **Complete (31 July 2026)**
+~~HMRC_S8 (Deceased's residence) built and live-tested: SET10 through END, ownership fork, spousal-exemption exit (3a = Yes → END), valuation-trust gateway. See Completed (31 July 2026) below.~~
 
 ### New, 5 July 2026: Reconcile duplicate "start a new estate" entry paths
 `_entry_start` and `iht_start_new_estate` both start a new IHT estate but
@@ -48,14 +27,13 @@ latter skips straight into S1). Likely fix: `iht_start_new_estate` becomes
 See HMRC IHT Reference section 2. **Confirmed as a live duplication by the
 coherence audit (Item 2, 7 July 2026)**, not just the original observation.
 
-### New, 4 July 2026, still open: Triage-set completion gating
-The three triage-set action-list rows (Common assets / Pensions / Other)
-were observed showing "Complete" before "Tailor your submission" had
-genuinely been completed for that estate. Not yet established whether this
-is a real bug in `_should_show_tailor`/`_triage_set_rollup`, or a vacuous
-"complete" from zero Yes-answers. Needs a deliberate before/after test on
-a fresh estate (check the three rows *before* touching Tailor at all).
-See HMRC IHT Reference sections 7–8.
+### ~~New, 4 July 2026: Triage-set completion gating~~ — **Fixed (31 July 2026)**
+~~Confirmed as vacuous "Complete" from zero Yes-answers. Fixed: `if not set_items: continue` in `_build_action_list` omits empty-category rows entirely. See Completed (31 July 2026) below.~~
+
+### New, 31 July 2026: Tailor exit gate
+After the three triage pages are submitted and all triage sections are marked complete, check every Yes-answered triage question against `QUESTION_SCHEDULE_MAP` and built-section status — reusing `_get_built_schedule_items`'s existing logic. If any Yes-answered item maps to no built schedule section, redirect to a holding page naming the specific unbuilt items rather than allowing entry to an action list with dead-end `#` URLs. Log which triage questions triggered each block, for beta prioritisation.
+
+Current state (confirmed by live DB query 31 July 2026): only HMRC_S4 (property) questions `HMRC_16` and `HMRC_31` have `QUESTION_SCHEDULE_MAP` entries. HMRC_S5 (pensions, HMRC_24–30) and HMRC_S6 (other assets) have no entries at all. The gate would therefore block all pension and other-asset Yes answers until those schedules are built — which is the correct behaviour at this stage.
 
 ---
 
@@ -253,6 +231,32 @@ portability, how to add a new department. Draft after D1–D5 complete.
 ### D12: Note — `post_confirm_redirect` scoping (platform consideration)
 Currently unscoped; not causing any conflict today. If a genuine conflict
 arises in another regime, consider scoping it by section_id. Not urgent.
+
+### New, 31 July 2026: S5/S6 schedule allocation — pensions and other assets
+HMRC_S5 (pensions and life assurance, questions HMRC_24–30) and HMRC_S6 (other
+assets and liabilities, HMRC_32+) have no `QUESTION_SCHEDULE_MAP` entries and no
+allocated Schedule records at all — confirmed by live DB query 31 July 2026. Before
+building any of these, design the schedule allocation explicitly:
+
+Pension sub-types (state pension / workplace pension / personal pension / life
+assurance) are likely different HMRC forms and cannot be assumed to share one schedule
+the way S4's property fork works. S6 similarly spans heterogeneous sub-types (jointly
+owned assets, business interests, and others). Do not assume 1-category-to-1-schedule
+— design the mapping per sub-type, confirm with HMRC which forms are needed, then
+add entries to `QUESTION_SCHEDULE_MAP` and create the Schedule records before any
+triage journey for S5 or S6 can proceed to an action button.
+
+### New, 31 July 2026: Deferred property detail sub-questions (D18 follow-ups)
+The following were explicitly parked during D18 build — not yet started:
+- Lease length and rent details (leasehold property, no-valuation branch step 5)
+- Damage description (property affected by damage — no-valuation branch step 5)
+- Insurance cover questions (HMRC_58/59 sub-detail)
+- Professional-valuation upload subsystem — requires real file-storage
+  infrastructure; a simple text field is not sufficient. Not started.
+
+All four live inside the "no professional valuation" branch. The gateway question
+(HMRC_62: "Is there a professional valuation?") is live; the Yes path (upload prompt)
+and the sub-detail No-path questions are placeholders only.
 
 ---
 
@@ -530,6 +534,57 @@ summary here for backlog tracking.
   `row_to_save` is now pruned to `asked_ids` before commit, ensuring stale
   answers from a diverged path are not saved. Guard `not asked_ids` preserves
   legacy behaviour for rows where `_asked_ids` was never set. 139 tests passing.
+
+---
+
+## Completed (31 July 2026)
+
+- **D18 — IHT405 property section (HMRC_S8) built and live-tested** (routing in `58e480d`) —
+  SET10 (identification + ownership type) through END: ownership fork (sole / joint tenants /
+  tenants in common), spousal-exemption exit (3a = Yes → END), valuation-trust gateway. 25
+  routing rows, rebuilt via delete-then-recreate management command. All branches live-tested.
+
+- **D20 — `radio_inline` in type-2 row journey templates** (`ae9353e`) — already marked
+  complete 30 July 2026; confirmed still present in Completed (30 July 2026) below.
+
+- **Silent-END routing bug fix** (`86b713a`) — `section_table_routed_question` discarded the
+  `found` flag from `_evaluate_routing`; a missing routing row was indistinguishable from a
+  legitimate END and the partial row was silently committed. Now captures `found` at both call
+  sites (Q-node and S-node paths); on `False`, row not committed, mismatch logged server-side,
+  page re-renders with a `routing_error` banner.
+
+- **Set-member answer pruning fix** (`f0075d1`) — `asked_ids` pruning at commit time dropped
+  all set-member answers: sets were tracked by set node ID (`SET10`) but member answers stored
+  under individual question IDs. Fixed: `asked_ids` expanded to `allowed_keys` (set IDs +
+  member question IDs) before the prune.
+
+- **`dept_id` schedule-fallback regression test** (`68845c9`) — existing fallback logic
+  (`section.regime → section.schedule.regime`) in `tools_section_edit` confirmed correct by
+  inspection; regression test added to lock it. No code change required — root cause was a
+  missing `schedule_id` link on the section (data fix, not code).
+
+- **D22 — check-your-answers / view-amend for type-2 rows** (`f5eea14`) — `section_table_row_review`
+  and `section_table_routed_amend` added; `review.html` reused for row-level check/amend,
+  replacing separate "Change" + "Other details" action columns with a single "View/amend" link.
+  Stale-tail truncation on amend: `asked_ids` cut at the amendment node so downstream stale
+  answers are absent at commit.
+
+- **Numeric column formatting** (`e5d0447`) — type-2 table landing: numeric columns
+  right-aligned and comma-formatted (`f'{val:,.2f}'`); `values` and `totals_row` now
+  `{text, align}` dicts; GDS `govuk-table__header--numeric` / `govuk-table__cell--numeric`
+  classes applied per column.
+
+- **Address rendering in type-2 row set pages** (`90f3f45`) — `table_routed_set.html` had no
+  address branch; `question_type='address'` members fell through to a single plain text input
+  storing nothing (actual sub-fields named `address_line1_{qid}` etc.). Fixed: address branch
+  added to template; POST handler assembles sub-fields into a structured dict; GET handler
+  populates `address_parts` for pre-fill. Four stale HMRC_S8 rows with flat-string addresses
+  deleted.
+
+- **Action-list empty-category fix** (`df0f1b2`) — triage categories with zero Yes-answered
+  triage questions (e.g. HMRC_S5, HMRC_S6 on a property-only estate) no longer appear as
+  "Complete" on the IHT home page; `if not set_items: continue` in `_build_action_list` omits
+  them entirely.
 
 ---
 
