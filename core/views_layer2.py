@@ -1591,10 +1591,21 @@ def section_table_routed_question(request, section_id, question_or_set_id):
             row_data[node_id] = answer
 
         if next_node is None:
-            # END — commit row, pruning to asked_ids to drop stale answers from diverged paths
+            # END — commit row, pruning to asked_ids to drop stale answers from diverged paths.
+            # S-nodes store their member answers under each member's own question_id, not the
+            # set's node ID — so expand asked_ids to include member question_ids before filtering.
             asked_ids = row_data.get('_asked_ids', [])
-            row_to_save = {k: v for k, v in row_data.items()
-                           if not k.startswith('_') and (not asked_ids or k in asked_ids)}
+            if asked_ids:
+                allowed_keys: set = set()
+                for _node in asked_ids:
+                    if _node in set_table:
+                        allowed_keys.update(m['question_id'] for m in set_table[_node]['members'])
+                    else:
+                        allowed_keys.add(_node)
+                row_to_save = {k: v for k, v in row_data.items()
+                               if not k.startswith('_') and k in allowed_keys}
+            else:
+                row_to_save = {k: v for k, v in row_data.items() if not k.startswith('_')}
             _commit_table_row(request, section, case, regime, pss, row_to_save, row_index)
             _table_row_ns_clear(request, section_id)
             return redirect('core:section_table', section_id=section_id)

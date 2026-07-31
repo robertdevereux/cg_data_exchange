@@ -1801,6 +1801,45 @@ class TestConditionalTableSection(TestCase):
             answer_value='Yes', next_node=None, order_in_section=10,
         )
 
+        # Section for set-member pruning regression test (D21)
+        cls.sm_q1 = Question.objects.create(
+            question_id='CTS_SM_Q1',
+            question_text='Name',
+            question_type='text',
+            answer_type='text',
+        )
+        cls.sm_q2 = Question.objects.create(
+            question_id='CTS_SM_Q2',
+            question_text='Reference',
+            question_type='text',
+            answer_type='text',
+        )
+        cls.sm_set = QuestionSet.objects.create(
+            set_id='CTS_TEST_SET1',
+            set_title='Person details',
+        )
+        QuestionSetMember.objects.create(
+            question_set=cls.sm_set, question=cls.sm_q1, display_order=1,
+        )
+        QuestionSetMember.objects.create(
+            question_set=cls.sm_set, question=cls.sm_q2, display_order=2,
+        )
+        cls.sm_section = Section.objects.create(
+            section_id='CTS_TEST_S4',
+            section_name='Set Member Pruning Test',
+            section_type=2,
+            regime=r_simple,
+            display_question_ids='CTS_RE_Q1',
+        )
+        Routing.objects.create(
+            section=cls.sm_section, current_node='CTS_TEST_SET1',
+            answer_value=None, next_node='CTS_RE_Q1', order_in_section=10,
+        )
+        Routing.objects.create(
+            section=cls.sm_section, current_node='CTS_RE_Q1',
+            answer_value=None, next_node=None, order_in_section=20,
+        )
+
         carla = User.objects.get(username='carla')
         cls.case, _ = Case.objects.get_or_create(
             user=carla, regime=r_simple,
@@ -1817,6 +1856,9 @@ class TestConditionalTableSection(TestCase):
         # Clear any rows from previous tests
         AnswerTable.objects.filter(
             user=carla, section=self.section,
+        ).delete()
+        AnswerTable.objects.filter(
+            user=carla, section=self.sm_section,
         ).delete()
         session = self.client.session
         session['case_id']  = self.case.case_id
@@ -1998,6 +2040,51 @@ class TestConditionalTableSection(TestCase):
             0,
             'No AnswerTable row should be committed on a routing mismatch',
         )
+
+    def test_set_member_answers_are_preserved_in_committed_row(self):
+        """
+        D21 — set-member pruning regression.
+
+        In a type-2 row journey containing a set node followed by a Q-node,
+        the committed AnswerTable row must include all set-member question_ids
+        (e.g. CTS_SM_Q1, CTS_SM_Q2) as well as the Q-node answer.
+
+        Before the fix, asked_ids contained the set's node ID (CTS_TEST_SET1)
+        rather than its member question_ids, so the filter `k in asked_ids`
+        silently dropped all member answers from the saved row.
+        """
+        carla = User.objects.get(username='carla')
+        sid = self.sm_section.section_id  # CTS_TEST_S4
+
+        # 1. Init: redirects to CTS_TEST_SET1
+        self.client.get(f'/section/{sid}/table/add-routed/')
+
+        # 2. POST set node with member values
+        self.client.post(
+            f'/section/{sid}/table/add-routed/CTS_TEST_SET1/',
+            {'CTS_SM_Q1': 'Alice', 'CTS_SM_Q2': 'REF-001'},
+        )
+
+        # 3. POST Q-node → unconditional END → row committed
+        self.client.post(
+            f'/section/{sid}/table/add-routed/CTS_RE_Q1/',
+            {'CTS_RE_Q1': 'Yes'},
+        )
+
+        # 4. Assert exactly one row committed
+        at = AnswerTable.objects.get(user=carla, section=self.sm_section)
+        self.assertEqual(len(at.answer), 1)
+        row = at.answer[0]
+
+        # 5. All three keys must be present
+        self.assertIn('CTS_SM_Q1', row, 'Set member CTS_SM_Q1 was dropped from committed row')
+        self.assertIn('CTS_SM_Q2', row, 'Set member CTS_SM_Q2 was dropped from committed row')
+        self.assertIn('CTS_RE_Q1', row, 'Q-node CTS_RE_Q1 was dropped from committed row')
+
+        # 6. Values must be correct
+        self.assertEqual(row['CTS_SM_Q1'], 'Alice')
+        self.assertEqual(row['CTS_SM_Q2'], 'REF-001')
+        self.assertEqual(row['CTS_RE_Q1'], 'Yes')
 
 
 # ─────────────────────────────────────────────────────────────────────────────
