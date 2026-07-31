@@ -1939,6 +1939,32 @@ class TestConditionalTableSection(TestCase):
             answer_value=None, next_node=None, order_in_section=40,
         )
 
+        # Section for address-type set member test (D23)
+        cls.addr_q = Question.objects.create(
+            question_id='CTS_ADDR_Q1',
+            question_text='What is the address?',
+            question_type='address',
+            answer_type='text',
+        )
+        cls.addr_set = QuestionSet.objects.create(
+            set_id='CTS_ADDR_SET1',
+            set_title='Property address',
+        )
+        QuestionSetMember.objects.create(
+            question_set=cls.addr_set, question=cls.addr_q, display_order=1,
+        )
+        cls.addr_section = Section.objects.create(
+            section_id='CTS_TEST_S6',
+            section_name='Address Set Member Test',
+            section_type=2,
+            regime=r_simple,
+            display_question_ids='CTS_ADDR_Q1',
+        )
+        Routing.objects.create(
+            section=cls.addr_section, current_node='CTS_ADDR_SET1',
+            answer_value=None, next_node=None, order_in_section=10,
+        )
+
         carla = User.objects.get(username='carla')
         cls.case, _ = Case.objects.get_or_create(
             user=carla, regime=r_simple,
@@ -1961,6 +1987,9 @@ class TestConditionalTableSection(TestCase):
         ).delete()
         AnswerTable.objects.filter(
             user=carla, section=self.amend_section,
+        ).delete()
+        AnswerTable.objects.filter(
+            user=carla, section=self.addr_section,
         ).delete()
         session = self.client.session
         session['case_id']  = self.case.case_id
@@ -2282,6 +2311,54 @@ class TestConditionalTableSection(TestCase):
 
         # TEST_11 must be absent — it was only on the old Yes branch
         self.assertNotIn('TEST_11', row, 'Stale answer TEST_11 must be dropped after reroute to No')
+
+    def test_address_set_member_stored_as_structured_dict(self):
+        """
+        D23 — address question type in a set node must be submitted and stored
+        as a structured dict {line1, line2, city, county, postcode}, matching
+        the shape produced by the standalone address flow and _process_set_answer.
+
+        Before the fix, table_routed_set.html had no address branch and fell
+        through to a plain <input name="{qid}">, so submission returned an
+        empty string and the POST handler did request.POST.get(qid) which also
+        returned nothing — address data was silently lost.
+
+        CTS_TEST_S6 has one set node (CTS_ADDR_SET1) with one address member
+        (CTS_ADDR_Q1), routing unconditionally to END.
+        """
+        carla = User.objects.get(username='carla')
+        sid = self.addr_section.section_id  # CTS_TEST_S6
+
+        # 1. Init row journey — redirects to CTS_ADDR_SET1
+        self.client.get(f'/section/{sid}/table/add-routed/')
+
+        # 2. POST address sub-fields using the namespaced convention
+        self.client.post(
+            f'/section/{sid}/table/add-routed/CTS_ADDR_SET1/',
+            {
+                'address_line1_CTS_ADDR_Q1': '10 Downing Street',
+                'address_line2_CTS_ADDR_Q1': '',
+                'address_city_CTS_ADDR_Q1':  'London',
+                'address_county_CTS_ADDR_Q1': '',
+                'address_postcode_CTS_ADDR_Q1': 'SW1A 2AA',
+            },
+        )
+
+        # 3. Assert exactly one row committed
+        at = AnswerTable.objects.get(user=carla, section=self.addr_section)
+        self.assertEqual(len(at.answer), 1)
+        row = at.answer[0]
+
+        # 4. CTS_ADDR_Q1 must be a dict, not a flat string
+        self.assertIn('CTS_ADDR_Q1', row)
+        addr = row['CTS_ADDR_Q1']
+        self.assertIsInstance(addr, dict, 'Address answer must be stored as a dict')
+
+        # 5. Dict must contain the correct sub-fields
+        self.assertEqual(addr.get('line1'), '10 Downing Street')
+        self.assertEqual(addr.get('line2'), '')
+        self.assertEqual(addr.get('city'), 'London')
+        self.assertEqual(addr.get('postcode'), 'SW1A 2AA')
 
 
 # ─────────────────────────────────────────────────────────────────────────────

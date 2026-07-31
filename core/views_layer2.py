@@ -1508,6 +1508,14 @@ def section_table_routed_question(request, section_id, question_or_set_id):
                 qid = m['question_id']
                 if m['question_type'] == 'checkbox':
                     field_values[qid] = request.POST.getlist(qid)
+                elif m['question_type'] == 'address':
+                    field_values[qid] = {
+                        'line1':    request.POST.get(f'address_line1_{qid}', '').strip(),
+                        'line2':    request.POST.get(f'address_line2_{qid}', '').strip(),
+                        'city':     request.POST.get(f'address_city_{qid}', '').strip(),
+                        'county':   request.POST.get(f'address_county_{qid}', '').strip(),
+                        'postcode': request.POST.get(f'address_postcode_{qid}', '').strip(),
+                    }
                 else:
                     field_values[qid] = request.POST.get(qid, '').strip()
 
@@ -1527,7 +1535,7 @@ def section_table_routed_question(request, section_id, question_or_set_id):
                 member_dicts = []
                 for m in meta['members']:
                     qid = m['question_id']
-                    member_dicts.append({
+                    mdict = {
                         'question_id':   qid,
                         'question_text': m['question_text'],
                         'question_type': m['question_type'],
@@ -1535,7 +1543,17 @@ def section_table_routed_question(request, section_id, question_or_set_id):
                         'options':       [o.strip() for o in m['options'].split(';') if o.strip()],
                         'required':      m['required'],
                         'current_value': field_values.get(qid, ''),
-                    })
+                    }
+                    if m['question_type'] == 'address':
+                        src = field_values.get(qid) or {}
+                        mdict['address_parts'] = {
+                            'line1':    src.get('line1', '') if isinstance(src, dict) else '',
+                            'line2':    src.get('line2', '') if isinstance(src, dict) else '',
+                            'city':     src.get('city', '') if isinstance(src, dict) else '',
+                            'county':   src.get('county', '') if isinstance(src, dict) else '',
+                            'postcode': src.get('postcode', '') if isinstance(src, dict) else '',
+                        }
+                    member_dicts.append(mdict)
                 context = {
                     'section':    section,
                     'set_id':     node_id,
@@ -1629,7 +1647,7 @@ def section_table_routed_question(request, section_id, question_or_set_id):
         member_dicts = []
         for m in meta['members']:
             qid = m['question_id']
-            member_dicts.append({
+            mdict = {
                 'question_id':   qid,
                 'question_text': m['question_text'],
                 'question_type': m['question_type'],
@@ -1637,7 +1655,17 @@ def section_table_routed_question(request, section_id, question_or_set_id):
                 'options':       [o.strip() for o in m['options'].split(';') if o.strip()],
                 'required':      m['required'],
                 'current_value': row_data.get(qid, ''),
-            })
+            }
+            if m['question_type'] == 'address':
+                src = row_data.get(qid) or {}
+                mdict['address_parts'] = {
+                    'line1':    src.get('line1', '') if isinstance(src, dict) else '',
+                    'line2':    src.get('line2', '') if isinstance(src, dict) else '',
+                    'city':     src.get('city', '') if isinstance(src, dict) else '',
+                    'county':   src.get('county', '') if isinstance(src, dict) else '',
+                    'postcode': src.get('postcode', '') if isinstance(src, dict) else '',
+                }
+            member_dicts.append(mdict)
         context = {
             'section':    section,
             'set_id':     node_id,
