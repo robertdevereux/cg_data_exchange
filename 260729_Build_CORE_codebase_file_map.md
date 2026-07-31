@@ -77,11 +77,12 @@ QuestionSet pages.
 `_build_section_tables`
 
 **Observation:** this is really three sub-systems (standard / flat table /
-routed table) living in one 2,077-line file. Not urgent, but given D18–D20
-are all extending the routed-table journey further, it's a natural
-candidate to split into e.g. `views_layer2_standard.py` /
-`views_layer2_table.py` before it grows past this — worth a TIDY backlog
-line once the audit is done, not a fix-now item.
+routed table) living in one file, now **2,366 lines** (up from 2,077 after
+D18–D20 landed on 31 July 2026). D18 (row view/amend), D19 (numeric
+formatting), and D20 (radio_inline in routed table) all extended the
+routed-table journey. The split into e.g. `views_layer2_standard.py` /
+`views_layer2_table.py` is now more urgent than when first noted — worth
+scheduling as a dedicated TIDY session rather than a backlog line.
 
 ---
 

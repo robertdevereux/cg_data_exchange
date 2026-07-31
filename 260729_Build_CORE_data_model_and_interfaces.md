@@ -189,7 +189,8 @@ All answers stored as JSONField. Schema evolution: adding a sub-field returns
 In QuestionSet pages, handled via `question_set.html` which adds
 `govuk-radios--inline` class when `field.question_type == 'radio_inline'`.
 Template dispatch in `views_layer2.py` maps `'radio_inline'` to
-`'core/question_radio_inline.html'`.
+`'core/question_radio_inline.html'`. `table_routed_question.html` also
+supports `radio_inline` via the same dispatch (D20, 31 July 2026).
 
 ---
 
@@ -284,23 +285,54 @@ is run repeatedly, each run producing one row stored in `AnswerTable`.
    row not in `display_question_ids`) for a specific row
 
 **Path divergence / pruning:**
-At commit time, `row_to_save` is pruned to `asked_ids` — the list of nodes
-actually visited on the current path through the routing tree. This ensures
-that when a user amends a row and takes a different branch, stale answers
-from the original path are not saved. The `not asked_ids` guard preserves
-legacy/type-1 behaviour where `_asked_ids` was never populated.
+At commit time, `row_to_save` is pruned to the set of question IDs actually
+visited on the current path through the routing tree. This ensures that when
+a user amends a row and takes a different branch, stale answers from the
+original path are not saved.
+
+**Bug and fix (f0075d1, 31 July 2026):** the original pruning used `asked_ids`
+directly as a filter, but `asked_ids` contains *node IDs* (e.g. `SET10`), while
+set-member answers are stored under each member's own *question_id* (e.g.
+`HMRC_44`). The original code therefore dropped all set-member answers on commit.
+The fix expands `asked_ids` into `allowed_keys` by substituting each set node
+with its member question IDs before filtering. **Do not reintroduce the old
+one-liner form — it has this bug.**
 
 ```python
 asked_ids = row_data.get('_asked_ids', [])
-row_to_save = {k: v for k, v in row_data.items()
-               if not k.startswith('_') and (not asked_ids or k in asked_ids)}
+if asked_ids:
+    allowed_keys: set = set()
+    for _node in asked_ids:
+        if _node in set_table:
+            # Set node — expand to member question IDs
+            allowed_keys.update(m['question_id'] for m in set_table[_node]['members'])
+        else:
+            allowed_keys.add(_node)
+    row_to_save = {k: v for k, v in row_data.items()
+                   if not k.startswith('_') and k in allowed_keys}
+else:
+    # No _asked_ids recorded (legacy / type-1) — keep everything non-internal
+    row_to_save = {k: v for k, v in row_data.items() if not k.startswith('_')}
 ```
 
 **Table landing for type 2:**
 - "Add a record" links to `section_table_routed_add`
-- Each row has: "Change" → `section_table_routed_change`; "Delete" →
-  `section_table_delete`; "Other details" → `section_table_row_detail`
-  (only shown when the row has keys not in `display_question_ids`)
+- Each row has: "View/amend" → `section_table_row_review` (read-only review of
+  all row answers, with an "Amend" button that seeds `section_table_routed_change`
+  and enters the row journey); "Delete" → `section_table_delete`.
+  `section_table_routed_change` remains the underlying seed mechanism but is no
+  longer linked directly from the landing table (D22, 31 July 2026).
+
+**Numeric formatting (D18, 31 July 2026):** Numeric question columns in the
+summary table are right-aligned and comma-formatted. Column values passed as
+`{text, align}` dicts; `align='right'` triggers the GDS `--numeric` class.
+Totals row (when `totals_question_ids` is set) follows the same format.
+
+**Address rendering in type-2 rows (31 July 2026):** `table_routed_set.html`
+handles `question_type == 'address'` in its column rendering branch, assembling
+the stored `{address_line1, …}` dict into a multi-line display. The POST
+handler in `section_table_routed_question` assembles individual `address_line1_{qid}`
+etc. fields into the structured dict before storing.
 
 **Row session namespace:** `request.session['_table_row'][section_id]`
 Contains: `routing_table`, `question_table`, `set_table`, `question_to_set`,

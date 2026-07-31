@@ -557,15 +557,9 @@ Note: HMRC_20 (jointly owned assets) excluded pending design — see D13.
 
 The home page then shows triage set rows (see section 8 below).
 
-**Open issue, not yet investigated (raised 4 July 2026, still open):** the
-three triage-set action-list rows (Common assets / Pensions / Other) were
-observed showing as "Complete" with active "View/amend"-style links before
-"Tailor your submission" had genuinely been completed for that estate. Not
-yet established whether this is a real gating bug in `_should_show_tailor`/
-`_triage_set_rollup`, or whether it was vacuously "complete" because zero
-Yes-answers means zero required detail sections. Needs a deliberate
-before/after test (fresh estate, check the three rows *before* touching
-Tailor at all) to isolate — deferred past tonight's session.
+**Resolved (31 July 2026, `df0f1b2`):** the vacuous-"Complete" issue was
+confirmed as zero-Yes-answer categories appearing as "Complete" rather than
+being suppressed. See §8a below for the fix and the replacement behaviour.
 
 ### Dynamic question lookup
 
@@ -655,19 +649,15 @@ rename a section in the admin tools and the button label updates automatically.
 ### Triage set rows (Level 1)
 
 Shown on home page once all three triage sections are complete. One row per
-entry in `TRIAGE_SETS`. Status rolls up from `_triage_set_rollup`:
+entry in `TRIAGE_SETS` **where the category has at least one Yes-answered
+triage question**. Categories with zero Yes answers are omitted entirely —
+see §8a. Status rolls up from `_triage_set_rollup` for non-empty categories:
 
 | Condition | Status |
 |-----------|--------|
-| No Yes answers + section complete | complete |
-| No Yes answers + not complete | not_started |
 | Any Yes with `detail_section = None` | in_progress |
 | All Yes with complete detail sections | complete |
 | Otherwise | in_progress |
-
-**See the open issue flagged in section 7** — this rollup's real-world
-behaviour on a genuinely fresh, pre-tailor estate has not yet been
-confirmed correct.
 
 Each row's URL is computed dynamically by `_get_built_schedule_items`:
 - If at least one schedule for that set has a section built → real action URL
@@ -787,6 +777,57 @@ are passed dynamically.
 
 Nothing to do. Falls through to `_render_home`.
 
+### Action-list empty-category fix (31 July 2026, `df0f1b2`)
+
+Prior to this fix, triage categories with zero Yes-answered questions appeared
+on the home page as "Complete" — because `_triage_set_rollup` returned
+`'complete'` for the empty-set case when the triage section itself was marked
+complete. This was misleading: "Complete" implied there was nothing to do
+because the executor had finished their asset entries, but in fact there were
+simply no Yes answers.
+
+**Fix:** `_build_action_list` now checks `if not set_items: continue`
+immediately after `set_items = active_items.get(sid, [])`, before passing
+to `_triage_set_rollup`. A category with no Yes answers is omitted from
+the `actions` list entirely — it produces no home-page row at all.
+
+**`_triage_set_rollup`'s empty-set branch** (`if not set_items: return 'complete'
+if section complete else 'not_started'`) is now only reached during the
+`_triage_set_rollup` path for tailor's own status computation (which checks
+whether *all* triage sections are complete, regardless of content) — not for
+the per-category row display.
+
+### Planned: Tailor exit gate (NOW backlog, not yet built)
+
+Once all three triage sections are submitted, `_build_action_list` will add
+triage-set rows for Yes-answered categories. The current code has no check
+at this point for whether those Yes answers have corresponding built sections
+— if `QUESTION_SCHEDULE_MAP` maps a Yes-answered question to a schedule that
+has no Sections in the DB yet, the action URL is `#` and the button is a
+dead end.
+
+**Planned gate** (see Backlog, NOW): after triage completion, check every
+Yes-answered question against `QUESTION_SCHEDULE_MAP` and built-section
+status (reusing `_get_built_schedule_items`'s logic). If any Yes-answered item
+has no built section, redirect to a holding page naming the specific unbuilt
+items rather than rendering a dead-end action list. Log which triage questions
+triggered each block for beta prioritisation.
+
+**Current confirmed gap (live DB query, 31 July 2026):** only HMRC_S4
+(property) has `QUESTION_SCHEDULE_MAP` entries — `HMRC_16` → `HMRC_SCH2`
+(residential property) and `HMRC_31` → `HMRC_SCH3` (other land/buildings).
+HMRC_S5 (pensions and life assurance, questions HMRC_24–30) and HMRC_S6
+(other assets, HMRC_32+) have **no** `QUESTION_SCHEDULE_MAP` entries and
+no allocated Schedule records at all. Any Yes answer in those categories
+currently produces a `#` URL. Until the gate is built, users with pensions
+or other-asset Yes answers will see a dead-end button for those categories
+on the home page.
+
+**Note for S5/S6 design:** pension sub-types (state pension / workplace
+pension / personal pension / life assurance) are likely different HMRC forms
+and almost certainly cannot share one schedule the way S4's property fork
+does. Do not assume 1-category-to-1-schedule — see Backlog LATER item.
+
 ---
 
 ## 9. `radio_inline` question type
@@ -804,8 +845,12 @@ line as the question text (GDS `govuk-radios--inline`).
 
 All 24 triage questions (HMRC_16–HMRC_39) use `radio_inline`.
 
-Note: `radio_inline` not yet supported in type-2 row journey templates
-(`table_routed_question.html`, `table_routed_set.html`) — see D20.
+`radio_inline` is now fully supported in type-2 row journey templates
+(D20 complete, `ae9353e`, 30 July 2026). `table_routed_set.html` already
+handled it correctly (used as reference). `table_routed_question.html` was
+fixed by extending the branch condition to
+`question.question_type == "radio" or question.question_type == "radio_inline"`,
+with `govuk-radios--inline` applied conditionally. Both templates are correct.
 
 ---
 
@@ -845,7 +890,8 @@ See Core Platform Reference section 5 for full detail.
 | S1 amend conflict — `duplicate_amend.html` template and answer restoration | D7 |
 | Jointly owned assets triage design | D13 |
 | Nil rate band transfers | D14 |
-| IHT405 property sections (type-2 table sections) — **planning scripts created** (`agent*.py`, `load_iht405_data.py` in project root, untracked/uncommitted); actual sections not yet built in DB. `load_iht405_data.py` has question ID conflicts with existing HMRC_1–HMRC_5 questions that must be resolved before it can be run. | D18 — NOW |
 | Reconcile `_entry_start` vs `iht_start_new_estate` duplication | confirmed by coherence audit 7 July 2026 |
-| Triage-set "complete" gating before Tailor is genuinely done | new, 4 July 2026, still open |
+| Tailor exit gate — holding page when Yes-answered items have no built sections | NOW — not yet built; see §8a |
+| S5/S6 `QUESTION_SCHEDULE_MAP` entries and schedule allocation | LATER — see §8a and Backlog |
 | Derived married/widowed/single helper reading HMRC_14+HMRC_43 together | new, 5 July 2026 |
+| Deferred D18 sub-questions: lease length, damage, insurance cover, valuation upload | LATER — see Backlog |
