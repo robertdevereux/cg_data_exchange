@@ -1270,6 +1270,87 @@ class TestRoutingAdminTools(TestCase):
         content = r.content.decode()
         self.assertNotIn('[TEST_7]', content)
 
+    # ── Mermaid export ────────────────────────────────────────────────────────
+
+    def test_mermaid_export_returns_mmd_for_valid_section(self):
+        """Export view returns a Mermaid .mmd download when routing is valid."""
+        r = self.client.get(
+            f'/tools/sections/{self.section.section_id}/routing/export/mermaid/'
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('text/plain', r['Content-Type'])
+        self.assertIn('attachment', r['Content-Disposition'])
+        self.assertIn(
+            f'{self.section.section_id}_routing.mmd',
+            r['Content-Disposition'],
+        )
+        content = r.content.decode()
+        # Mermaid header
+        self.assertTrue(content.startswith('flowchart TD\n'))
+        # TEST_3 has 2 outgoing rows → diamond declaration
+        self.assertIn('TEST_3{"', content)
+        # TEST_11 has 1 outgoing row → rectangle declaration
+        self.assertIn('TEST_11["', content)
+        # END terminal
+        self.assertIn('END((End))', content)
+        # Node label from question_text (≤40 chars, no truncation needed here)
+        self.assertIn('Do you have a National Insurance number?', content)
+        # Edge labels
+        self.assertIn('-->|Yes|', content)
+        self.assertIn('-->|No|', content)
+        self.assertIn('-->|otherwise|', content)
+        # Each node declared exactly once (not redeclared in edges)
+        self.assertEqual(content.count('TEST_3{'), 1)
+        self.assertEqual(content.count('TEST_11['), 1)
+
+    def test_mermaid_export_button_visible_on_valid_section_edit(self):
+        """Section edit page shows the export button when routing validates clean."""
+        r = self.client.get(f'/tools/sections/{self.section.section_id}/edit/')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Download Mermaid diagram')
+        self.assertContains(r, 'routing/export/mermaid/')
+
+    def test_mermaid_export_returns_404_for_invalid_routing(self):
+        """Export view returns 404 when routing has issues (dangling next_node)."""
+        regime = Regime.objects.get(regime_id='TEST_SIMPLE')
+        bad = Section.objects.create(
+            section_id='RT_BAD_EXPORT_S1',
+            section_name='Bad Export Section',
+            section_type=0,
+            regime=regime,
+        )
+        Routing.objects.create(
+            section=bad,
+            current_node='TEST_3',
+            answer_value=None,
+            next_node='NONEXISTENT_NODE',  # dangling — validation will fail
+            order_in_section=10,
+        )
+        r = self.client.get(
+            f'/tools/sections/{bad.section_id}/routing/export/mermaid/'
+        )
+        self.assertEqual(r.status_code, 404)
+
+    def test_mermaid_export_button_absent_on_invalid_section_edit(self):
+        """Section edit page hides the export button when routing has issues."""
+        regime = Regime.objects.get(regime_id='TEST_SIMPLE')
+        bad = Section.objects.create(
+            section_id='RT_BAD_EXPORT_S2',
+            section_name='Bad Export Section 2',
+            section_type=0,
+            regime=regime,
+        )
+        Routing.objects.create(
+            section=bad,
+            current_node='TEST_3',
+            answer_value=None,
+            next_node='NONEXISTENT_NODE',
+            order_in_section=10,
+        )
+        r = self.client.get(f'/tools/sections/{bad.section_id}/edit/')
+        self.assertEqual(r.status_code, 200)
+        self.assertNotContains(r, 'Download Mermaid diagram')
+
     def test_section_edit_available_questions_populated_via_schedule_regime(self):
         """
         tools_section_edit must populate available_questions for a section whose

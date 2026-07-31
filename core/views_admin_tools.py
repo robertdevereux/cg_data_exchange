@@ -21,6 +21,7 @@ Staff-only views for inspecting, editing, and creating regime configuration.
 
 import json
 import re
+from collections import defaultdict
 
 from urllib.parse import urlencode
 
@@ -28,7 +29,7 @@ from django.conf import settings
 from django.contrib.auth.decorators import user_passes_test
 from django.db import models
 from django.db.models import Count, F, Max, Q
-from django.http import HttpResponseForbidden
+from django.http import Http404, HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
@@ -2798,6 +2799,102 @@ def tools_section_edit(request, section_id):
         'available_sets':       available_sets,
         'dept_id':              dept_id,
     })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MERMAID EXPORT
+# ─────────────────────────────────────────────────────────────────────────────
+
+@staff_required
+def section_routing_export_mermaid(request, section_id):
+    """
+    Return the section's routing as a Mermaid flowchart (.mmd) download.
+
+    Raises 404 when routing validation fails — only expose this URL when
+    routing_validation.valid is True (the template hides the button otherwise).
+
+    Mermaid flowchart TD format:
+      - Nodes declared once each (in order of first appearance in routing rows).
+      - Diamond {label}  for decision nodes (>1 outgoing Routing row).
+      - Rectangle [label] for linear nodes (exactly 1 outgoing row).
+      - Circle ((End))   for the shared terminal END node.
+      - Edge labels: answer_value if set (prefixed "on <cqid>: " when
+        condition_question_id is set), or "otherwise" for a NULL answer_value.
+      - Labels truncated to 40 chars; " and | escaped for Mermaid syntax.
+    """
+    section = get_object_or_404(Section, section_id=section_id)
+
+    validation = validate_section_routing(section)
+    if not validation['valid']:
+        raise Http404('Routing is not valid — cannot export.')
+
+    rows = list(Routing.objects.filter(section=section).order_by('order_in_section'))
+
+    # Ordered unique real node IDs (entry node first, then in order first seen)
+    seen = []
+    seen_set = set()
+    for row in rows:
+        for nid in (row.current_node, row.next_node):
+            if nid and nid not in seen_set:
+                seen.append(nid)
+                seen_set.add(nid)
+
+    has_end = any(r.next_node is None for r in rows)
+
+    node_outgoing = defaultdict(int)
+    for row in rows:
+        node_outgoing[row.current_node] += 1
+
+    questions = {
+        q.question_id: q.question_text
+        for q in Question.objects.filter(question_id__in=seen)
+    }
+    qsets = {
+        qs.set_id: qs.set_title
+        for qs in QuestionSet.objects.filter(set_id__in=seen)
+    }
+
+    _TRUNCATE = 40
+
+    def _node_label(nid):
+        text = questions.get(nid) or qsets.get(nid) or nid
+        if len(text) > _TRUNCATE:
+            text = text[:_TRUNCATE] + '...'
+        return text.replace('"', '#quot;')   # escape for Mermaid quoted labels
+
+    def _node_decl(nid):
+        label = _node_label(nid)
+        if node_outgoing[nid] > 1:
+            return f'    {nid}{{"{label}"}}'  # diamond
+        return f'    {nid}["{label}"]'         # rectangle
+
+    lines = ['flowchart TD']
+
+    # Node declarations — each node declared exactly once
+    for nid in seen:
+        lines.append(_node_decl(nid))
+    if has_end:
+        lines.append('    END((End))')
+
+    # Edges
+    for row in rows:
+        src = row.current_node
+        dst = row.next_node or 'END'
+
+        if row.answer_value is None:
+            label = 'otherwise'
+        else:
+            label = row.answer_value
+        if row.condition_question_id:
+            label = f'on {row.condition_question_id}: {label}'
+        label = label.replace('|', '#124;')   # escape pipe inside |...|
+
+        lines.append(f'    {src} -->|{label}| {dst}')
+
+    mmd = '\n'.join(lines) + '\n'
+    response = HttpResponse(mmd, content_type='text/plain')
+    response['Content-Disposition'] = f'attachment; filename="{section_id}_routing.mmd"'
+    return response
 
 
 # ─────────────────────────────────────────────────────────────────────────────

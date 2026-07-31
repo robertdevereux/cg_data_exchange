@@ -212,4 +212,8 @@ urlpatterns = [
          views_admin_tools.tools_routing_add_condition,
          name='tools_routing_add_condition'),
 
+    path('sections/<str:section_id>/routing/export/mermaid/',
+         views_admin_tools.section_routing_export_mermaid,
+         name='section_routing_export_mermaid'),
+
 ]
