@@ -586,6 +586,11 @@ summary here for backlog tracking.
   "Complete" on the IHT home page; `if not set_items: continue` in `_build_action_list` omits
   them entirely.
 
+- **Build reference doc updates** (`debb7c3`) — all three build docs updated to reflect 31 July
+  session changes: D18–D22 and triage fix in HMRC IHT doc; pruning bug/fix, D22 landing table,
+  D20 radio_inline, numeric formatting, and address rendering in Core data model doc; line count
+  and urgency update in Core file map doc. Doc impact: none (doc-only commit).
+
 ---
 
 ## Completed (30 July 2026)
