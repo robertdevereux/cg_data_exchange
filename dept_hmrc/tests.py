@@ -8,6 +8,8 @@ Covers:
   D) Message panel shows both HMRC_13 and HMRC_14 lines when HMRC_13 = Yes
 """
 
+from unittest.mock import patch
+
 from django.test import Client, TestCase, override_settings
 
 from core.interfaces import get_asked_answers_for_section
@@ -19,6 +21,7 @@ from core.models import (
     Question,
     Regime,
     Routing,
+    Schedule,
     Section,
     SectionStatus,
     User,
@@ -275,6 +278,140 @@ class TestIHTRegimeHomePage(TestCase):
         r2 = self.client.get(HOME_URL)
         self.assertEqual(r2.status_code, 200)
         self.assertNotContains(r2, 'govuk-inset-text')
+
+
+# ── Constants used by @patch decorators in TestTriageSetRowSkip ───────────────
+_MOCK_TRIAGE_SETS = [
+    {'section_id': 'HMRC_S4', 'name': 'Common assets and liabilities'},
+    {'section_id': 'HMRC_S5', 'name': 'Pensions and life assurance'},
+    {'section_id': 'HMRC_S6', 'name': 'Other assets and liabilities'},
+]
+_MOCK_TRIAGE_IDS = ['HMRC_S4', 'HMRC_S5', 'HMRC_S6']
+
+
+class TestTriageSetRowSkip(TestCase):
+    """
+    Categories with no Yes-answered triage questions are omitted from the
+    action list entirely (not shown as 'Complete').
+
+    Exercises the `if not set_items: continue` guard in _build_action_list.
+    Setup: HMRC_S4 has one Yes answer (HMRC_16); HMRC_S5 and HMRC_S6 have none.
+    All three triage sections are marked complete so the triage-set loop runs.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        Department.objects.get_or_create(
+            dept_id='HMRC',
+            defaults={'dept_name': 'HM Revenue & Customs'},
+        )
+        cls.regime = Regime.objects.create(
+            regime_id='HMRC_IHT',
+            regime_name='Inheritance Tax',
+            dept_id='HMRC',
+            display_order=99,
+        )
+        cls.s1 = Section.objects.create(
+            section_id='HMRC_S1',
+            section_name="Deceased's details",
+            section_type=0,
+            regime=cls.regime,
+            display_order=1,
+        )
+        cls.s2 = Section.objects.create(
+            section_id='HMRC_S2',
+            section_name='Estate ready reckoner',
+            section_type=0,
+            regime=cls.regime,
+            display_order=2,
+        )
+        # HMRC_SCH1 schedule houses the triage sections (S4/S5/S6)
+        cls.sch1 = Schedule.objects.create(
+            schedule_id='HMRC_SCH1',
+            schedule_name='Estate type',
+            regime=cls.regime,
+            display_order=1,
+        )
+        cls.s4 = Section.objects.create(
+            section_id='HMRC_S4',
+            section_name='Common assets and liabilities',
+            section_type=0,
+            schedule=cls.sch1,
+            display_order=1,
+        )
+        cls.s5 = Section.objects.create(
+            section_id='HMRC_S5',
+            section_name='Pensions and life assurance',
+            section_type=0,
+            schedule=cls.sch1,
+            display_order=2,
+        )
+        cls.s6 = Section.objects.create(
+            section_id='HMRC_S6',
+            section_name='Other assets and liabilities',
+            section_type=0,
+            schedule=cls.sch1,
+            display_order=3,
+        )
+        cls.q13 = Question.objects.using('default').create(
+            question_id='HMRC_13',
+            question_text='Do you need help working out whether a return is required?',
+            question_type='radio',
+            options="Yes, I'd like help;No, I know a full return is required",
+        )
+        cls.alice = User.objects.get(username='alice')
+        Permission.objects.create(
+            actor=cls.alice, user=cls.alice,
+            regime=cls.regime, section=None, can_delegate=False,
+        )
+        cls.case = Case.objects.create(
+            case_id='triage-skip-test-case',
+            user=cls.alice,
+            regime=cls.regime,
+            status='draft',
+            reference='IHT-TRIAGE-SKIP',
+        )
+        SectionStatus.objects.create(
+            user=cls.alice, regime=cls.regime, section=cls.s1, status='complete',
+        )
+
+    def setUp(self):
+        self.client = Client()
+        self.client.login(username='alice', password='testpass123')
+        _set_session_case(self.client, self.case.case_id, self.alice.pk)
+        # S2 complete so tailor row appears
+        SectionStatus.objects.update_or_create(
+            user=self.alice, regime=self.regime, section=self.s2,
+            defaults={'status': 'complete'},
+        )
+        # HMRC_13 = No triggers _should_show_tailor
+        Answer.objects.update_or_create(
+            user=self.alice, actor=self.alice, regime=self.regime,
+            case=self.case, section=self.s2, question=self.q13,
+            defaults={'answer': 'No, I know a full return is required'},
+        )
+        # All three triage sections complete so triage_complete_count == 3 == len(TRIAGE_SECTION_IDS)
+        for sec in (self.s4, self.s5, self.s6):
+            SectionStatus.objects.update_or_create(
+                user=self.alice, regime=self.regime, section=sec,
+                defaults={'status': 'complete'},
+            )
+
+    @patch('dept_hmrc.views.iht.orchestrate.TRIAGE_SECTION_IDS', _MOCK_TRIAGE_IDS)
+    @patch('dept_hmrc.views.iht.orchestrate.TRIAGE_SETS', _MOCK_TRIAGE_SETS)
+    @patch('dept_hmrc.views.iht.orchestrate._get_active_triage_items')
+    def test_empty_category_rows_are_skipped(self, mock_active):
+        """S5 and S6 (no Yes answers) must not appear; S4 (has a Yes answer) must appear."""
+        mock_active.side_effect = lambda _case: {
+            'HMRC_S4': [{'question_id': 'HMRC_16', 'detail_section': None}],
+            'HMRC_S5': [],
+            'HMRC_S6': [],
+        }
+        r = self.client.get(HOME_URL)
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r,    'Common assets and liabilities')
+        self.assertNotContains(r, 'Pensions and life assurance')
+        self.assertNotContains(r, 'Other assets and liabilities')
 
 
 class TestReckonerDispatch(TestCase):

@@ -589,6 +589,8 @@ def _build_action_list(request, regime, actor, user, verified_case,
             for triage_set in TRIAGE_SETS:
                 sid       = triage_set['section_id']
                 set_items = active_items.get(sid, [])
+                if not set_items:
+                    continue
                 rollup    = _triage_set_rollup(sid, set_items, statuses)
 
                 built_items = _get_built_schedule_items(
