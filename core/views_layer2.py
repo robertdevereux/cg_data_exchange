@@ -1227,6 +1227,61 @@ def section_table(request, section_id):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Section-level cache helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _section_cache_get(request, section_id):
+    """Return the section-level cache dict for section_id (may be None)."""
+    return (request.session.get('_section_cache') or {}).get(section_id)
+
+
+def _section_cache_set(request, section_id, data):
+    """Write data into _section_cache[section_id] in the session."""
+    ns = request.session.get('_section_cache') or {}
+    ns[section_id] = data
+    request.session['_section_cache'] = ns
+    request.session.modified = True
+
+
+def load_cache_for_fixed_table_section(request, section):
+    """Fetch and cache column metadata for a type-1 (flat table) section.
+
+    Checks _section_cache[section_id] first; queries the DB and populates
+    the cache only on the first call for this section visit. Returns the
+    cached column_dicts list on every subsequent call within the same visit.
+
+    Only JSON-serialisable data is stored — no model instances.
+    """
+    cached = _section_cache_get(request, section.section_id)
+    if cached is not None:
+        return cached
+
+    col_qids = [
+        qid.strip()
+        for qid in (section.display_question_ids or '').split(';')
+        if qid.strip()
+    ]
+    questions = Question.objects.filter(question_id__in=col_qids)
+    q_map = {q.question_id: q for q in questions}
+
+    column_dicts = [
+        {
+            'question_id':   qid,
+            'question_text': q_map[qid].question_text,
+            'question_type': q_map[qid].question_type,
+            'hint':          q_map[qid].hint or '',
+            'options':       [o.strip() for o in (q_map[qid].options or '').split(';') if o.strip()],
+        }
+        for qid in col_qids
+        if qid in q_map
+    ]
+
+    data = {'column_dicts': column_dicts}
+    _section_cache_set(request, section.section_id, data)
+    return data
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 7.  TABLE ROW ADD
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1238,24 +1293,18 @@ def section_table_add(request, section_id):
     if regime is None:
         raise Http404('Section is not yet assigned to a regime.')
 
-    col_qids = [
-        qid.strip()
-        for qid in (section.display_question_ids or '').split(';')
-        if qid.strip()
-    ]
-    col_questions_qs = Question.objects.filter(question_id__in=col_qids)
-    col_questions = {q.question_id: q for q in col_questions_qs}
-    ordered_columns = [col_questions[qid] for qid in col_qids if qid in col_questions]
+    col_cache    = load_cache_for_fixed_table_section(request, section)
+    column_dicts = col_cache['column_dicts']
 
     if request.method == 'POST':
         # Build row dict from POST
         row = {}
-        for q in ordered_columns:
-            if q.question_type == 'checkbox':
-                val = request.POST.getlist(q.question_id)
+        for col in column_dicts:
+            if col['question_type'] == 'checkbox':
+                val = request.POST.getlist(col['question_id'])
             else:
-                val = request.POST.get(q.question_id, '').strip()
-            row[q.question_id] = val
+                val = request.POST.get(col['question_id'], '').strip()
+            row[col['question_id']] = val
 
         # Resolve case
         case_id   = pss.get('case_id')
@@ -1286,18 +1335,7 @@ def section_table_add(request, section_id):
 
         return redirect('core:section_table', section_id=section_id)
 
-    # GET — build column dicts with options pre-split so the template
-    # doesn't need any custom filters
-    column_dicts = [
-        {
-            'question_id':   q.question_id,
-            'question_text': q.question_text,
-            'question_type': q.question_type,
-            'hint':          q.hint or '',
-            'options':       [o.strip() for o in (q.options or '').split(';') if o.strip()],
-        }
-        for q in ordered_columns
-    ]
+    # GET — column_dicts already built by load_cache_for_fixed_table_section
     context = {
         'section':    section,
         'columns':    column_dicts,

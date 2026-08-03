@@ -12,7 +12,7 @@ import json
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from .models import Answer, AnswerHistory, AnswerTable, Question, QuestionSet, QuestionSetMember, Regime, Routing, Schedule, Section, SectionMember, SectionStatus, User
+from .models import Answer, AnswerHistory, AnswerTable, Case, Question, QuestionSet, QuestionSetMember, Regime, Routing, Schedule, Section, SectionMember, SectionStatus, User
 from .permissions import get_permitted_sections
 
 
@@ -2689,3 +2689,114 @@ class TestCompletionReturnToTopLevel(TestCase):
                              msg_prefix='section_done must return to top-level list URL')
         self.assertNotEqual(response['Location'], self.regime_home,
                             'section_done must NOT redirect to regime_home_url')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 1 cache tests — fixed table section (section_type=1)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestFixedTableSectionCache(TestCase):
+    """
+    Verify that load_cache_for_fixed_table_section() fetches Question objects
+    exactly once per section visit, not once per row added.
+
+    Uses the pre-existing SECTIONS_S2 section (type=1,
+    display_question_ids='TEST_12;TEST_13;TEST_14') from load_test_data.
+    """
+
+    def setUp(self):
+        from django.db import connection
+
+        self.client = Client()
+        self.client.login(username='carla', password='testpass123')
+
+        # Prime session with a case so the POST handler can resolve it
+        carla = User.objects.get(username='carla')
+        regime = Regime.objects.get(regime_id='TEST_SECTIONS')
+        case, _ = Case.objects.get_or_create(
+            user=carla, regime=regime,
+            defaults={'case_id': '00000000-0000-0000-0000-000000000099', 'status': 'draft'},
+        )
+        session = self.client.session
+        session['pss'] = {
+            'case_id':  case.case_id,
+            'user_id':  carla.pk,
+            'actor_id': carla.pk,
+            'regime_id': regime.regime_id,
+        }
+        session.save()
+        self._case = case
+
+    def _question_queries(self, captured_queries):
+        """Count queries that hit the core_question table."""
+        return sum(
+            1 for q in captured_queries
+            if 'core_question' in q['sql'].lower()
+        )
+
+    def test_questions_fetched_once_across_multi_row_adds(self):
+        """
+        The Question DB fetch should happen on the first POST (cache miss)
+        and be skipped entirely on the second POST (cache hit).
+
+        Question/QuestionSet/QuestionSetMember queries go to the 'platform'
+        DB alias (PlatformRouter), so we capture that connection, not 'default'.
+        """
+        from django.db import connections
+        from django.test.utils import CaptureQueriesContext
+
+        platform_conn = connections['platform']
+        post_data = {
+            'TEST_12': 'Savings',
+            'TEST_13': 'Monzo',
+            'TEST_14': '1000',
+        }
+
+        # First add — expect exactly one core_question query (the cache population)
+        with CaptureQueriesContext(platform_conn) as ctx_first:
+            r = self.client.post('/section/SECTIONS_S2/table/add/', post_data)
+        self.assertEqual(r.status_code, 302)
+        q_first = self._question_queries(ctx_first.captured_queries)
+        self.assertEqual(q_first, 1,
+            f'First add should issue exactly 1 core_question query; got {q_first}. '
+            f'All platform queries: {[q["sql"] for q in ctx_first.captured_queries]}'
+        )
+
+        # Second add — cache is warm; no core_question query should fire
+        with CaptureQueriesContext(platform_conn) as ctx_second:
+            r = self.client.post('/section/SECTIONS_S2/table/add/', post_data)
+        self.assertEqual(r.status_code, 302)
+        q_second = self._question_queries(ctx_second.captured_queries)
+        self.assertEqual(q_second, 0,
+            f'Second add must not re-fetch questions; got {q_second} core_question query/queries. '
+            f'All platform queries: {[q["sql"] for q in ctx_second.captured_queries]}'
+        )
+
+    def test_get_renders_columns_from_cache(self):
+        """GET should render the add form correctly (columns present) on both
+        first visit (cold cache) and second visit (warm cache)."""
+        r1 = self.client.get('/section/SECTIONS_S2/table/add/')
+        self.assertEqual(r1.status_code, 200)
+        self.assertContains(r1, 'TEST_12')
+
+        r2 = self.client.get('/section/SECTIONS_S2/table/add/')
+        self.assertEqual(r2.status_code, 200)
+        self.assertContains(r2, 'TEST_12')
+
+    def test_cache_does_not_affect_row_data(self):
+        """Each POST saves distinct row data regardless of caching."""
+        from .models import AnswerTable, Case
+        self.client.post('/section/SECTIONS_S2/table/add/', {
+            'TEST_12': 'ISA', 'TEST_13': 'Barclays', 'TEST_14': '500',
+        })
+        self.client.post('/section/SECTIONS_S2/table/add/', {
+            'TEST_12': 'Pension', 'TEST_13': 'Aviva', 'TEST_14': '20000',
+        })
+        carla = User.objects.get(username='carla')
+        regime = Regime.objects.get(regime_id='TEST_SECTIONS')
+        section = Section.objects.get(section_id='SECTIONS_S2')
+        case = Case.objects.get(case_id=self._case.case_id)
+        at = AnswerTable.objects.get(user=carla, case=case, section=section)
+        self.assertEqual(len(at.answer), 2)
+        self.assertEqual(at.answer[0]['TEST_12'], 'ISA')
+        self.assertEqual(at.answer[1]['TEST_12'], 'Pension')
