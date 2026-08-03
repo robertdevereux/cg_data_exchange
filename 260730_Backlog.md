@@ -595,6 +595,9 @@ summary here for backlog tracking.
 
 - `3ac331c` — Phase 1: load_cache_for_fixed_table_section() caching refactor, views_layer2.py.
   Doc impact: build doc §4 (type-1 table section execution).
+- `48fa723` — Phase 2: load_cache_for_routed_section(), _fetch_external_answers(), external-condition
+  answer fix across all five type-2 entry points, views_layer2.py + tests. Doc impact: build doc §5
+  (type-2 routed table execution).
 
 ---
 
