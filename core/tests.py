@@ -8,6 +8,7 @@ from the confirmed answer set.
 """
 
 import json
+from decimal import Decimal, InvalidOperation
 
 from django.test import Client, TestCase
 from django.urls import reverse
@@ -3060,3 +3061,306 @@ class TestRoutedSectionCache(TestCase):
         # Row committed via unconditional fallback
         at = AnswerTable.objects.get(user=carla, case=no_answer_case, section=self.ext_section)
         self.assertEqual(len(at.answer), 1)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PHASE 4 PRE-FLIGHT: routing equivalence check
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestRoutingEquivalence(TestCase):
+    """
+    Pre-flight equivalence check for Phase 4 data migration (0019).
+
+    For every Routing row in the DB, applies the Phase 4 decision-table
+    mapping in Python (without touching the DB) and asserts that routing
+    outcomes are identical under:
+
+      OLD logic: _resolve_routing_answer + _evaluate_routing
+                 (uses condition_question_id / answer_value / comparator /
+                  threshold_value)
+      NEW logic: _evaluate_new_layout
+                 (uses comparator_1 / test_value_1 / alternate_condition_id /
+                  comparator_2 / test_value_2)
+
+    for every (section, current_node, test_answer) combination drawn from
+    the answer_values present in the DB plus representative non-matching
+    and empty inputs.
+
+    Run BEFORE applying migration 0019 to confirm the mapping is safe.
+    No fixture setup needed: tests against whatever Routing rows exist in
+    the DB (test DB loaded via --keepdb, which includes the HMRC_S8 rows
+    and all test-section routing).
+    """
+
+    # ── Decision-table mapping ────────────────────────────────────────────────
+
+    @staticmethod
+    def _apply_decision_table(old_row):
+        """
+        Apply the Phase 4 decision-table mapping to one routing row dict
+        (old fields). Returns a dict of the five new compound-condition
+        field values.
+
+        Decision table (see pre-migration review, 3 Aug 2026):
+          Case 1: av=null, cqid=any  → all null (unconditional; cqid inert)
+          Case 2: av set, cqid=null, no comp → comparator_1='=', test_value_1=av
+          Case 3: av set, cqid=null, comp+thresh → comparator_1=comp, test_value_1=str(thresh)
+          Case 4: av=null, cqid=any  → all null (same as case 1; av=null wins)
+          Case 5: av set, cqid set, no comp → alternate_condition_id=cqid,
+                                               comparator_2='=', test_value_2=av
+          Case 6: av set, cqid set, comp+thresh → alternate_condition_id=cqid,
+                                                   comparator_2=comp, test_value_2=str(thresh)
+
+        Critically: rows where cqid is set NEVER get comparator_1/test_value_1
+        set, because the original logic tested cqid's answer INSTEAD OF the
+        current node's answer — adding slot-1 would AND both conditions, which
+        is strictly more restrictive than the original.
+        """
+        cqid   = old_row.get('condition_question_id') or None   # normalise '' → None
+        av     = old_row.get('answer_value')
+        comp   = old_row.get('comparator')
+        thresh = old_row.get('threshold_value')
+
+        null_row = dict(
+            comparator_1=None, test_value_1=None,
+            alternate_condition_id=None, comparator_2=None, test_value_2=None,
+        )
+
+        # Cases 1 & 4: av=null → unconditional regardless of other fields
+        if av is None:
+            return null_row
+
+        # av is set from here down.
+        if cqid:
+            # Cases 5 & 6: slot-1 stays null; slot-2 tests cqid's answer.
+            if comp and thresh is not None:
+                # Case 6: numeric comparator on cqid's answer (no live rows, future-proof)
+                return dict(comparator_1=None, test_value_1=None,
+                            alternate_condition_id=cqid,
+                            comparator_2=comp, test_value_2=str(thresh))
+            else:
+                # Case 5: equality match on cqid's answer
+                return dict(comparator_1=None, test_value_1=None,
+                            alternate_condition_id=cqid,
+                            comparator_2='=', test_value_2=av)
+        else:
+            # Cases 2 & 3: slot-2 stays null; slot-1 tests current-node answer.
+            if comp and thresh is not None:
+                # Case 3: numeric comparator (no live rows, future-proof)
+                return dict(comparator_1=comp, test_value_1=str(thresh),
+                            alternate_condition_id=None, comparator_2=None, test_value_2=None)
+            else:
+                # Case 2: simple equality
+                return dict(comparator_1='=', test_value_1=av,
+                            alternate_condition_id=None, comparator_2=None, test_value_2=None)
+
+    # ── New-layout evaluation ─────────────────────────────────────────────────
+
+    @staticmethod
+    def _matches_slot(comparator, test_value, actual_answer):
+        """
+        Evaluate one compound-condition slot.
+        Returns True if the slot is empty (null comparator or null test_value)
+        or if actual_answer satisfies comparator against test_value.
+        """
+        if comparator is None or test_value is None:
+            return True     # empty slot is always satisfied
+
+        if comparator == '=':
+            allowed = {v.strip().lower() for v in str(test_value).split(';')}
+            if isinstance(actual_answer, list):
+                return any(v.strip().lower() in allowed for v in actual_answer)
+            return str(actual_answer).strip().lower() in allowed
+
+        # Numeric comparators
+        try:
+            numeric  = Decimal(str(actual_answer).strip())
+            threshold = Decimal(str(test_value))
+        except (InvalidOperation, ValueError):
+            return False
+        if comparator == '<':  return numeric < threshold
+        if comparator == '<=': return numeric <= threshold
+        if comparator == '>':  return numeric > threshold
+        if comparator == '>=': return numeric >= threshold
+        return False
+
+    @classmethod
+    def _evaluate_new_layout(cls, new_routing_table, current_node, all_answers):
+        """
+        Evaluate routing under the new compound-condition field layout.
+
+        Mirrors the first-match-wins / unconditional-fallback logic of the
+        existing _evaluate_routing, using the new fields instead of the old.
+
+        A row is unconditional when all five new fields are null.
+        Otherwise both slots must match (AND logic); first conditional match
+        wins.
+
+        Returns (next_node, found) — same contract as _evaluate_routing.
+        """
+        _UNSET = object()
+        conditional_next  = _UNSET
+        unconditional_next = _UNSET
+
+        for row in new_routing_table:
+            if row['current_node'] != current_node:
+                continue
+
+            alt_id = row['alternate_condition_id']
+            is_unconditional = (
+                row['comparator_1']         is None and
+                row['test_value_1']         is None and
+                alt_id                      is None
+            )
+
+            if is_unconditional:
+                unconditional_next = row['next_node']
+                continue
+
+            # Slot 1: always tests the current node's own answer.
+            slot1_ok = cls._matches_slot(
+                row['comparator_1'], row['test_value_1'],
+                all_answers.get(current_node, ''),
+            )
+            # Slot 2: tests the alternate question's answer (if set).
+            if alt_id:
+                slot2_ok = cls._matches_slot(
+                    row['comparator_2'], row['test_value_2'],
+                    all_answers.get(alt_id, ''),
+                )
+            else:
+                slot2_ok = True     # no slot-2 condition → always satisfied
+
+            if slot1_ok and slot2_ok:
+                conditional_next = row['next_node']
+                break   # first conditional match wins
+
+        if conditional_next is not _UNSET:
+            return conditional_next, True
+        if unconditional_next is not _UNSET:
+            return unconditional_next, True
+        return None, False
+
+    # ── The test ──────────────────────────────────────────────────────────────
+
+    def test_old_and_new_outcomes_match_for_all_routing_rows(self):
+        """
+        For every section with Routing rows in the DB: apply the Phase 4
+        decision-table mapping in Python, run old and new evaluation for
+        a representative set of answers, and assert they match.
+
+        Covered combinations (across live + test-fixture rows):
+          - Unconditional rows (answer_value null): any answer falls through
+          - Simple equality rows (answer_value set): matching and non-matching
+          - condition_question_id rows (HMRC_S8 pattern): cqid='Yes' +
+            unconditional fallback, tested with matching / non-matching /
+            empty answers on the condition question
+          - Numeric comparator rows: no live rows today but decision-table
+            mapping handles them; the test will exercise them if any are added
+        """
+        from core.views_layer2 import _evaluate_routing, _resolve_routing_answer
+
+        section_ids = list(
+            Routing.objects.values_list('section_id', flat=True).distinct()
+        )
+        self.assertTrue(
+            section_ids,
+            'No Routing rows found in DB — nothing to check (run with --keepdb '
+            'so fixture data is present)',
+        )
+
+        failures = []
+
+        for section_id in section_ids:
+            rows_qs = (
+                Routing.objects
+                .filter(section_id=section_id)
+                .order_by('order_in_section')
+            )
+
+            # Build old routing_table in the exact format _build_section_tables uses.
+            old_routing_table = [
+                {
+                    'current_node':          r.current_node,
+                    'condition_question_id': r.condition_question_id,
+                    'answer_value':          r.answer_value,
+                    'comparator':            r.comparator,
+                    'threshold_value':       r.threshold_value,
+                    'next_node':             r.next_node,
+                }
+                for r in rows_qs
+            ]
+
+            # Apply decision-table mapping → new routing table (Python only, no DB).
+            new_routing_table = []
+            for old_row in old_routing_table:
+                new_fields = self._apply_decision_table(old_row)
+                new_routing_table.append({
+                    'current_node': old_row['current_node'],
+                    'next_node':    old_row['next_node'],
+                    **new_fields,
+                })
+
+            # Enumerate distinct nodes in routing order.
+            distinct_nodes = list(dict.fromkeys(
+                r['current_node'] for r in old_routing_table
+            ))
+
+            for current_node in distinct_nodes:
+                node_rows = [
+                    r for r in old_routing_table
+                    if r['current_node'] == current_node
+                ]
+
+                # Determine which question's answer drives routing for this node
+                # under old logic (cqid if any row has one, else current_node).
+                cqid = next(
+                    (r['condition_question_id'] for r in node_rows
+                     if r['condition_question_id']),
+                    None,
+                )
+                effective_qid = cqid or current_node
+
+                # Test answers: every answer_value mentioned for this node,
+                # every threshold mentioned, plus a non-matching sentinel and ''.
+                mentioned = [
+                    r['answer_value'] for r in node_rows
+                    if r['answer_value'] is not None
+                ]
+                mentioned += [
+                    str(r['threshold_value']) for r in node_rows
+                    if r['threshold_value'] is not None
+                ]
+                test_answers = list(dict.fromkeys(mentioned + ['__NOMATCH__', '']))
+
+                for test_val in test_answers:
+                    # Place test_val under both the effective question key and
+                    # the current_node key so both old and new eval can find it.
+                    all_answers = {effective_qid: test_val, current_node: test_val}
+
+                    # OLD evaluation.
+                    resolved = _resolve_routing_answer(
+                        old_routing_table, current_node, all_answers
+                    )
+                    old_next, old_found = _evaluate_routing(
+                        old_routing_table, current_node, resolved
+                    )
+
+                    # NEW evaluation.
+                    new_next, new_found = self._evaluate_new_layout(
+                        new_routing_table, current_node, all_answers
+                    )
+
+                    if (old_next, old_found) != (new_next, new_found):
+                        failures.append(
+                            f'section={section_id!r} node={current_node!r} '
+                            f'answer={test_val!r}: '
+                            f'OLD=({old_next!r}, found={old_found}) '
+                            f'NEW=({new_next!r}, found={new_found})'
+                        )
+
+        if failures:
+            self.fail(
+                f'{len(failures)} equivalence failure(s):\n' +
+                '\n'.join(failures)
+            )
