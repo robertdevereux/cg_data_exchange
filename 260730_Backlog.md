@@ -591,6 +591,11 @@ summary here for backlog tracking.
   D20 radio_inline, numeric formatting, and address rendering in Core data model doc; line count
   and urgency update in Core file map doc. Doc impact: none (doc-only commit).
 
+## Completed (3 August 2026)
+
+- `3ac331c` — Phase 1: load_cache_for_fixed_table_section() caching refactor, views_layer2.py.
+  Doc impact: build doc §4 (type-1 table section execution).
+
 ---
 
 ## Completed (30 July 2026)
