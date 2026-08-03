@@ -335,13 +335,8 @@ def section_start(request, section_id):
 
     actor_id = pss.get('actor_id') or request.user.pk
 
-    # ── Build routing / question / set tables ─────────────────────────────────
-    routing_rows = (
-        Routing.objects
-        .filter(section=section)
-        .order_by('order_in_section')
-    )
-    tables = _build_section_tables(routing_rows)
+    # ── Build routing / question / set tables (cached per section visit) ────────
+    tables = load_cache_for_routed_section(request, section)
     routing_table     = tables['routing_table']
     all_node_ids      = tables['all_node_ids']
     question_node_ids = tables['question_node_ids']
@@ -357,12 +352,17 @@ def section_start(request, section_id):
         return redirect('core:section_done', section_id=section_id)
 
     # ── Load confirmed answers from DB ────────────────────────────────────────
-    all_question_ids = question_node_ids + list(question_to_set.keys())
+    # Own questions: fetched under this section's scope.
+    # External condition questions (e.g. a case-level question from another
+    # section referenced via condition_question_id): fetched without section
+    # scope, since their Answer rows are stored under their own section.
+    own_question_ids = question_node_ids + list(question_to_set.keys())
     existing_answers = Answer.objects.filter(
         user=case.user, case=case, section=section,
-        question_id__in=all_question_ids,
+        question_id__in=own_question_ids,
     )
     basic_answers = {a.question_id: a.answer for a in existing_answers}
+    basic_answers.update(_fetch_external_answers(case, tables['external_condition_qids']))
 
     # ── Determine asked_ids and entry point ───────────────────────────────────
     # Re-entry (answers exist): reconstruct asked_ids in routing order — only
@@ -1281,6 +1281,68 @@ def load_cache_for_fixed_table_section(request, section):
     return data
 
 
+def load_cache_for_routed_section(request, section):
+    """Fetch and cache routing/question metadata for a type-0 or type-2 section.
+
+    Checks _section_cache[section_id] first; queries the DB and populates
+    the cache only on the first call for this section visit. Returns the
+    cached dict on every subsequent call within the same visit.
+
+    The returned dict includes all keys from _build_section_tables() plus:
+      external_condition_qids  — list of condition_question_id values from
+          routing rows that are NOT already covered by question_node_ids or
+          question_to_set.keys(). These name questions from other sections
+          whose answers are needed for routing resolution but won't be found
+          by an Answer query scoped to this section alone.
+          Note: field name is condition_question_id now; this list must be
+          revisited in Phase 3 when the field is renamed alternate_condition_id
+          and extended to a two-slot layout.
+    """
+    cached = _section_cache_get(request, section.section_id)
+    if cached is not None:
+        return cached
+
+    routing_rows = (
+        Routing.objects
+        .filter(section=section)
+        .order_by('order_in_section')
+    )
+    tables = _build_section_tables(routing_rows)
+
+    # Third source for answer fetching: condition_question_ids that name
+    # questions from outside this section's own node set. These must be
+    # fetched separately (without a section= filter) so routing can resolve
+    # them correctly when they appear as condition_question_id on a row.
+    covered = set(tables['question_node_ids']) | set(tables['question_to_set'].keys())
+    external_condition_qids = list(dict.fromkeys(
+        row['condition_question_id']
+        for row in tables['routing_table']
+        if row.get('condition_question_id')
+        and row['condition_question_id'] not in covered
+    ))
+
+    data = {**tables, 'external_condition_qids': external_condition_qids}
+    _section_cache_set(request, section.section_id, data)
+    return data
+
+
+def _fetch_external_answers(case, ext_qids):
+    """Fetch case-level answers for external condition question IDs.
+
+    These are questions from other sections referenced via condition_question_id
+    whose Answer rows are stored under a different section. Returns a dict
+    {question_id: answer_value} for every question found. Returns {} if
+    ext_qids is empty.
+    """
+    if not ext_qids:
+        return {}
+    answers = Answer.objects.filter(
+        user=case.user, case=case,
+        question_id__in=ext_qids,
+    )
+    return {a.question_id: a.answer for a in answers}
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 7.  TABLE ROW ADD
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1379,12 +1441,7 @@ def section_table_routed_add(request, section_id):
     if regime is None:
         raise Http404('Section is not yet assigned to a regime.')
 
-    routing_rows = (
-        Routing.objects
-        .filter(section=section)
-        .order_by('order_in_section')
-    )
-    tables = _build_section_tables(routing_rows)
+    tables = load_cache_for_routed_section(request, section)
     if not tables['first_node']:
         return redirect('core:section_table', section_id=section_id)
 
@@ -1392,9 +1449,20 @@ def section_table_routed_add(request, section_id):
     if not pss.get('case_id'):
         case = _get_or_create_case(request.user, regime)
         update_session(request, {'case_id': case.case_id})
+    else:
+        try:
+            case = Case.objects.get(case_id=pss['case_id'])
+        except Case.DoesNotExist:
+            case = _get_or_create_case(request.user, regime)
+            update_session(request, {'case_id': case.case_id})
+
+    # Pre-fetch external condition question answers so they're available in
+    # all_answers throughout this row journey without re-querying per step.
+    ext_data = _fetch_external_answers(case, tables['external_condition_qids'])
 
     # Initialise fresh row namespace (row_index=None → new row)
     _table_row_ns_set(request, section_id, {
+        **ext_data,
         '_asked_ids': [tables['first_node']],
         '_row_index': None,
     })
@@ -1435,36 +1503,34 @@ def section_table_routed_change(request, section_id, row_index):
 
     saved_row = rows[row_index]
 
-    routing_rows = (
-        Routing.objects
-        .filter(section=section)
-        .order_by('order_in_section')
-    )
-    tables = _build_section_tables(routing_rows)
+    tables = load_cache_for_routed_section(request, section)
     if not tables['first_node']:
         return redirect('core:section_table', section_id=section_id)
 
     routing_table   = tables['routing_table']
-    all_node_ids    = tables['all_node_ids']
     question_table  = tables['question_table']
     set_table       = tables['set_table']
     question_to_set = tables['question_to_set']
 
-    # Reconstruct the asked_ids path by replaying routing on saved answers
+    # Pre-fetch external condition question answers for routing replay and journey.
+    ext_data = _fetch_external_answers(case, tables['external_condition_qids'])
+
+    # Reconstruct the asked_ids path by replaying routing on saved answers.
+    # Include external answers so condition_question_id routing resolves correctly
+    # for questions from other sections.
     asked_ids = []
     node = tables['first_node']
     while node is not None:
         asked_ids.append(node)
-        # Build combined answers dict for routing resolution
-        all_answers = dict(saved_row)
+        all_answers = {**ext_data, **dict(saved_row)}
         routing_answer = _resolve_routing_answer(routing_table, node, all_answers)
         next_node, found = _evaluate_routing(routing_table, node, routing_answer)
         if not found:
             break
         node = next_node
 
-    # Seed session namespace with saved answers + metadata
-    row_data = dict(saved_row)
+    # Seed session namespace with saved answers + external answers + metadata
+    row_data = {**ext_data, **dict(saved_row)}
     row_data['_asked_ids'] = asked_ids
     row_data['_row_index'] = row_index
     _table_row_ns_set(request, section_id, row_data)
@@ -1494,12 +1560,7 @@ def section_table_routed_question(request, section_id, question_or_set_id):
             case = _get_or_create_case(request.user, regime)
             update_session(request, {'case_id': case.case_id})
 
-    routing_rows = (
-        Routing.objects
-        .filter(section=section)
-        .order_by('order_in_section')
-    )
-    tables = _build_section_tables(routing_rows)
+    tables = load_cache_for_routed_section(request, section)
     if not tables['first_node']:
         return redirect('core:section_table', section_id=section_id)
 
@@ -1837,12 +1898,7 @@ def section_table_row_review(request, section_id, row_index):
 
     saved_row = rows_data[row_index]
 
-    routing_rows = (
-        Routing.objects
-        .filter(section=section)
-        .order_by('order_in_section')
-    )
-    tables = _build_section_tables(routing_rows)
+    tables = load_cache_for_routed_section(request, section)
     if not tables['first_node']:
         return redirect('core:section_table', section_id=section_id)
 
@@ -1850,12 +1906,16 @@ def section_table_row_review(request, section_id, row_index):
     question_table = tables['question_table']
     set_table      = tables['set_table']
 
-    # Reconstruct asked_ids by replaying routing on saved answers
+    # Pre-fetch external condition question answers for routing replay.
+    ext_data = _fetch_external_answers(case, tables['external_condition_qids'])
+
+    # Reconstruct asked_ids by replaying routing on saved answers.
+    # Include external answers so condition_question_id routing resolves correctly.
     asked_ids = []
     node = tables['first_node']
     while node is not None:
         asked_ids.append(node)
-        routing_answer = _resolve_routing_answer(routing_table, node, dict(saved_row))
+        routing_answer = _resolve_routing_answer(routing_table, node, {**ext_data, **dict(saved_row)})
         next_node, found = _evaluate_routing(routing_table, node, routing_answer)
         if not found:
             break
@@ -1947,23 +2007,22 @@ def section_table_routed_amend(request, section_id, row_index, node_id):
 
     saved_row = rows_data[row_index]
 
-    routing_rows = (
-        Routing.objects
-        .filter(section=section)
-        .order_by('order_in_section')
-    )
-    tables = _build_section_tables(routing_rows)
+    tables = load_cache_for_routed_section(request, section)
     if not tables['first_node']:
         return redirect('core:section_table', section_id=section_id)
 
     routing_table = tables['routing_table']
 
-    # Replay routing to reconstruct the full asked_ids path
+    # Pre-fetch external condition question answers for routing replay and journey.
+    ext_data = _fetch_external_answers(case, tables['external_condition_qids'])
+
+    # Replay routing to reconstruct the full asked_ids path.
+    # Include external answers so condition_question_id routing resolves correctly.
     asked_ids = []
     node = tables['first_node']
     while node is not None:
         asked_ids.append(node)
-        routing_answer = _resolve_routing_answer(routing_table, node, dict(saved_row))
+        routing_answer = _resolve_routing_answer(routing_table, node, {**ext_data, **dict(saved_row)})
         next_node, found = _evaluate_routing(routing_table, node, routing_answer)
         if not found:
             break
@@ -1977,8 +2036,8 @@ def section_table_routed_amend(request, section_id, row_index, node_id):
         idx = asked_ids.index(node_id)
         asked_ids = asked_ids[:idx + 1]
 
-    # Seed session with saved answers, truncated path, and row index
-    row_data = dict(saved_row)
+    # Seed session with saved answers + external answers, truncated path, and row index
+    row_data = {**ext_data, **dict(saved_row)}
     row_data['_asked_ids'] = asked_ids
     row_data['_row_index'] = row_index
     _table_row_ns_set(request, section_id, row_data)
