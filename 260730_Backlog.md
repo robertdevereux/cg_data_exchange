@@ -598,6 +598,8 @@ summary here for backlog tracking.
 - `48fa723` — Phase 2: load_cache_for_routed_section(), _fetch_external_answers(), external-condition
   answer fix across all five type-2 entry points, views_layer2.py + tests. Doc impact: build doc §5
   (type-2 routed table execution).
+- `b9427b4` — Phase 3: add comparator_1/test_value_1/alternate_condition_id/comparator_2/test_value_2
+  to Routing model; migration 0018. Doc impact: Core data model doc (Routing table schema).
 
 ---
 
