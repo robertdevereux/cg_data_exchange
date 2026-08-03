@@ -356,6 +356,58 @@ class Routing(models.Model):
         null=True,
         help_text='Threshold for scalar comparison; leave blank for standard answer_value matching',
     )
+    # ── Compound-condition fields (Phase 3 / migration 0018) ─────────────────
+    # Slot 1: primary condition on the current node's own answer (or
+    # alternate_condition_id's answer if that is set).
+    comparator_1 = models.CharField(
+        max_length=2,
+        blank=True,
+        null=True,
+        choices=[
+            ('=',  'Equal to'),
+            ('<',  'Less than'),
+            ('<=', 'Less than or equal to'),
+            ('>',  'Greater than'),
+            ('>=', 'Greater than or equal to'),
+        ],
+        help_text='Slot-1 comparator. "=" for text equality; numeric ops for numeric questions.',
+    )
+    test_value_1 = models.TextField(
+        blank=True,
+        null=True,
+        help_text='Slot-1 value to test against. Null means unconditional (no slot-1 test).',
+    )
+    # Slot 2: optional second condition AND-ed with slot 1.
+    alternate_condition_id = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text=(
+            'Optional slot-2 question ID. If set, slot-2 tests the answer to this '
+            'question rather than the current node. Must have been answered earlier '
+            'in the journey.'
+        ),
+    )
+    comparator_2 = models.CharField(
+        max_length=2,
+        blank=True,
+        null=True,
+        choices=[
+            ('=',  'Equal to'),
+            ('<',  'Less than'),
+            ('<=', 'Less than or equal to'),
+            ('>',  'Greater than'),
+            ('>=', 'Greater than or equal to'),
+        ],
+        help_text='Slot-2 comparator. Only evaluated when alternate_condition_id is set.',
+    )
+    test_value_2 = models.TextField(
+        blank=True,
+        null=True,
+        help_text='Slot-2 value to test against. Only evaluated when alternate_condition_id is set.',
+    )
+    # ─────────────────────────────────────────────────────────────────────────
+
     order_in_section = models.FloatField(default=0)
 
     class Meta:
