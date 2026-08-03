@@ -603,6 +603,10 @@ summary here for backlog tracking.
 - `3540712` — Phase 4: RunPython migration 0019 backfilling compound-condition fields on all 89 live
   Routing rows; TestRoutingEquivalence pre-flight test. Applied to live Neon DB 2026-08-03.
   Doc impact: Core data model doc (Routing field semantics).
+- `8c8d59f` — Backlog: log Phase 4 entry. Doc impact: none.
+- `c5707fe` — Phase 5: _evaluate_routing ported to two-slot compound-condition logic; 12 new
+  tests (TestCompoundConditionRouting); old Routing fields marked dead; 220 tests pass.
+  Doc impact: build doc §routing-engine (evaluation logic), §dead-fields note.
 
 ---
 
