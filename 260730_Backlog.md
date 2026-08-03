@@ -600,6 +600,9 @@ summary here for backlog tracking.
   (type-2 routed table execution).
 - `b9427b4` — Phase 3: add comparator_1/test_value_1/alternate_condition_id/comparator_2/test_value_2
   to Routing model; migration 0018. Doc impact: Core data model doc (Routing table schema).
+- `3540712` — Phase 4: RunPython migration 0019 backfilling compound-condition fields on all 89 live
+  Routing rows; TestRoutingEquivalence pre-flight test. Applied to live Neon DB 2026-08-03.
+  Doc impact: Core data model doc (Routing field semantics).
 
 ---
 
