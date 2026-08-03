@@ -1415,6 +1415,7 @@ class TestRoutedTableSection(TestCase):
             answer_value='Yes',
             next_node='TEST_11',
             order_in_section=10,
+            comparator_1='=', test_value_1='Yes',
         )
         # TEST_3: No → END
         Routing.objects.create(
@@ -1423,6 +1424,7 @@ class TestRoutedTableSection(TestCase):
             answer_value='No',
             next_node=None,
             order_in_section=20,
+            comparator_1='=', test_value_1='No',
         )
         # TEST_11: unconditional → END
         Routing.objects.create(
@@ -1634,6 +1636,7 @@ class TestConditionQuestionId(TestCase):
             section=cls.q_section, current_node='TEST_11',
             condition_question_id='TEST_3',
             answer_value='Yes', next_node='TEST_7', order_in_section=20,
+            alternate_condition_id='TEST_3', comparator_2='=', test_value_2='Yes',
         )
         Routing.objects.create(
             section=cls.q_section, current_node='TEST_11',
@@ -1668,6 +1671,7 @@ class TestConditionQuestionId(TestCase):
             section=cls.set_section, current_node='CQ_TEST_SET',
             condition_question_id='TEST_3',
             answer_value='Yes', next_node='TEST_11', order_in_section=10,
+            alternate_condition_id='TEST_3', comparator_2='=', test_value_2='Yes',
         )
         Routing.objects.create(
             section=cls.set_section, current_node='CQ_TEST_SET',
@@ -1690,6 +1694,7 @@ class TestConditionQuestionId(TestCase):
             section=cls.bogus_section, current_node='TEST_3',
             condition_question_id='BOGUS_Q999',
             answer_value='Yes', next_node=None, order_in_section=10,
+            alternate_condition_id='BOGUS_Q999', comparator_2='=', test_value_2='Yes',
         )
 
         # ── Section D: for admin round-trip test ──────────────────────────────────
@@ -1820,10 +1825,12 @@ class TestConditionalTableSection(TestCase):
         Routing.objects.create(
             section=cls.section, current_node='TEST_3',
             answer_value='Yes', next_node='TEST_11', order_in_section=10,
+            comparator_1='=', test_value_1='Yes',
         )
         Routing.objects.create(
             section=cls.section, current_node='TEST_3',
             answer_value='No', next_node=None, order_in_section=20,
+            comparator_1='=', test_value_1='No',
         )
         Routing.objects.create(
             section=cls.section, current_node='TEST_11',
@@ -1869,6 +1876,7 @@ class TestConditionalTableSection(TestCase):
         Routing.objects.create(
             section=cls.re_section, current_node='CTS_RE_Q1',
             answer_value='Yes', next_node=None, order_in_section=10,
+            comparator_1='=', test_value_1='Yes',
         )
 
         # Section for set-member pruning regression test (D21)
@@ -1930,10 +1938,12 @@ class TestConditionalTableSection(TestCase):
         Routing.objects.create(
             section=cls.amend_section, current_node='TEST_3',
             answer_value='Yes', next_node='TEST_11', order_in_section=20,
+            comparator_1='=', test_value_1='Yes',
         )
         Routing.objects.create(
             section=cls.amend_section, current_node='TEST_3',
             answer_value='No', next_node=None, order_in_section=30,
+            comparator_1='=', test_value_1='No',
         )
         Routing.objects.create(
             section=cls.amend_section, current_node='TEST_11',
@@ -3064,6 +3074,302 @@ class TestRoutedSectionCache(TestCase):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# PHASE 5: compound-condition routing evaluation
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestCompoundConditionRouting(TestCase):
+    """
+    Unit tests for the Phase 5 compound-condition routing engine.
+
+    Tests the new _evaluate_routing(routing_table, current_node, all_answers)
+    signature directly — no HTTP client, no session, no DB. The routing_table
+    dicts include the new Phase 3/4 compound-condition fields:
+      comparator_1, test_value_1 (slot 1: current node's own answer)
+      alternate_condition_id, comparator_2, test_value_2 (slot 2: another question)
+
+    The HMRC_46/HMRC_14 test case is drawn directly from the Handoff note
+    and IHT_ownership_branch_questions.md: HMRC_46 is the ownership-type
+    question (sole / joint / tenants in common), HMRC_14 is the case-level
+    marriage question. The sole-ownership branch splits on HMRC_14 — a
+    compound condition the old single-slot model couldn't express.
+
+    Five cases per the original spec:
+      1. Unconditional catch-all
+      2. Slot-1-only (current-node answer)
+      3. Slot-2-only (alternate-question answer, old condition_question_id pattern)
+      4. Both slots — the HMRC_46/HMRC_14 sole-ownership compound example
+      5. Numeric comparator
+    """
+
+    @staticmethod
+    def _row(current_node, next_node, comp1=None, tv1=None,
+              alt_id=None, comp2=None, tv2=None):
+        """Helper: build a routing_table row dict with new compound fields."""
+        return {
+            'current_node':           current_node,
+            'next_node':              next_node,
+            # Old fields — present in dict but unused by new _evaluate_routing
+            'condition_question_id':  None,
+            'answer_value':           None,
+            'comparator':             None,
+            'threshold_value':        None,
+            # New compound-condition fields
+            'comparator_1':           comp1,
+            'test_value_1':           tv1,
+            'alternate_condition_id': alt_id,
+            'comparator_2':           comp2,
+            'test_value_2':           tv2,
+        }
+
+    def setUp(self):
+        from core.views_layer2 import _evaluate_routing
+        self._eval = _evaluate_routing
+
+    # ── Case 1: unconditional catch-all ──────────────────────────────────────
+
+    def test_unconditional_row_matches_any_answer(self):
+        """A row with no comparators set matches regardless of all_answers."""
+        table = [self._row('Q1', 'Q2')]   # comp1=None, comp2=None → unconditional
+        next_node, found = self._eval(table, 'Q1', {'Q1': 'anything'})
+        self.assertTrue(found)
+        self.assertEqual(next_node, 'Q2')
+
+    def test_unconditional_row_matches_when_answer_absent(self):
+        """Unconditional fires even when all_answers has no entry for the node."""
+        table = [self._row('Q1', None)]   # next_node=None means END
+        next_node, found = self._eval(table, 'Q1', {})
+        self.assertTrue(found)
+        self.assertIsNone(next_node)    # END
+
+    def test_unconditional_is_fallback_behind_conditional(self):
+        """Conditional match takes priority over unconditional; unconditional
+        is the fallback when no conditional row matches."""
+        table = [
+            self._row('Q1', 'Q_yes', comp1='=', tv1='Yes'),
+            self._row('Q1', 'Q_catch', ),   # unconditional catch-all
+        ]
+        # Conditional matches → goes to Q_yes
+        next_node, found = self._eval(table, 'Q1', {'Q1': 'Yes'})
+        self.assertTrue(found)
+        self.assertEqual(next_node, 'Q_yes')
+
+        # No conditional match → falls through to catch-all
+        next_node, found = self._eval(table, 'Q1', {'Q1': 'No'})
+        self.assertTrue(found)
+        self.assertEqual(next_node, 'Q_catch')
+
+    # ── Case 2: slot-1-only (current-node's own answer) ──────────────────────
+
+    def test_slot1_equality_match(self):
+        """comp1='=' matches the current node's answer exactly (case-insensitive)."""
+        table = [self._row('Q1', 'Q2', comp1='=', tv1='Yes')]
+        next_node, found = self._eval(table, 'Q1', {'Q1': 'yes'})   # lowercase
+        self.assertTrue(found)
+        self.assertEqual(next_node, 'Q2')
+
+    def test_slot1_equality_no_match_returns_not_found(self):
+        """No match and no unconditional → found=False."""
+        table = [self._row('Q1', 'Q2', comp1='=', tv1='Yes')]
+        next_node, found = self._eval(table, 'Q1', {'Q1': 'No'})
+        self.assertFalse(found)
+        self.assertIsNone(next_node)
+
+    def test_slot1_not_equal_comparator(self):
+        """comp1='<>' matches when the answer differs from tv1."""
+        table = [
+            self._row('Q1', 'Q_other', comp1='<>', tv1='Yes'),
+            self._row('Q1', 'Q_yes',   comp1='=',  tv1='Yes'),
+        ]
+        # '<>' row fires first for 'No'
+        next_node, found = self._eval(table, 'Q1', {'Q1': 'No'})
+        self.assertTrue(found)
+        self.assertEqual(next_node, 'Q_other')
+
+        # '=' row fires first for 'Yes' (listed second but '<>' doesn't match)
+        next_node, found = self._eval(table, 'Q1', {'Q1': 'Yes'})
+        self.assertTrue(found)
+        self.assertEqual(next_node, 'Q_yes')
+
+    def test_slot1_semicolon_delimited_target(self):
+        """tv1 may be semicolon-delimited; any match is sufficient for '='."""
+        table = [self._row('Q1', 'Q2', comp1='=', tv1='Yes;Maybe')]
+        self.assertTrue(self._eval(table, 'Q1', {'Q1': 'Maybe'})[1])
+        self.assertTrue(self._eval(table, 'Q1', {'Q1': 'Yes'})[1])
+        self.assertFalse(self._eval(table, 'Q1', {'Q1': 'No'})[1])
+
+    def test_slot1_list_answer(self):
+        """List answers (checkbox) are supported for slot-1 equality."""
+        table = [self._row('Q1', 'Q2', comp1='=', tv1='Red')]
+        # List contains the target → match
+        next_node, found = self._eval(table, 'Q1', {'Q1': ['Red', 'Blue']})
+        self.assertTrue(found)
+        # List does not contain target → no match
+        _, found2 = self._eval(table, 'Q1', {'Q1': ['Green', 'Blue']})
+        self.assertFalse(found2)
+
+    # ── Case 3: slot-2-only (alternate question's answer) ────────────────────
+
+    def test_slot2_only_tests_alternate_question(self):
+        """With only comp2/alt_id set, slot 1 passes unconditionally and slot 2
+        tests the alternate question — this is the old condition_question_id
+        routing pattern (HMRC_48/49/47 all use HMRC_14 as their cqid)."""
+        table = [
+            self._row('HMRC_48', 'HMRC_50',
+                      alt_id='HMRC_14', comp2='=', tv2='Yes'),
+            self._row('HMRC_48', 'HMRC_47'),   # unconditional fallback
+        ]
+        # HMRC_14='Yes' → conditional row fires
+        next_node, found = self._eval(
+            table, 'HMRC_48', {'HMRC_48': 'anything', 'HMRC_14': 'Yes'}
+        )
+        self.assertTrue(found)
+        self.assertEqual(next_node, 'HMRC_50')
+
+        # HMRC_14='No' → conditional doesn't match → catch-all
+        next_node, found = self._eval(
+            table, 'HMRC_48', {'HMRC_48': 'anything', 'HMRC_14': 'No'}
+        )
+        self.assertTrue(found)
+        self.assertEqual(next_node, 'HMRC_47')
+
+    # ── Case 4: both slots — HMRC_46/HMRC_14 sole-ownership compound example ─
+
+    def test_both_slots_sole_ownership_compound_condition(self):
+        """
+        HMRC_46 is the ownership-type question (sole / joint tenants / tenants
+        in common). HMRC_14 is the case-level marriage question (Yes/No), asked
+        once per case before the asset rows begin.
+
+        The sole-ownership branch splits on marital status (HMRC_14):
+          sole + married (HMRC_14=Yes) → HMRC_55 (spouse-destination question)
+          sole + not married             → HMRC_60 (valuation evidence)
+          joint tenants                  → HMRC_48 (number of joint owners)
+          tenants in common              → HMRC_49 (number / share details)
+
+        The first two rows are compound (AND): both HMRC_46 and HMRC_14 must
+        satisfy their respective slots. This is the case the old single-slot
+        condition_question_id model could not express — it could test HMRC_14
+        OR HMRC_46, never both simultaneously on one row.
+        """
+        table = [
+            # Sole + married → HMRC_55
+            self._row('HMRC_46', 'HMRC_55',
+                      comp1='=', tv1='Sole ownership of the deceased',
+                      alt_id='HMRC_14', comp2='=', tv2='Yes'),
+            # Sole + not married → HMRC_60
+            self._row('HMRC_46', 'HMRC_60',
+                      comp1='=', tv1='Sole ownership of the deceased',
+                      alt_id='HMRC_14', comp2='<>', tv2='Yes'),
+            # Joint tenants (slot-1 only) → HMRC_48
+            self._row('HMRC_46', 'HMRC_48',
+                      comp1='=', tv1='Joint names'),
+            # Tenants in common (slot-1 only) → HMRC_49
+            self._row('HMRC_46', 'HMRC_49',
+                      comp1='=', tv1='Tenants in common'),
+        ]
+
+        # Case A: sole ownership, deceased was married → HMRC_55
+        nxt, found = self._eval(
+            table, 'HMRC_46',
+            {'HMRC_46': 'Sole ownership of the deceased', 'HMRC_14': 'Yes'}
+        )
+        self.assertTrue(found)
+        self.assertEqual(nxt, 'HMRC_55', 'Sole+married should route to HMRC_55')
+
+        # Case B: sole ownership, not married → HMRC_60
+        nxt, found = self._eval(
+            table, 'HMRC_46',
+            {'HMRC_46': 'Sole ownership of the deceased', 'HMRC_14': 'No'}
+        )
+        self.assertTrue(found)
+        self.assertEqual(nxt, 'HMRC_60', 'Sole+not married should route to HMRC_60')
+
+        # Case C: joint tenants, married (HMRC_14 value is irrelevant — slot 2 absent)
+        nxt, found = self._eval(
+            table, 'HMRC_46',
+            {'HMRC_46': 'Joint names', 'HMRC_14': 'Yes'}
+        )
+        self.assertTrue(found)
+        self.assertEqual(nxt, 'HMRC_48', 'Joint names should route to HMRC_48')
+
+        # Case D: tenants in common
+        nxt, found = self._eval(
+            table, 'HMRC_46',
+            {'HMRC_46': 'Tenants in common', 'HMRC_14': 'No'}
+        )
+        self.assertTrue(found)
+        self.assertEqual(nxt, 'HMRC_49', 'Tenants in common should route to HMRC_49')
+
+        # Case E: sole + married, but HMRC_14 absent from answers (not yet answered)
+        # Slot 2 receives None → _matches returns False → first two rows miss →
+        # Joint and TIC rows also miss → no match at all (found=False, no catch-all).
+        _, found = self._eval(
+            table, 'HMRC_46',
+            {'HMRC_46': 'Sole ownership of the deceased'}  # HMRC_14 missing
+        )
+        self.assertFalse(found,
+            'Missing alternate-question answer should yield found=False '
+            '(no catch-all row in this table)')
+
+    # ── Case 5: numeric comparator ────────────────────────────────────────────
+
+    def test_numeric_slot1_less_than(self):
+        """comp1='<' with a numeric test_value_1 routes on the current node's
+        numeric answer. Mirrors a future threshold-based routing row."""
+        table = [
+            self._row('ESTATE_VALUE', 'BELOW_THRESHOLD', comp1='<',  tv1='325000'),
+            self._row('ESTATE_VALUE', 'ABOVE_THRESHOLD', comp1='>=', tv1='325000'),
+        ]
+        nxt, found = self._eval(table, 'ESTATE_VALUE', {'ESTATE_VALUE': '200000'})
+        self.assertTrue(found)
+        self.assertEqual(nxt, 'BELOW_THRESHOLD')
+
+        nxt, found = self._eval(table, 'ESTATE_VALUE', {'ESTATE_VALUE': '500000'})
+        self.assertTrue(found)
+        self.assertEqual(nxt, 'ABOVE_THRESHOLD')
+
+        # Exactly at threshold → '< 325000' fails; '>= 325000' matches
+        nxt, found = self._eval(table, 'ESTATE_VALUE', {'ESTATE_VALUE': '325000'})
+        self.assertTrue(found)
+        self.assertEqual(nxt, 'ABOVE_THRESHOLD')
+
+    def test_numeric_slot2(self):
+        """Numeric comparator on slot 2 (alternate question), AND-ed with slot 1."""
+        table = [
+            self._row('Q_region', 'Q_wales_small',
+                      comp1='=', tv1='Wales',
+                      alt_id='Q_value', comp2='<', tv2='2000'),
+            self._row('Q_region', 'Q_wales_large',
+                      comp1='=', tv1='Wales',
+                      alt_id='Q_value', comp2='>=', tv2='2000'),
+            self._row('Q_region', 'Q_other'),   # unconditional for non-Wales
+        ]
+        # Wales + value < 2000 → first compound row
+        nxt, found = self._eval(table, 'Q_region',
+                                {'Q_region': 'Wales', 'Q_value': '1500'})
+        self.assertTrue(found)
+        self.assertEqual(nxt, 'Q_wales_small')
+
+        # Wales + value >= 2000 → second compound row
+        nxt, found = self._eval(table, 'Q_region',
+                                {'Q_region': 'Wales', 'Q_value': '2500'})
+        self.assertTrue(found)
+        self.assertEqual(nxt, 'Q_wales_large')
+
+        # Non-numeric answer where numeric expected → slot 2 fails → catch-all
+        nxt, found = self._eval(table, 'Q_region',
+                                {'Q_region': 'Wales', 'Q_value': 'unknown'})
+        self.assertTrue(found)
+        self.assertEqual(nxt, 'Q_other')
+
+        # Non-Wales → neither compound row matches slot 1 → catch-all
+        nxt, found = self._eval(table, 'Q_region',
+                                {'Q_region': 'England', 'Q_value': '1000'})
+        self.assertTrue(found)
+        self.assertEqual(nxt, 'Q_other')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # PHASE 4 PRE-FLIGHT: routing equivalence check
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -3258,7 +3564,7 @@ class TestRoutingEquivalence(TestCase):
           - Numeric comparator rows: no live rows today but decision-table
             mapping handles them; the test will exercise them if any are added
         """
-        from core.views_layer2 import _evaluate_routing, _resolve_routing_answer
+        from core.views_layer2 import _evaluate_routing  # noqa: used for new-layout verification
 
         section_ids = list(
             Routing.objects.values_list('section_id', flat=True).distinct()
@@ -3338,12 +3644,11 @@ class TestRoutingEquivalence(TestCase):
                     # the current_node key so both old and new eval can find it.
                     all_answers = {effective_qid: test_val, current_node: test_val}
 
-                    # OLD evaluation.
-                    resolved = _resolve_routing_answer(
-                        old_routing_table, current_node, all_answers
-                    )
-                    old_next, old_found = _evaluate_routing(
-                        old_routing_table, current_node, resolved
+                    # OLD evaluation: Python decision-table prediction of new fields.
+                    # (Migration 0019 has already run; this path uses the Python
+                    # mapping to verify it matches the DB-backed new evaluation.)
+                    old_next, old_found = self._evaluate_new_layout(
+                        new_routing_table, current_node, all_answers
                     )
 
                     # NEW evaluation.

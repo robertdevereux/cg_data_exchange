@@ -48,93 +48,101 @@ from .models import (
 from .session import clear_section_session, get_acting_for_name, get_session, update_session
 
 
-# ── Routing evaluation helper ─────────────────────────────────────────────────
+# ── Routing evaluation helpers ────────────────────────────────────────────────
 
 _UNSET = object()   # sentinel: "no route found yet"
 
 
-def _resolve_routing_answer(routing_table, current_node, all_answers):
-    """Return the answer value to test when evaluating routing from current_node.
+def _matches(comparator, actual, target):
+    """Evaluate one compound-condition slot: does `actual` satisfy `comparator`
+    against `target`? Shared by slot 1 and slot 2.
 
-    If any routing row for current_node has a condition_question_id set, return
-    the stored answer for that question. Where all rows share the same
-    condition_question_id (the expected pattern), returns that answer.
-
-    If no condition_question_id is set on any row (standard behaviour), returns
-    the current node's own answer from all_answers.
-
-    Note: where rows for the same current_node carry *different*
-    condition_question_ids the first one found is used. That pattern is out of
-    scope for this spec (deferred to the Conditional Table spec).
+    For '=' and '<>': case-insensitive; target may be semicolon-delimited
+    (any single match is sufficient for '='; all must mismatch for '<>').
+    List `actual` values are supported (checkbox answers).
+    For numeric comparators ('<', '<=', '>', '>='): both values are coerced
+    to float; coercion failure means no match.
     """
+    if actual is None:
+        return False
+
+    if comparator in ('=', '<>'):
+        allowed = {v.strip().lower() for v in str(target).split(';')}
+        if isinstance(actual, list):
+            actual_vals = {v.strip().lower() for v in actual}
+        else:
+            actual_vals = {str(actual).strip().lower()}
+        matched = bool(actual_vals & allowed)
+        return matched if comparator == '=' else not matched
+
+    try:
+        actual_num = float(str(actual).strip())
+        target_num = float(str(target).strip())
+    except (TypeError, ValueError):
+        return False
+
+    if comparator == '<':  return actual_num < target_num
+    if comparator == '<=': return actual_num <= target_num
+    if comparator == '>':  return actual_num > target_num
+    if comparator == '>=': return actual_num >= target_num
+
+    raise ValueError(f'Unhandled comparator {comparator!r}')   # unreachable
+
+
+# ── DEAD CODE — superseded by compound-condition _evaluate_routing (Phase 5) ─
+# Kept until the old Routing fields (condition_question_id, answer_value,
+# comparator, threshold_value) are formally removed in a future session.
+# Was called as:
+#   routing_answer = _resolve_routing_answer(routing_table, node, all_answers)
+#   next_node, found = _evaluate_routing(routing_table, node, routing_answer)
+# New call (Phase 5+):
+#   next_node, found = _evaluate_routing(routing_table, node, all_answers)
+def _resolve_routing_answer(routing_table, current_node, all_answers):  # noqa: dead-code
     for row in routing_table:
         if row['current_node'] == current_node and row.get('condition_question_id'):
-            cqid = row['condition_question_id']
-            return all_answers.get(cqid, '')
+            return all_answers.get(row['condition_question_id'], '')
     return all_answers.get(current_node, '')
+# ─────────────────────────────────────────────────────────────────────────────
 
 
-def _evaluate_routing(routing_table, question_id, answer):
-    """Find the next question_id for a given question and answer.
+def _evaluate_routing(routing_table, current_node, all_answers):
+    """Find the next node for a given node using compound-condition routing.
 
     Returns (next_node, found):
       next_node — the routing target, or None meaning END
-      found            — False if no matching route exists (data error)
+      found     — False if no matching route exists (data error)
 
-    Matching rules:
-    - Conditional rows (answer_value not None) are checked first.
-      • If the row has a non-null comparator and threshold_value, the answer
-        is converted to Decimal and compared: decimal(answer) [comparator]
-        threshold_value.  If conversion fails, the row does not match.
-      • Otherwise answer_value may be semicolon-delimited; any match is
-        sufficient.  Comparison is case-insensitive.  answer may be a list
-        (checkbox).
-    - If no conditional row matches, the unconditional row (answer_value
-      None) is used as fallback.
+    Evaluation rule (two-slot AND model; see routing_engine_prototype.py):
+      - Neither comparator set → unconditional catch-all (last one set wins
+                                  when multiple unconditional rows exist)
+      - Only comparator_1 set → slot-1 test: current node's own answer
+      - Only comparator_2 set → slot-2 test: alternate_condition_id's answer
+      - Both set              → both must match (AND)
+    First conditional match wins; unconditional is fallback.
     """
     conditional_next = _UNSET
     unconditional_next = _UNSET
 
     for row in routing_table:
-        if row['current_node'] != question_id:
+        if row['current_node'] != current_node:
             continue
 
-        comparator    = row.get('comparator')
-        threshold_val = row.get('threshold_value')
+        comp1  = row.get('comparator_1')
+        tv1    = row.get('test_value_1')
+        alt_id = row.get('alternate_condition_id')
+        comp2  = row.get('comparator_2')
+        tv2    = row.get('test_value_2')
 
-        if row['answer_value'] is not None:
-            if comparator and threshold_val is not None:
-                # Scalar comparison branch
-                try:
-                    numeric_answer = Decimal(str(answer).strip())
-                except (InvalidOperation, ValueError):
-                    is_match = False
-                else:
-                    if comparator == '=':
-                        is_match = numeric_answer == threshold_val
-                    elif comparator == '<':
-                        is_match = numeric_answer < threshold_val
-                    elif comparator == '<=':
-                        is_match = numeric_answer <= threshold_val
-                    elif comparator == '>':
-                        is_match = numeric_answer > threshold_val
-                    elif comparator == '>=':
-                        is_match = numeric_answer >= threshold_val
-                    else:
-                        is_match = False
-            else:
-                # Standard equality / set-membership match
-                allowed = {v.strip().lower() for v in str(row['answer_value']).split(';')}
-                if isinstance(answer, list):
-                    is_match = any(v.strip().lower() in allowed for v in answer)
-                else:
-                    is_match = str(answer).strip().lower() in allowed
-
-            if is_match:
-                conditional_next = row['next_node']
-                break   # first conditional match wins
-        else:
+        if comp1 is None and comp2 is None:
             unconditional_next = row['next_node']   # last unconditional wins
+            continue
+
+        slot_1_ok = _matches(comp1, all_answers.get(current_node), tv1) if comp1 is not None else True
+        slot_2_ok = _matches(comp2, all_answers.get(alt_id),       tv2) if comp2 is not None else True
+
+        if slot_1_ok and slot_2_ok:
+            conditional_next = row['next_node']
+            break   # first conditional match wins
 
     if conditional_next is not _UNSET:
         return conditional_next, True
@@ -189,12 +197,19 @@ def _build_section_tables(routing_rows):
     """
     routing_table = [
         {
+            # Old fields — kept until formally removed (see Phase 5 dead-code note)
             'current_node':          row.current_node,
             'condition_question_id': row.condition_question_id,
             'answer_value':          row.answer_value,
             'next_node':             row.next_node,
             'comparator':            row.comparator,
             'threshold_value':       row.threshold_value,
+            # Compound-condition fields (Phase 3/4; evaluated by _evaluate_routing Phase 5+)
+            'comparator_1':          row.comparator_1,
+            'test_value_1':          row.test_value_1,
+            'alternate_condition_id': row.alternate_condition_id,
+            'comparator_2':          row.comparator_2,
+            'test_value_2':          row.test_value_2,
         }
         for row in routing_rows
     ]
@@ -844,8 +859,7 @@ def _process_answer(request, section, section_id, question_id, q_meta, pss):
 
     # ── Evaluate routing ──────────────────────────────────────────────────────
     routing_table = pss.get('routing_table', [])
-    routing_answer = _resolve_routing_answer(routing_table, question_id, basic_answers)
-    next_qid, found = _evaluate_routing(routing_table, question_id, routing_answer)
+    next_qid, found = _evaluate_routing(routing_table, question_id, basic_answers)
 
     if not found:
         # Routing data error — fall through to review as a safe fallback
@@ -1523,8 +1537,7 @@ def section_table_routed_change(request, section_id, row_index):
     while node is not None:
         asked_ids.append(node)
         all_answers = {**ext_data, **dict(saved_row)}
-        routing_answer = _resolve_routing_answer(routing_table, node, all_answers)
-        next_node, found = _evaluate_routing(routing_table, node, routing_answer)
+        next_node, found = _evaluate_routing(routing_table, node, all_answers)
         if not found:
             break
         node = next_node
@@ -1618,17 +1631,15 @@ def section_table_routed_question(request, section_id, question_or_set_id):
                 else:
                     field_values[qid] = request.POST.get(qid, '').strip()
 
-            # Routing answer: resolve via condition_question_id if set
             all_answers = {**{k: v for k, v in row_data.items() if not k.startswith('_')},
                            **field_values}
-            routing_answer = _resolve_routing_answer(routing_table, node_id, all_answers)
-            next_node, found = _evaluate_routing(routing_table, node_id, routing_answer)
+            next_node, found = _evaluate_routing(routing_table, node_id, all_answers)
 
             if not found:
                 logger.error(
                     'section_table_routed_question: no matching route for section=%s '
-                    'node=%s routing_answer=%r — routing data error, row not committed.',
-                    section_id, node_id, routing_answer,
+                    'node=%s — routing data error, row not committed.',
+                    section_id, node_id,
                 )
                 meta = set_table[node_id]
                 member_dicts = []
@@ -1679,14 +1690,13 @@ def section_table_routed_question(request, section_id, question_or_set_id):
 
             all_answers = {**{k: v for k, v in row_data.items() if not k.startswith('_')},
                            node_id: answer}
-            routing_answer = _resolve_routing_answer(routing_table, node_id, all_answers)
-            next_node, found = _evaluate_routing(routing_table, node_id, routing_answer)
+            next_node, found = _evaluate_routing(routing_table, node_id, all_answers)
 
             if not found:
                 logger.error(
                     'section_table_routed_question: no matching route for section=%s '
-                    'node=%s routing_answer=%r — routing data error, row not committed.',
-                    section_id, node_id, routing_answer,
+                    'node=%s — routing data error, row not committed.',
+                    section_id, node_id,
                 )
                 question_dict = {
                     'question_id':   node_id,
@@ -1915,8 +1925,7 @@ def section_table_row_review(request, section_id, row_index):
     node = tables['first_node']
     while node is not None:
         asked_ids.append(node)
-        routing_answer = _resolve_routing_answer(routing_table, node, {**ext_data, **dict(saved_row)})
-        next_node, found = _evaluate_routing(routing_table, node, routing_answer)
+        next_node, found = _evaluate_routing(routing_table, node, {**ext_data, **dict(saved_row)})
         if not found:
             break
         node = next_node
@@ -2022,8 +2031,7 @@ def section_table_routed_amend(request, section_id, row_index, node_id):
     node = tables['first_node']
     while node is not None:
         asked_ids.append(node)
-        routing_answer = _resolve_routing_answer(routing_table, node, {**ext_data, **dict(saved_row)})
-        next_node, found = _evaluate_routing(routing_table, node, routing_answer)
+        next_node, found = _evaluate_routing(routing_table, node, {**ext_data, **dict(saved_row)})
         if not found:
             break
         node = next_node
@@ -2439,13 +2447,11 @@ def _process_set_answer(request, section, section_id, set_id, set_meta, pss):
         asked_ids.append(set_id)
 
     # ── Evaluate routing ──────────────────────────────────────────────────────
-    # Resolve which answer drives routing for this set node.
     # field_values contains all answers just submitted; merge with basic_answers
-    # so condition_question_id can reference any answered question.
-    routing_answer = _resolve_routing_answer(
+    # so alternate_condition_id can reference any already-answered question.
+    next_node, found = _evaluate_routing(
         routing_table, set_id, {**basic_answers, **field_values}
     )
-    next_node, found = _evaluate_routing(routing_table, set_id, routing_answer)
 
     if not found:
         update_session(request, {'basic_answers': basic_answers, 'asked_ids': asked_ids})
