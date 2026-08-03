@@ -607,6 +607,8 @@ summary here for backlog tracking.
 - `c5707fe` — Phase 5: _evaluate_routing ported to two-slot compound-condition logic; 12 new
   tests (TestCompoundConditionRouting); old Routing fields marked dead; 220 tests pass.
   Doc impact: build doc §routing-engine (evaluation logic), §dead-fields note.
+- `1a5b851` — Fix: stray _resolve_routing_answer call in interfaces.py
+  get_asked_answers_for_section; 2 regression tests; 222 tests pass. Doc impact: none.
 
 ---
 
