@@ -308,7 +308,6 @@ def get_asked_answers_for_section(case, section):
     from .views_layer2 import (
         _build_section_tables,
         _evaluate_routing,
-        _resolve_routing_answer,
     )
 
     routing_rows = Routing.objects.filter(section=section).order_by('order_in_section')
@@ -352,8 +351,7 @@ def get_asked_answers_for_section(case, section):
                 'answer':        answers[node],
             })
 
-        routing_answer = _resolve_routing_answer(tables['routing_table'], node, answers)
-        next_node, found = _evaluate_routing(tables['routing_table'], node, routing_answer)
+        next_node, found = _evaluate_routing(tables['routing_table'], node, answers)
         if not found:
             break
         node = next_node

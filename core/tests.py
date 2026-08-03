@@ -1794,6 +1794,73 @@ class TestConditionQuestionId(TestCase):
         self.assertEqual(row.condition_question_id, 'TEST_11')
 
 
+    # ── Test 6: get_asked_answers_for_section with conditional routing ───────────
+
+    def test_get_asked_answers_traverses_conditional_branch(self):
+        """get_asked_answers_for_section must not throw when _evaluate_routing is
+        called on a node with a conditional row (alternate_condition_id set).
+
+        CQ_TEST_S1: TEST_3 (unconditional → TEST_11) → TEST_11 (conditioned on
+        TEST_3='Yes' → TEST_7; fallback → END).  With TEST_3='Yes' the
+        conditional row fires; the function must return all three nodes walked.
+
+        This is a regression test for the interfaces.py bug where _resolve_routing_answer
+        was still called (returning a string), causing AttributeError on .get() inside
+        _evaluate_routing when any conditional row was present.
+        """
+        from .interfaces import get_asked_answers_for_section
+
+        carla = User.objects.get(username='carla')
+        r_simple = Regime.objects.get(regime_id='TEST_SIMPLE')
+        case = Case.objects.create(
+            user=carla,
+            regime=r_simple,
+            case_id='00000000-0000-0000-0000-00000000cafe',
+            status='draft',
+        )
+        # Answers: TEST_3=Yes, TEST_11=42, TEST_7=some text
+        Answer.objects.bulk_create([
+            Answer(user=carla, actor=carla, regime=r_simple, case=case,
+                   section=self.q_section, question_id='TEST_3',  answer='Yes'),
+            Answer(user=carla, actor=carla, regime=r_simple, case=case,
+                   section=self.q_section, question_id='TEST_11', answer='42'),
+            Answer(user=carla, actor=carla, regime=r_simple, case=case,
+                   section=self.q_section, question_id='TEST_7',  answer='some text'),
+        ])
+
+        result = get_asked_answers_for_section(case, self.q_section)
+
+        walked_ids = [r['question_id'] for r in result]
+        self.assertEqual(walked_ids, ['TEST_3', 'TEST_11', 'TEST_7'],
+                         f'Expected full conditional path; got {walked_ids}')
+
+    def test_get_asked_answers_traverses_unconditional_fallback(self):
+        """With TEST_3='No' the conditional row does NOT fire; the unconditional
+        fallback routes TEST_11 → END, so only TEST_3 + TEST_11 are returned."""
+        from .interfaces import get_asked_answers_for_section
+
+        carla = User.objects.get(username='carla')
+        r_simple = Regime.objects.get(regime_id='TEST_SIMPLE')
+        case = Case.objects.create(
+            user=carla,
+            regime=r_simple,
+            case_id='00000000-0000-0000-0000-00000000caff',
+            status='draft',
+        )
+        Answer.objects.bulk_create([
+            Answer(user=carla, actor=carla, regime=r_simple, case=case,
+                   section=self.q_section, question_id='TEST_3',  answer='No'),
+            Answer(user=carla, actor=carla, regime=r_simple, case=case,
+                   section=self.q_section, question_id='TEST_11', answer='7'),
+        ])
+
+        result = get_asked_answers_for_section(case, self.q_section)
+
+        walked_ids = [r['question_id'] for r in result]
+        self.assertEqual(walked_ids, ['TEST_3', 'TEST_11'],
+                         f'Expected fallback path (no TEST_7); got {walked_ids}')
+
+
 class TestConditionalTableSection(TestCase):
     """
     Full tests for the section_type=2 Conditional Table Section implementation.
