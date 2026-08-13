@@ -30,6 +30,19 @@ coherence audit (Item 2, 7 July 2026)**, not just the original observation.
 ### ~~New, 4 July 2026: Triage-set completion gating~~ — **Fixed (31 July 2026)**
 ~~Confirmed as vacuous "Complete" from zero Yes-answers. Fixed: `if not set_items: continue` in `_build_action_list` omits empty-category rows entirely. See Completed (31 July 2026) below.~~
 
+### New, 3 August 2026: Author HMRC_46/HMRC_14 compound-condition routing rows
+The compound-condition routing engine (comparator_1/test_value_1/
+alternate_condition_id/comparator_2/test_value_2) is built and live, but
+the flagship example that motivated it — HMRC_46's ownership-type fork
+needing a second condition on HMRC_14 (marital status) for the
+sole-ownership branch — has not itself been authored. HMRC_46's three
+existing rows (Sole ownership / Joint names / Tenants in common) each
+still carry only a slot-1 condition; the sole-ownership row needs
+splitting into two outcomes conditioned on HMRC_14, per the worked
+example in 260802_Handoff_core_session_refactor_and_compound_routing.md
+§3 and 260802_routing_engine_prototype.py's __main__ block. Needs the
+admin UX below, or manual/fixture creation in the interim.
+
 ### New, 31 July 2026: Tailor exit gate
 After the three triage pages are submitted and all triage sections are marked complete, check every Yes-answered triage question against `QUESTION_SCHEDULE_MAP` and built-section status — reusing `_get_built_schedule_items`'s existing logic. If any Yes-answered item maps to no built schedule section, redirect to a holding page naming the specific unbuilt items rather than allowing entry to an action list with dead-end `#` URLs. Log which triage questions triggered each block, for beta prioritisation.
 
@@ -83,6 +96,24 @@ The grant wizard at `/tools/actors/` needs an optional step:
 Shows dropdown of subject user's cases for the selected regime.
 Full scope matrix in Core Platform Reference section 6.
 Prompt already drafted — ready to fire at CC.
+
+### New, 3 August 2026: Admin UX for two-slot Routing conditions
+The Routing admin form still only surfaces the old fields (answer_value,
+condition_question_id, comparator, threshold_value). The five new
+compound-condition fields exist on the model and are evaluated correctly
+by _evaluate_routing, but have no ergonomic admin surface — new compound
+routing rows currently require manual DB/fixture creation. Blocks the
+HMRC_46/HMRC_14 item above from being done via the normal admin workflow.
+
+### New, 3 August 2026: Validation-strictness pass on compound Routing rows
+No model-level constraint prevents a self-contradictory row — e.g.
+comparator_2 set without alternate_condition_id. _evaluate_routing
+currently treats such a row as silently never-matching rather than
+erroring (_matches receives all_answers.get(None) → None → False). Low
+risk today (no live rows in this state), but worth a validation pass —
+either a model clean() method or a check in the routing admin tools —
+before authoring gets more widespread. See prototype's Outcome.
+__post_init__ for the equivalent guard in the reference implementation.
 
 ### New, 7 July 2026: Formalise orchestrate.py's direct core-internals access
 Per Coherence Audit Item 8: `orchestrate.py` currently reads `Section`,
@@ -285,6 +316,14 @@ and the sub-detail No-path questions are placeholders only.
 - **Routing display verbosity** — unconditional single routes display as
   "All other answers → [NEXT]" even when there is no branching. Cosmetic
   only, not a bug. Fix when convenient.
+
+- **New, 3 August 2026: Remove dead Routing fields and _resolve_routing_answer** —
+  condition_question_id, answer_value, comparator, threshold_value (model
+  fields) and _resolve_routing_answer (views_layer2.py) are dead — no
+  longer read by any evaluation path as of Phase 5 (3 August 2026).
+  Deliberately kept in place pending the admin UX update above and a final
+  grep confirming no remaining references. Requires a further migration to
+  drop the columns once removed.
 
 - **New, 7 July 2026: Split `views_admin_tools.py`** — flagged early in the
   audit/tidy session; at 3,300+ lines it is the largest file in the codebase
