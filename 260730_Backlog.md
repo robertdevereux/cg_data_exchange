@@ -30,6 +30,18 @@ coherence audit (Item 2, 7 July 2026)**, not just the original observation.
 ### ~~New, 4 July 2026: Triage-set completion gating~~ — **Fixed (31 July 2026)**
 ~~Confirmed as vacuous "Complete" from zero Yes-answers. Fixed: `if not set_items: continue` in `_build_action_list` omits empty-category rows entirely. See Completed (31 July 2026) below.~~
 
+### New, 15 August 2026: load_hmrc_s8_routing.py is stale and destructive if re-run
+The management command used to originally build HMRC_S8's routing describes
+a 25-row structure with the old node order (HMRC_46 before value) and
+HMRC_53 in the TIC branch — both since rebuilt (15 August 2026, see
+Completed). The live DB now has 30 rows in the corrected structure. This
+command is delete-then-recreate (idempotent by design) — if anyone runs it
+without first checking it against the current design, it will silently
+overwrite the live, tested, correct routing with the old, buggy version.
+Update the command to match the current 30-row structure, or delete it and
+rely on direct SQL (see 260815_Ownership_fork_routing_template.md) until a
+proper rebuild-script convention is agreed.
+
 ### New, 3 August 2026: Author HMRC_46/HMRC_14 compound-condition routing rows
 The compound-condition routing engine (comparator_1/test_value_1/
 alternate_condition_id/comparator_2/test_value_2) is built and live, but
