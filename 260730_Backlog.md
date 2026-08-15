@@ -639,6 +639,10 @@ summary here for backlog tracking.
   saw None for slot 2, silently failed, and fell through. Fix: scan both fields, deduplicated.
   2 new tests in TestRoutedSectionCache (EXT_ALT_S1 fixture); 224 tests pass (1 skipped).
   Doc impact: build doc §5 (type-2 routed table execution — external_condition_qids note).
+- `b5e55e1` — Docs: update Build_CORE_codebase_file_map, Build_CORE_data_model_and_interfaces,
+  Build_HMRC_IHT to reflect compound-routing session (Phases 1–5, 3 Aug) and 15 Aug fix.
+  New §11 in HMRC IHT doc for HMRC_S8 (30-row type-2 routing, read from live DB).
+  Doc impact: none (these ARE the docs).
 
 ---
 
