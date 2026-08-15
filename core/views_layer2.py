@@ -1303,14 +1303,14 @@ def load_cache_for_routed_section(request, section):
     cached dict on every subsequent call within the same visit.
 
     The returned dict includes all keys from _build_section_tables() plus:
-      external_condition_qids  — list of condition_question_id values from
+      external_condition_qids  — deduplicated list of question IDs from
           routing rows that are NOT already covered by question_node_ids or
-          question_to_set.keys(). These name questions from other sections
-          whose answers are needed for routing resolution but won't be found
-          by an Answer query scoped to this section alone.
-          Note: field name is condition_question_id now; this list must be
-          revisited in Phase 3 when the field is renamed alternate_condition_id
-          and extended to a two-slot layout.
+          question_to_set.keys(). Collected from both condition_question_id
+          (old single-slot, dead but still present on some rows) and
+          alternate_condition_id (new compound-condition slot-2 field).
+          These name questions from other sections whose answers are needed
+          for routing resolution but won't be found by an Answer query
+          scoped to this section alone.
     """
     cached = _section_cache_get(request, section.section_id)
     if cached is not None:
@@ -1323,17 +1323,24 @@ def load_cache_for_routed_section(request, section):
     )
     tables = _build_section_tables(routing_rows)
 
-    # Third source for answer fetching: condition_question_ids that name
-    # questions from outside this section's own node set. These must be
-    # fetched separately (without a section= filter) so routing can resolve
-    # them correctly when they appear as condition_question_id on a row.
+    # Third source for answer fetching: questions from outside this section's
+    # own node set that routing rows reference as a condition source. Must be
+    # fetched separately (without a section= filter) so _evaluate_routing has
+    # their answers in all_answers.
+    #
+    # Two fields can name an external question:
+    #   condition_question_id — old single-slot field (dead but not yet removed;
+    #       still present on some live rows authored before Phase 3).
+    #   alternate_condition_id — new compound-condition slot-2 field (Phase 3+).
+    # Both must be scanned. dict.fromkeys preserves insertion order and dedupes.
     covered = set(tables['question_node_ids']) | set(tables['question_to_set'].keys())
-    external_condition_qids = list(dict.fromkeys(
-        row['condition_question_id']
-        for row in tables['routing_table']
-        if row.get('condition_question_id')
-        and row['condition_question_id'] not in covered
-    ))
+    _raw_ext_qids = []
+    for row in tables['routing_table']:
+        for field in ('condition_question_id', 'alternate_condition_id'):
+            qid = row.get(field)
+            if qid and qid not in covered:
+                _raw_ext_qids.append(qid)
+    external_condition_qids = list(dict.fromkeys(_raw_ext_qids))
 
     data = {**tables, 'external_condition_qids': external_condition_qids}
     _section_cache_set(request, section.section_id, data)

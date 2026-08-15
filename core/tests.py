@@ -2962,6 +2962,29 @@ class TestRoutedSectionCache(TestCase):
             order_in_section=20,
         )
 
+        # ── Type-2 section for the alternate_condition_id external fetch test ─
+        # EXT_ALT_S1 uses a compound-condition row where slot 2 references TEST_3
+        # via alternate_condition_id (not condition_question_id). This is the
+        # pattern that was broken: load_cache_for_routed_section only scanned
+        # condition_question_id, so TEST_3 never landed in external_condition_qids
+        # and _evaluate_routing always saw None for slot 2.
+        # No unconditional fallback: if compound fails → found=False, unambiguous.
+        cls.alt_section = Section.objects.create(
+            section_id='EXT_ALT_S1',
+            section_name='External Alternate Condition Test',
+            section_type=2,
+            regime=r_simple,
+            display_question_ids='TEST_8',
+        )
+        Routing.objects.create(
+            section=cls.alt_section,
+            current_node='TEST_8',
+            comparator_1='=', test_value_1='Yes',
+            alternate_condition_id='TEST_3', comparator_2='=', test_value_2='Yes',
+            next_node=None,           # END — row committed when both slots match
+            order_in_section=10,
+        )
+
         # Pre-store the case-level answer for TEST_3 (owned by another section)
         case, _ = Case.objects.get_or_create(
             user=carla,
@@ -3138,6 +3161,79 @@ class TestRoutedSectionCache(TestCase):
         # Row committed via unconditional fallback
         at = AnswerTable.objects.get(user=carla, case=no_answer_case, section=self.ext_section)
         self.assertEqual(len(at.answer), 1)
+
+    # ── alternate_condition_id external fetch fix ─────────────────────────────
+
+    def test_alternate_condition_id_included_in_external_condition_qids(self):
+        """
+        load_cache_for_routed_section() must scan alternate_condition_id (the
+        Phase 3 compound-condition slot-2 field), not just condition_question_id,
+        when building external_condition_qids.
+
+        EXT_ALT_S1 has a routing row with alternate_condition_id='TEST_3'. TEST_3
+        is not a current_node in this section, so it must appear in
+        external_condition_qids for _fetch_external_answers to retrieve it.
+
+        This is the regression test for the bug introduced by Phase 3's rename
+        and missed in Phase 2/5 — the collection step was never updated to scan
+        the new field name.
+        """
+        from core.views_layer2 import load_cache_for_routed_section
+        from django.test import RequestFactory
+
+        factory = RequestFactory()
+        req = factory.get('/')
+        req.session = self.client.session
+
+        section = Section.objects.get(section_id='EXT_ALT_S1')
+        tables = load_cache_for_routed_section(req, section)
+
+        self.assertIn('TEST_3', tables['external_condition_qids'],
+            'TEST_3 is an alternate_condition_id from outside EXT_ALT_S1 — '
+            'must appear in external_condition_qids'
+        )
+        self.assertNotIn('TEST_8', tables['external_condition_qids'],
+            'TEST_8 is a current_node in EXT_ALT_S1 — must NOT be in external_condition_qids'
+        )
+
+    def test_alternate_condition_id_answer_fetched_and_routes_correctly(self):
+        """
+        A type-2 row journey in EXT_ALT_S1 routes using TEST_3's answer fetched
+        via alternate_condition_id. Both slot-1 (TEST_8='Yes') and slot-2
+        (TEST_3='Yes') must match for the compound row to fire and commit.
+
+        TEST_3='Yes' is stored under SIMPLE_S1 (another section) in cls.case.
+        Without the fix: TEST_3 not in external_condition_qids, ext_data={},
+        all_answers has no TEST_3, slot-2 fails, found=False, row not committed.
+        EXT_ALT_S1 has no unconditional fallback, so a routing miss is
+        unambiguous: found=False means no AnswerTable row, no 302 to /table/.
+        """
+        session = self.client.session
+        session['_section_cache'] = {}   # clear cache to force re-fetch
+        session.save()
+
+        r = self.client.get('/section/EXT_ALT_S1/table/add-routed/')
+        self.assertEqual(r.status_code, 302)
+        self.assertIn('TEST_8', r['Location'])
+
+        # POST TEST_8='Yes' — slot-1 matches; slot-2 needs TEST_3='Yes' from DB.
+        r = self.client.post('/section/EXT_ALT_S1/table/add-routed/TEST_8/',
+                             {'TEST_8': 'Yes'})
+        self.assertEqual(r.status_code, 302,
+            'Expected 302 (row committed); got %s — likely found=False because '
+            'alternate_condition_id external answer was not fetched' % r.status_code
+        )
+        self.assertIn('/table/', r['Location'],
+            'Expected redirect to /table/ after compound row fires; '
+            'alternate_condition_id fetch may have failed'
+        )
+
+        carla = User.objects.get(username='carla')
+        at = AnswerTable.objects.get(user=carla, case=self.case, section=self.alt_section)
+        self.assertEqual(len(at.answer), 1,
+            'AnswerTable row must be committed via compound-condition '
+            '(slot-2: alternate_condition_id=TEST_3)'
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
