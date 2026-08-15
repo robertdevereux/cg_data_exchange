@@ -1,12 +1,13 @@
 # cg_data_exchange — "Core Core" Map
-Date: 29 July 2026
+Date: 15 August 2026 (updated from 29 July 2026)
 Scope: `core` app's data model + execution engine + platform interface only.
 **Deliberately excludes** `views_admin_tools.py`, `urls_tools.py`, `admin.py`
 (admin tooling) and `management/commands/load_test_data.py` — separate
 problem, separate session.
-Source: `file_dump.txt` regenerated 29 July 2026, cross-checked against
-Core Platform Reference and HMRC IHT Reference. All "possible dead code"
-flags from the previous version have been resolved (see §11).
+Source: live codebase read directly 15 August 2026. Line counts from `wc -l`
+against current files; cross-checked against live DB. Reflects compound-condition
+routing engine (Phases 1–5, 3 August 2026) and the alternate_condition_id
+external-fetch fix (15 August 2026).
 
 ---
 
@@ -23,7 +24,7 @@ through. `views_gate.py` is the acting-for identity gate.
 
 ---
 
-## 2. Data model — `models.py` (823 lines)
+## 2. Data model — `models.py` (871 lines)
 
 Already well documented in Core Platform Reference §3. Three groups:
 - **Configuration:** `Regime`, `Department`, `Schedule`, `Section`,
@@ -37,7 +38,7 @@ in good shape; not a concern.
 
 ---
 
-## 3. Platform interface — `interfaces.py` (453 lines)
+## 3. Platform interface — `interfaces.py` (462 lines)
 *The documented contract dept apps call. Depts never touch models directly.*
 
 | Function | Role |
@@ -54,12 +55,34 @@ in good shape; not a concern.
 
 ---
 
-## 4. Execution engine — `views_layer2.py` (2,077 lines)
+## 4. Execution engine — `views_layer2.py` (2,476 lines)
 *Three distinct journeys bundled into one file, sharing a few helpers.*
 
 **Shared / routing:**
-`_resolve_routing_answer`, `_evaluate_routing`, `_build_crumbs`,
-`_get_or_create_case`
+`_matches`, `_evaluate_routing`, `_build_crumbs`, `_get_or_create_case`
+
+`_resolve_routing_answer` — **DEAD CODE** (Phase 5, 3 August 2026). Still
+present in the file (marked `# noqa: dead-code`) pending removal of the four
+old Routing model fields it depended on. Not called anywhere in active code.
+
+**Section metadata cache (Phase 1–2, 3 August 2026):**
+`_section_cache_get(request, section_id)`,
+`_section_cache_set(request, section_id, data)` — helpers for the
+`request.session['_section_cache']` namespace (see §4 session keys).
+
+`load_cache_for_fixed_table_section(request, section)` — fetches and caches
+column metadata (from `display_question_ids`) for a type-1 section. Returns
+a dict including `column_dicts`.
+
+`load_cache_for_routed_section(request, section)` — fetches and caches
+routing/question/set metadata (via `_build_section_tables`) for a type-2
+section. Returns the full `_build_section_tables` dict plus
+`external_condition_qids` (questions from other sections referenced via
+`condition_question_id` or `alternate_condition_id` that need fetching
+without a section= filter).
+
+`_fetch_external_answers(case, ext_qids)` — fetches `Answer` rows for
+`external_condition_qids`; returns `{question_id: answer}` dict.
 
 **Standard section journey (section_type=0):**
 `section_start` → `section_question` / `_process_answer` →
@@ -77,16 +100,17 @@ QuestionSet pages.
 `_build_section_tables`
 
 **Observation:** this is really three sub-systems (standard / flat table /
-routed table) living in one file, now **2,366 lines** (up from 2,077 after
-D18–D20 landed on 31 July 2026). D18 (row view/amend), D19 (numeric
-formatting), and D20 (radio_inline in routed table) all extended the
-routed-table journey. The split into e.g. `views_layer2_standard.py` /
-`views_layer2_table.py` is now more urgent than when first noted — worth
-scheduling as a dedicated TIDY session rather than a backlog line.
+routed table) living in one file, now **2,476 lines** (up from 2,366 after
+the compound-condition routing engine landed 3 August 2026 — Phases 1–5 plus
+the 15 August external-fetch fix added the cache helpers, _matches,
+_evaluate_routing rewrite, and the new test suite rows). The split into e.g.
+`views_layer2_standard.py` / `views_layer2_table.py` is now more urgent than
+when first noted — worth scheduling as a dedicated TIDY session rather than a
+backlog line.
 
 ---
 
-## 5. Navigation views — `views_layer1.py` (367) + `nav_reference.py` (249)
+## 5. Navigation views — `views_layer1.py` (~367) + `nav_reference.py` (76)
 
 | File | Functions |
 |---|---|
@@ -135,7 +159,23 @@ with it.
 
 ---
 
-## 10. App bootstrap / misc
+## 10. Tests — `tests.py` (3,834 lines)
+
+A single file containing all core and HMRC IHT tests. Key classes relevant
+to the routing engine:
+- `TestRoutedSectionCache` — type-2 cache query-count test (Phase 1
+  analogue), external `condition_question_id` fix (EXT_TEST_S1 fixture),
+  and external `alternate_condition_id` fix (EXT_ALT_S1 fixture, 15 August
+  2026)
+- `TestCompoundConditionRouting` — 12 unit tests for the Phase 5 two-slot
+  `_evaluate_routing` logic; no HTTP client, no session
+
+Current count: **224 tests** (1 skipped — QuestionSet consistency checker,
+deferred pending QuestionSet usage growth). 
+
+---
+
+## 11. App bootstrap / misc
 
 - `apps.py` — `_auto_grant_regimes` signal: auto-grants every new `User`
   self-permission on all non-PLATFORM regimes on creation.
@@ -147,7 +187,7 @@ All small and single-purpose. No concerns.
 
 ---
 
-## 11. Audit findings — status
+## 12. Audit findings — status
 
 1. ~~**`call_regime`/`call_schedules`/`call_sections`** — confirm live
    callers exist; if none, delete.~~ **Resolved (July 2026):** `call_schedules`
@@ -162,3 +202,14 @@ All small and single-purpose. No concerns.
    views and remain.
 4. ~~**`meta_processors.py`** — confirm live/dead status.~~ **Resolved (July
    2026):** confirmed dead — superseded by admin wizards; file deleted.
+5. **Dead Routing model fields and `_resolve_routing_answer`** — Open.
+   `condition_question_id`, `answer_value`, `comparator`, `threshold_value`
+   on `Routing`, and `_resolve_routing_answer` in `views_layer2.py`, are
+   dead as of Phase 5 (3 August 2026). Deliberately kept pending admin UX
+   update (new compound-condition field surfaces) and a final grep confirming
+   no remaining references. Requires a further migration to drop the columns.
+   See Backlog TIDY.
+6. **`_section_cache` session key** — raw `request.session`, not PSS. Added
+   by Phase 1/2 (3 August 2026). Cleared between section visits via
+   `_section_cache = {}` (in tests) or a new request session. Not yet listed
+   in Core Platform Reference §5's session-key table — update pending.

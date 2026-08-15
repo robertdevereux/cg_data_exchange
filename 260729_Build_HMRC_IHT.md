@@ -882,7 +882,168 @@ See Core Platform Reference section 5 for full detail.
 
 ---
 
-## 11. What is deferred
+## 11. HMRC_S8 — IHT405 property section (type-2 routed table)
+
+*Routing read directly from live DB (15 August 2026). 30 rows.*
+
+HMRC_S8 is the "Deceased's residence / property" section. Each property is
+one row in a repeating type-2 table. The row journey uses compound-condition
+routing (`alternate_condition_id='HMRC_14'`) at multiple branch points to
+branch on marital status (answered in S1) without re-asking it.
+
+`display_question_ids = 'HMRC_45;HMRC_46;HMRC_47'` — the summary table
+columns are the property address/reference (HMRC_45, inside SET10), the
+ownership type (HMRC_46), and the open market value (HMRC_47).
+`show_confirmation = True`.
+
+### 11a. Questions
+
+| ID | Type | Question (abbreviated) |
+|----|------|------------------------|
+| SET10 | QuestionSet | Property description and reference (includes HMRC_45) |
+| HMRC_47 | number | Open market value of the whole asset (£) |
+| HMRC_46 | radio | How was this asset owned? |
+| HMRC_48 | number | How many joint tenants owned this property in total? |
+| HMRC_49 | number | How many tenants in common owned this asset? |
+| HMRC_50 | radio | Is the deceased's spouse/civil partner one of the other owners? |
+| HMRC_51 | radio | Did the deceased own an equal share with other tenants in common? |
+| HMRC_52 | number | What was the deceased's share of this asset (%)? |
+| HMRC_55 | radio | How much of the deceased's share passes to the surviving spouse/civil partner? |
+| HMRC_54 | radio | Was the portion passing to the spouse specified as a value or a share? |
+| HMRC_61 | number | What value (£) passes to the spouse? |
+| HMRC_62 | number | What percentage of the deceased's share passes to the spouse? |
+| HMRC_60 | radio | Is the property value supported by a written professional valuation? |
+| HMRC_56 | radio | Was the property owned Freehold or Leasehold? |
+| HMRC_57 | radio | Was the property let? |
+| HMRC_58 | radio | Was the property value subject to any special factors? |
+| HMRC_59 | radio | Has the property been sold within 12 months of death? |
+
+HMRC_14 (marital status, answered in HMRC_S1) is referenced by routing rows
+via `alternate_condition_id` but is never asked again inside HMRC_S8.
+HMRC_48 (number of joint tenants) is similarly referenced as slot-2 source
+by the HMRC_50 routing row.
+
+### 11b. Row journey — top-level flow
+
+**Value-before-ownership ordering:** The journey collects the open market
+value (HMRC_47) *before* asking ownership type (HMRC_46). This is the live
+routing order; the display column order in `display_question_ids` differs.
+
+```
+SET10 → HMRC_47 → HMRC_46 → [ownership fork]
+```
+
+**HMRC_46 ownership fork (three-way + compound condition on HMRC_14):**
+
+| HMRC_46 answer | HMRC_14 (slot 2) | → next |
+|---|---|---|
+| Sole ownership of the deceased | Yes (married) | HMRC_55 (spousal destination) |
+| Sole ownership of the deceased | not Yes | HMRC_60 (valuation gate) |
+| Joint names | — | HMRC_48 (number of joint tenants) |
+| Tenants in common | — | HMRC_49 (number of TIC owners) |
+
+The first two rows are a compound condition: slot-1 tests HMRC_46='Sole
+ownership of the deceased', slot-2 tests `alternate_condition_id='HMRC_14'`
+= 'Yes'. Second row has slot-1 only (sole ownership, no marital test).
+
+### 11c. Joint names branch
+
+```
+HMRC_48 (how many joint tenants?)
+  HMRC_14='Yes' (slot-2 only) → HMRC_50 (is spouse one of the owners?)
+  unconditional              → HMRC_60
+
+HMRC_50 (spouse is one of owners?)
+  'Yes' AND HMRC_48='2' (compound: both slots) → END
+        ↳ Only 2 JTs and spouse is one: deceased's 50% share passes wholly to spouse
+  'Yes' (slot-1 only, HMRC_48≠2)              → HMRC_60
+        ↳ 3+ JTs including spouse: partial share, needs valuation
+  'No' (slot-1 only)                           → HMRC_60
+```
+
+The HMRC_50 compound row (`slot-1='Yes'`, `alternate_condition_id='HMRC_48'`,
+`slot-2='2'`) is the only row in HMRC_S8 that uses a non-HMRC_14 external
+reference for slot 2. HMRC_48 is itself a node within HMRC_S8 (asked earlier
+in the joint-names path), so it is NOT in `external_condition_qids` — it
+will be in `row_data` from the row journey session.
+
+If not married (HMRC_14≠'Yes'): HMRC_48 → HMRC_60 directly (no spousal
+question, full 1/N share is in the estate, straight to valuation gate).
+
+### 11d. Tenants in common branch
+
+```
+HMRC_49 (how many TIC owners?) → HMRC_51 (unconditional)
+
+HMRC_51 (equal share with other TIC owners?)
+  'Yes' AND HMRC_14='Yes' (compound) → HMRC_55 (spousal destination)
+  'Yes' (slot-1 only, not married)   → HMRC_60
+  'No' (slot-1 only)                 → HMRC_52 (deceased's % share)
+
+HMRC_52 (deceased's percentage share — when unequal)
+  HMRC_14='Yes' (slot-2 only) → HMRC_55 (spousal destination)
+  unconditional               → HMRC_60
+```
+
+HMRC_55 is the shared spousal-destination question reached by three distinct
+paths: sole ownership + married; TIC + equal share + married; TIC + unequal
+share + married. Joint names does NOT route to HMRC_55.
+
+### 11e. Spousal destination sub-journey (HMRC_55)
+
+```
+HMRC_55 (how much of deceased's share passes to spouse?)
+  'All of it'  → END  (100% spousal exemption — row committed)
+  'Some of it' → HMRC_54 (how is the portion specified?)
+  'None of it' → HMRC_60 (valuation gate)
+
+HMRC_54 (value or percentage?)
+  'A value (£)'  → HMRC_61 (value in £) → HMRC_60
+  'A share (%)'  → HMRC_62 (% share)    → HMRC_60
+```
+
+### 11f. Valuation gate and tail (HMRC_60 onwards)
+
+```
+HMRC_60 (professional valuation?)
+  'Yes' → END  (valuation exists — row committed; no further questions)
+  'No'  → HMRC_56 (tenure)
+
+HMRC_56 (Freehold / Leasehold?) → HMRC_57 (let?) → HMRC_58 (special factors?)
+  → HMRC_59 (sold within 12 months?) → END
+```
+
+The tail (HMRC_56–HMRC_59) is only reached when there is no professional
+valuation. All four are unconditional chains.
+
+### 11g. External questions and `external_condition_qids`
+
+HMRC_14 appears as `alternate_condition_id` on five routing rows (orders
+30, 70, 130, 160, and the slot-2-only row at 70). It is answered in HMRC_S1,
+not in HMRC_S8, so it is NOT in HMRC_S8's node set. `load_cache_for_routed_section`
+collects it into `external_condition_qids`, and `_fetch_external_answers`
+retrieves it from the DB once per section visit, independently of any row
+being added.
+
+HMRC_48 is referenced as `alternate_condition_id` at row order=90 (the
+HMRC_50 compound condition). Since HMRC_48 IS a node in HMRC_S8 (order=70
+has it as `current_node`), it IS covered by `question_node_ids` and is NOT
+added to `external_condition_qids`. Its answer is available in `row_data`
+from the row journey session.
+
+### 11h. What is still to build in HMRC_S8
+
+The current routing is fully live. Sub-questions deferred to a later session:
+- Lease length (Leasehold path)
+- Damage/special factor detail
+- Insurance cover confirmation
+- Valuation upload
+
+These were excluded from the initial build and are tracked as LATER in the Backlog.
+
+---
+
+## 12. What is deferred
 
 | Item | Backlog ref |
 |------|-------------|
@@ -894,4 +1055,6 @@ See Core Platform Reference section 5 for full detail.
 | Tailor exit gate — holding page when Yes-answered items have no built sections | NOW — not yet built; see §8a |
 | S5/S6 `QUESTION_SCHEDULE_MAP` entries and schedule allocation | LATER — see §8a and Backlog |
 | Derived married/widowed/single helper reading HMRC_14+HMRC_43 together | new, 5 July 2026 |
-| Deferred D18 sub-questions: lease length, damage, insurance cover, valuation upload | LATER — see Backlog |
+| HMRC_S8 sub-questions: lease length, damage detail, insurance cover, valuation upload | LATER — see §11h and Backlog |
+| HMRC_46/HMRC_14 compound routing rows not yet authored via admin UX | NOW — compound engine built, rows need authoring; see §11b and Backlog |
+| Admin UX for compound routing (two-slot fields not yet surfaced in routing form) | SOON — blocks authoring above; see Backlog |

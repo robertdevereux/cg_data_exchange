@@ -1,7 +1,9 @@
 # cg_data_exchange — Core Platform Reference
-Date: 29 July 2026
-Status: Current — reflects code as at 29 July 2026
-Verified: Content reconciled against file_dump.txt by Claude on 29 July 2026
+Date: 15 August 2026 (updated from 29 July 2026)
+Status: Current — reflects code as at 15 August 2026
+Verified: §3 Routing model and §4b routing engine read directly from live
+models.py and views_layer2.py on 15 August 2026. §4e cache functions verified
+against views_layer2.py. Session key table updated to include _section_cache.
 
 ---
 
@@ -95,13 +97,7 @@ Models defined in `core/models.py`:
   distinct `current_node`/`next_node` at migration time.
 - `Routing` — routing rules between questions/sets within a section. Key fields:
   - `current_node` — the Q or S node this rule applies from
-  - `condition_question_id` (CharField, nullable) — if set, routing evaluates
-    the answer to *this* question rather than the current node's own answer.
-    Useful for set nodes where branching depends on a specific member question's
-    answer. Leave null for standard behaviour (condition on current node's answer).
-  - `answer_value` — the trigger value; NULL means unconditional (default route)
   - `next_node` — destination question/set (NULL = end of section)
-  - `comparator` and `threshold_value` — for scalar routing (e.g. >, >=)
   - `order_in_section` — **(changed 3 July 2026) a `FloatField`, not an
     integer.** Its only *functional* (runtime) role is determining
     `first_node` — the citizen-facing engine simply starts at whichever row
@@ -111,6 +107,33 @@ Models defined in `core/models.py`:
     row order. **It is entirely admin-controlled and is never recomputed
     or renumbered by any background process.** See section 8 for how the
     admin tools set it on insert.
+
+  **Compound-condition fields (Phase 3, migration 0018; evaluation Phase 5 — 3 August 2026):**
+  The routing engine uses a two-slot AND model. Both slots must match for a
+  conditional row to fire. Either slot may be absent (null comparator = always
+  passes). A row with both comparators null is unconditional (the default route).
+
+  - `comparator_1` (CharField, nullable) — slot-1 comparator (`=`, `<`, `<=`,
+    `>`, `>=`). Slot 1 tests the *current node's own answer*.
+  - `test_value_1` (TextField, nullable) — slot-1 value to test against.
+    Null means no slot-1 test (always passes).
+  - `alternate_condition_id` (CharField, nullable) — slot-2 question ID.
+    If set, slot 2 tests the answer to *this* question (typically from a
+    different section, e.g. HMRC_14 from S1 when routing a property row in
+    S8). Must have been answered earlier in the journey.
+  - `comparator_2` (CharField, nullable) — slot-2 comparator. Only
+    evaluated when `alternate_condition_id` is set.
+  - `test_value_2` (TextField, nullable) — slot-2 value. Only evaluated
+    when `alternate_condition_id` is set.
+
+  **Dead fields — not yet removed (Phase 5, 3 August 2026):**
+  These four fields are no longer read by any evaluation path. They remain
+  in the schema pending admin UX updates (the routing form still surfaces
+  them) and a final migration to drop the columns. Do not use in new rows.
+  - `condition_question_id` — predecessor to `alternate_condition_id`
+  - `answer_value` — predecessor to `test_value_1` / `test_value_2`
+  - `comparator` — predecessor to `comparator_1` / `comparator_2`
+  - `threshold_value` — predecessor to `test_value_1` / `test_value_2` (numeric)
 
 **Runtime models** (created as users move through regimes):
 - `Case` — one case per user+regime entry. Key fields:
@@ -209,9 +232,9 @@ It is invariant — department apps do not modify it.
 - `section_review` — shows all answers; citizen can amend
 - `section_confirm` — shows delta (changed answers) and commits on POST
 - `section_done` — completion; delegates to `resolve_completion_url` (see §5)
-- Routing engine — `_evaluate_routing` evaluates Routing rules;
-  `_resolve_routing_answer` determines which answer to test (current node's
-  own answer, or a named `condition_question_id`)
+- Routing engine — `_evaluate_routing(routing_table, current_node, all_answers)`
+  evaluates compound-condition Routing rules (two-slot AND model, Phase 5).
+  `_resolve_routing_answer` is dead code — see §4b.
 
 **`show_confirmation=False` behaviour:** The last question routes directly to
 `section_done` without showing the review page. On re-entry (existing answers
@@ -235,23 +258,57 @@ case's subject know." Any new code touching `Answer`/`AnswerHistory`/
 `SectionStatus` should default to `case.user` unless it is specifically doing
 actor-scoped pre-population.
 
-### 4b. Routing engine
+### 4b. Routing engine (Phase 5 — rewritten 3 August 2026)
 
-Two private helpers used by all section types:
+Three private helpers used by all section types:
 
-**`_resolve_routing_answer(routing_table, current_node, all_answers)`**
-Determines which answer to test when evaluating routing from `current_node`.
-If any routing row for `current_node` has `condition_question_id` set,
-returns `all_answers[condition_question_id]`. Otherwise returns
-`all_answers[current_node]` (standard: condition on current node's own answer).
-`all_answers` must contain all answers accumulated so far in the journey
-(for set nodes: `{**basic_answers, **field_values}`).
+**`_matches(comparator, actual, target)`** — evaluates one routing slot.
+Returns `True` if `actual` satisfies `comparator` against `target`.
+- `actual=None` → always False.
+- `=` / `<>`: case-insensitive; `target` may be semicolon-delimited (any
+  single match is sufficient for `=`; all must mismatch for `<>`). List
+  `actual` (checkbox answers) is supported.
+- `<`, `<=`, `>`, `>=`: both values coerced to float; coercion failure → False.
 
-**`_evaluate_routing(routing_table, current_node, answer)`**
-Evaluates routing rows for `current_node` against `answer`. Returns
-`(next_node, found)`. `next_node=None` means END. Supports equality
-matching on `answer_value` and scalar comparators via `comparator`/
-`threshold_value`. Unconditional rows (`answer_value=None`) act as defaults.
+**`_evaluate_routing(routing_table, current_node, all_answers)`**
+The routing engine. Returns `(next_node, found)`:
+- `next_node=None` means END (proceed to confirmation/commit).
+- `found=False` means no matching route exists — routing data error; the
+  calling view must NOT commit the row and should surface an error to the user.
+
+Evaluation rule (two-slot AND model):
+
+| `comparator_1` | `comparator_2` | Condition |
+|---|---|---|
+| null | null | Unconditional catch-all |
+| set | null | Slot-1 only: current node's own answer |
+| null | set | Slot-2 only: `alternate_condition_id`'s answer |
+| set | set | Both must match (AND) |
+
+First conditional match wins; the last unconditional row is the fallback.
+If neither fires: `(None, False)`.
+
+```python
+slot_1_ok = _matches(comp1, all_answers.get(current_node), tv1) if comp1 else True
+slot_2_ok = _matches(comp2, all_answers.get(alt_id), tv2)       if comp2 else True
+```
+
+`all_answers` must include answers for all nodes visited so far in the
+journey, plus any external questions pre-fetched by `_fetch_external_answers`
+(see §4e). For set nodes, set member answers are merged in:
+`{**ext_data, **row_data}` where `row_data` includes both member questions
+and the set node's own answer as a key.
+
+**`_resolve_routing_answer` — DEAD CODE, still present.**
+Superseded by the Phase 5 `_evaluate_routing` rewrite. Marked `# noqa: dead-code`.
+Was called as two steps before Phase 5:
+1. `routing_answer = _resolve_routing_answer(routing_table, node, all_answers)`
+2. `next_node, found = _evaluate_routing(routing_table, node, routing_answer)`
+
+Phase 5 collapsed this to a single call:
+`next_node, found = _evaluate_routing(routing_table, node, all_answers)`
+
+Will be deleted together with the four dead Routing model fields (see §3).
 
 ### 4c. Flat table sections (section_type=1)
 
@@ -342,12 +399,54 @@ Contains: `routing_table`, `question_table`, `set_table`, `question_to_set`,
 reached on the routing path taken. Questions on unvisited branches are absent.
 The summary table shows `—` for absent keys.
 
-### 4e. Shared table helpers
+### 4e. Shared table helpers and section metadata cache (Phase 1–2, 3 August 2026)
 
-**`_build_section_tables(routing_rows)`** — extracts the routing/question/set
-table build logic shared between `section_start`, `section_table_routed_add`,
-and `section_table_routed_change`. Returns
-`(routing_table, question_table, set_table, question_to_set)`.
+**`_build_section_tables(routing_rows)`** — builds routing/question/set
+metadata from a `Routing` queryset. Returns a dict with keys:
+`routing_table`, `all_node_ids`, `question_node_ids`, `set_node_ids`,
+`question_table`, `set_table`, `question_to_set`, `first_node`.
+
+`routing_table` is a list of dicts including both the four dead old fields
+(`condition_question_id`, `answer_value`, `comparator`, `threshold_value`)
+and the five live compound-condition fields (`comparator_1`, `test_value_1`,
+`alternate_condition_id`, `comparator_2`, `test_value_2`). The dead fields
+are populated in the dict for now — they are not read by `_evaluate_routing`.
+
+**`load_cache_for_fixed_table_section(request, section)`**
+Fetches and caches column metadata for a type-1 (flat table) section into
+`request.session['_section_cache'][section_id]`. On subsequent calls within
+the same session visit, returns the cached dict immediately. Returned dict
+includes: all keys from `_build_section_tables()` plus `column_dicts` (a
+list of column metadata dicts built from `display_question_ids`).
+
+**`load_cache_for_routed_section(request, section)`**
+Fetches and caches routing/question/set metadata for a type-2 (routed table)
+section into `request.session['_section_cache'][section_id]`. Returned dict
+includes: all keys from `_build_section_tables()` plus `external_condition_qids`.
+
+**`external_condition_qids`** — deduplicated list of question IDs referenced
+as condition sources by routing rows, but NOT covered by the section's own
+node set (`question_node_ids` ∪ `question_to_set.keys()`). Collected by
+scanning both `condition_question_id` (old field, dead but present on live
+rows authored before Phase 3) and `alternate_condition_id` (new compound-
+condition slot-2 field). This list is then passed to `_fetch_external_answers`
+so `_evaluate_routing` can resolve slot-2 conditions on questions from other
+sections. **Scanning both fields is essential** — a bug found 15 August 2026
+confirmed that scanning only `condition_question_id` silently dropped all
+`alternate_condition_id`-based external fetches, making slot-2 compound
+conditions on external questions always fail.
+
+**`_fetch_external_answers(case, ext_qids)`**
+Fetches `Answer` rows for the given question IDs without a section= filter
+(since these answers belong to other sections). Returns `{question_id: answer}`.
+Returns `{}` if `ext_qids` is empty.
+
+**Session namespace: `request.session['_section_cache']`**
+A dict keyed by `section_id`. Populated on the first call to
+`load_cache_for_fixed_table_section` or `load_cache_for_routed_section` per
+section per visit; all subsequent calls within the same session return the
+cached dict. Does NOT clear between row adds — the routing/question/set
+metadata is invariant within a section visit.
 
 ---
 
@@ -515,6 +614,7 @@ and are noted in the table.
 | `top_level_title` | `call_core` (multiple) | `regime_top_level` | Page heading |
 | `post_confirm_redirect` | dept code (optional) — **raw `request.session`, not PSS** | `section_done` (priority 1, popped immediately) | One-shot override; highest priority |
 | `_table_row` | `section_table_routed_add/change` — **raw `request.session`, not PSS** | `section_table_routed_question` | Per-row journey state (type-2 sections only) |
+| `_section_cache` | `load_cache_for_fixed_table_section` / `load_cache_for_routed_section` — **raw `request.session`, not PSS** | same functions (cache hit path); `section_table_*` views | Routing/question/set metadata per section; persists across multiple row adds (Phase 1–2, 3 August 2026) |
 
 ### Breadcrumb mechanism
 
@@ -837,7 +937,10 @@ section is conceptually a basic section whose routing journey can be run
 N times, each run producing one row. The routing engine is identical;
 only the storage (row dict in `AnswerTable`) and display (summary table)
 differ. This means all routing capabilities — conditional branching,
-`condition_question_id`, set nodes — are available within a row journey.
+two-slot compound conditions, set nodes — are available within a row journey.
+Questions from other sections referenced via `alternate_condition_id` are
+pre-fetched once per section visit by `_fetch_external_answers` and merged
+into `all_answers` before routing evaluation.
 
 **Type-2 row pruning.** At commit time, row answers are pruned to `asked_ids`
 (the nodes actually visited on this path). Stale answers from a prior path
