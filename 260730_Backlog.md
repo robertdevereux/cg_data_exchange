@@ -630,6 +630,18 @@ summary here for backlog tracking.
   D20 radio_inline, numeric formatting, and address rendering in Core data model doc; line count
   and urgency update in Core file map doc. Doc impact: none (doc-only commit).
 
+## Completed (15 August 2026)
+
+- `b7cb8e5` — Fix: load_cache_for_routed_section was scanning only condition_question_id
+  when building external_condition_qids; alternate_condition_id (Phase 3 compound-condition
+  slot-2 field) was never scanned. Any compound routing row referencing an external question
+  via alternate_condition_id (e.g. HMRC_S8's married-branch rows referencing HMRC_14) always
+  saw None for slot 2, silently failed, and fell through. Fix: scan both fields, deduplicated.
+  2 new tests in TestRoutedSectionCache (EXT_ALT_S1 fixture); 224 tests pass (1 skipped).
+  Doc impact: build doc §5 (type-2 routed table execution — external_condition_qids note).
+
+---
+
 ## Completed (3 August 2026)
 
 - `3ac331c` — Phase 1: load_cache_for_fixed_table_section() caching refactor, views_layer2.py.
