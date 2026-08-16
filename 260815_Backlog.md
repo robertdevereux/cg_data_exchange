@@ -326,6 +326,25 @@ spouse" question, unrelated to valuation.]
 
 ## TIDY — Housekeeping
 
+- **New, 16 August 2026: `Section.section_guidance` appears orphaned — check and likely remove** —
+  `section_guidance` (TextField, nullable) is settable via the admin section create/edit forms,
+  is carried over when a section is duplicated via "copy section," and its inline doc comment
+  describes it as "shown at the top of table sections." But it is not rendered anywhere
+  citizen-facing: none of the six citizen-facing table templates (`table_add.html`,
+  `table_landing.html`, `table_routed_add.html`, `table_routed_question.html`,
+  `table_routed_set.html`, `table_row_detail.html`) reference it, and no view passes it into
+  a citizen-facing context. It looks like a field built for an early version of table sections,
+  before `QuestionSet.set_hint` existed — `set_hint` now does the job `section_guidance` was
+  presumably meant to do, and unlike `section_guidance`, it is live: rendered via
+  `{% if set_hint %}<div class="govuk-hint">{{ set_hint }}</div>{% endif %}` in both
+  `question_set.html` and `table_routed_set.html`.
+  Action: confirm via git history whether `section_guidance` was ever wired up and later
+  stripped out, or never wired up at all. If confirmed dead: remove the field, its admin form
+  inputs (`tools_section_create.html`, `tools_section_edit.html`), and its handling in
+  `views_admin_tools.py` and section-copy logic. Same shape of tidy-up as the HMRC_53 orphan —
+  a leftover from an earlier design iteration that should be removed rather than left to confuse
+  the next person who reads the model and assumes it does something.
+
 - **Extract back-link calculation in `_process_answer`** — duplicated ~5 times.
   Extract to `_get_back_url(pss, section_id, question_id)` helper.
 
