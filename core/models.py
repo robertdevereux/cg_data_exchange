@@ -869,3 +869,37 @@ class AnswerTableHistory(models.Model):
 
     def __str__(self):
         return f'{self.user} | {self.section_id} | {self.confirmed_at}'
+
+
+class SectionQuestionGuidance(models.Model):
+    """
+    Per-section override of a shared Question's guidance/hint text.
+
+    Lets the same reusable Question (e.g. one from the ownership-fork
+    block) carry different guidance/hint copy in different sections,
+    without forking the Question itself or touching routing. Falls back
+    to Question.guidance / Question.hint when no override row exists for
+    a given (section, question) pair.
+
+    Only applies to questions reached directly as routing nodes (not to
+    QuestionSet members — those inherit set_hint from the QuestionSet).
+    """
+    section = models.ForeignKey(
+        'Section',
+        on_delete=models.CASCADE,
+        related_name='question_guidance_overrides',
+    )
+    question = models.ForeignKey(
+        'Question',
+        to_field='question_id',
+        on_delete=models.CASCADE,
+        related_name='section_overrides',
+    )
+    guidance_override = models.TextField(blank=True, null=True)
+    hint_override     = models.CharField(max_length=255, blank=True, null=True)
+
+    class Meta:
+        unique_together = ('section', 'question')
+
+    def __str__(self):
+        return f'{self.section_id} / {self.question_id} guidance override'

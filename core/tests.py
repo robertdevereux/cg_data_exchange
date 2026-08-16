@@ -13,7 +13,7 @@ from decimal import Decimal, InvalidOperation
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from .models import Answer, AnswerHistory, AnswerTable, Case, Question, QuestionSet, QuestionSetMember, Regime, Routing, Schedule, Section, SectionMember, SectionStatus, User
+from .models import Answer, AnswerHistory, AnswerTable, Case, Question, QuestionSet, QuestionSetMember, Regime, Routing, Schedule, Section, SectionMember, SectionQuestionGuidance, SectionStatus, User
 from .permissions import get_permitted_sections
 
 
@@ -3234,6 +3234,111 @@ class TestRoutedSectionCache(TestCase):
             'AnswerTable row must be committed via compound-condition '
             '(slot-2: alternate_condition_id=TEST_3)'
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SectionQuestionGuidance override resolution
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestSectionQuestionGuidanceOverride(TestCase):
+    """
+    Unit tests for SectionQuestionGuidance per-section override resolution
+    in _build_section_tables.
+
+    Three cases:
+    1. No override row → Question.guidance / Question.hint used as-is.
+    2. Override row present → override text replaces Question fields.
+    3. Same question in a different section (no override there) → still
+       uses Question defaults (overrides don't leak across sections).
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        r_simple = Regime.objects.get(regime_id='TEST_SIMPLE')
+
+        # Section A — will have an override for TEST_3
+        cls.section_a = Section.objects.create(
+            section_id='SQGO_TEST_SA',
+            section_name='Guidance Override Test A',
+            section_type=2,
+            regime=r_simple,
+        )
+        Routing.objects.create(
+            section=cls.section_a,
+            current_node='TEST_3',
+            comparator_1='=', test_value_1='Yes',
+            next_node=None,
+            order_in_section=10,
+        )
+        Routing.objects.create(
+            section=cls.section_a,
+            current_node='TEST_3',
+            comparator_1='=', test_value_1='No',
+            next_node=None,
+            order_in_section=20,
+        )
+
+        # Section B — no override for TEST_3 (confirms no leakage from A)
+        cls.section_b = Section.objects.create(
+            section_id='SQGO_TEST_SB',
+            section_name='Guidance Override Test B',
+            section_type=2,
+            regime=r_simple,
+        )
+        Routing.objects.create(
+            section=cls.section_b,
+            current_node='TEST_3',
+            comparator_1='=', test_value_1='Yes',
+            next_node=None,
+            order_in_section=10,
+        )
+
+        # Override for section A only
+        cls.override = SectionQuestionGuidance.objects.create(
+            section=cls.section_a,
+            question=Question.objects.get(question_id='TEST_3'),
+            guidance_override='Section-specific guidance text.',
+            hint_override='Section-specific hint.',
+        )
+
+    def _tables_for(self, section):
+        from core.views_layer2 import _build_section_tables
+        rows = Routing.objects.filter(section=section).order_by('order_in_section')
+        return _build_section_tables(rows, section=section)
+
+    def test_no_override_uses_question_defaults(self):
+        """
+        Section B has no SectionQuestionGuidance row for TEST_3.
+        question_table should reflect Question.guidance / Question.hint.
+        """
+        q = Question.objects.get(question_id='TEST_3')
+        tables = self._tables_for(self.section_b)
+        entry = tables['question_table']['TEST_3']
+        self.assertEqual(entry['guidance'], q.guidance or '')
+        self.assertEqual(entry['hint'],     q.hint     or '')
+
+    def test_override_replaces_question_defaults(self):
+        """
+        Section A has a SectionQuestionGuidance row for TEST_3 with
+        non-blank guidance_override and hint_override. Both should appear
+        in question_table in place of Question.guidance / Question.hint.
+        """
+        tables = self._tables_for(self.section_a)
+        entry = tables['question_table']['TEST_3']
+        self.assertEqual(entry['guidance'], 'Section-specific guidance text.')
+        self.assertEqual(entry['hint'],     'Section-specific hint.')
+
+    def test_override_does_not_leak_to_other_section(self):
+        """
+        Section A's override must not affect Section B's question_table.
+        Both sections route on TEST_3; only A has an override row.
+        """
+        q = Question.objects.get(question_id='TEST_3')
+        tables_b = self._tables_for(self.section_b)
+        entry = tables_b['question_table']['TEST_3']
+        # Must match Question defaults, not Section A's override text
+        self.assertNotEqual(entry['guidance'], 'Section-specific guidance text.')
+        self.assertEqual(entry['guidance'], q.guidance or '')
 
 
 # ─────────────────────────────────────────────────────────────────────────────

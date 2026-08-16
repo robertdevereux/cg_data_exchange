@@ -15,6 +15,7 @@ from .models import (
     Schedule,
     ScheduleStatus,
     Section,
+    SectionQuestionGuidance,
     SectionStatus,
     User,
 )
@@ -92,6 +93,24 @@ class SectionAdmin(admin.ModelAdmin):
     @admin.display(description='Regime')
     def get_regime(self, obj):
         return obj.get_regime()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION QUESTION GUIDANCE OVERRIDES
+# ─────────────────────────────────────────────────────────────────────────────
+
+@admin.register(SectionQuestionGuidance)
+class SectionQuestionGuidanceAdmin(admin.ModelAdmin):
+    list_display = ('section', 'question', 'guidance_preview', 'hint_override')
+    list_filter = ('section',)
+    search_fields = ('section__section_id', 'question__question_id')
+    ordering = ('section', 'question')
+
+    @admin.display(description='Guidance (preview)')
+    def guidance_preview(self, obj):
+        if obj.guidance_override:
+            return obj.guidance_override[:80] + ('…' if len(obj.guidance_override) > 80 else '')
+        return '—'
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -311,7 +311,7 @@ def get_asked_answers_for_section(case, section):
     )
 
     routing_rows = Routing.objects.filter(section=section).order_by('order_in_section')
-    tables = _build_section_tables(routing_rows)
+    tables = _build_section_tables(routing_rows, section=section)
     if not tables['first_node']:
         return []
 

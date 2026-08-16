@@ -42,6 +42,7 @@ from .models import (
     Regime,
     Routing,
     Section,
+    SectionQuestionGuidance,
     SectionStatus,
     User,
 )
@@ -179,11 +180,25 @@ def _get_or_create_case(user, regime):
 
 # ── Section-tables build helper ──────────────────────────────────────────────
 
-def _build_section_tables(routing_rows):
+def _resolve_guidance(q, override):
+    """Return (guidance, hint) for a question, applying a SectionQuestionGuidance
+    override when present and non-blank; otherwise falls back to Question fields."""
+    guidance = override.guidance_override if (override and override.guidance_override) else (q.guidance or '')
+    hint     = override.hint_override     if (override and override.hint_override)     else (q.hint     or '')
+    return guidance, hint
+
+
+def _build_section_tables(routing_rows, section=None):
     """Build the routing, question, and set metadata tables for a section.
 
     Args:
         routing_rows: QuerySet of Routing rows ordered by order_in_section.
+        section:      Section instance (optional). When provided, any
+                      SectionQuestionGuidance override rows for this section
+                      are applied to question_table guidance/hint values.
+                      When None, Question.guidance / Question.hint are used
+                      as-is (e.g. when called from interfaces without a
+                      citizen-facing render context).
 
     Returns a dict with keys:
         routing_table       — list of dicts (one per Routing row)
@@ -225,16 +240,24 @@ def _build_section_tables(routing_rows):
     question_node_ids = [nid for nid in all_node_ids if nid not in existing_set_ids]
 
     questions = Question.objects.filter(question_id__in=question_node_ids)
-    question_table = {
-        q.question_id: {
+    overrides = {}
+    if section is not None and question_node_ids:
+        overrides = {
+            o.question_id: o
+            for o in SectionQuestionGuidance.objects.filter(
+                section=section, question_id__in=question_node_ids,
+            )
+        }
+    question_table = {}
+    for q in questions:
+        guidance, hint = _resolve_guidance(q, overrides.get(q.question_id))
+        question_table[q.question_id] = {
             'question_text': q.question_text,
             'question_type': q.question_type,
-            'guidance':      q.guidance or '',
-            'hint':          q.hint or '',
+            'guidance':      guidance,
+            'hint':          hint,
             'options':       q.options or '',
         }
-        for q in questions
-    }
 
     set_table = {}
     question_to_set = {}
@@ -1321,7 +1344,7 @@ def load_cache_for_routed_section(request, section):
         .filter(section=section)
         .order_by('order_in_section')
     )
-    tables = _build_section_tables(routing_rows)
+    tables = _build_section_tables(routing_rows, section=section)
 
     # Third source for answer fetching: questions from outside this section's
     # own node set that routing rows reference as a condition source. Must be
