@@ -3340,6 +3340,43 @@ class TestSectionQuestionGuidanceOverride(TestCase):
         self.assertNotEqual(entry['guidance'], 'Section-specific guidance text.')
         self.assertEqual(entry['guidance'], q.guidance or '')
 
+    def test_guidance_renders_in_html_response(self):
+        """
+        Integration: a question served by table_routed_question.html with a
+        non-blank guidance (here from a SectionQuestionGuidance override) must
+        actually appear in the rendered HTML — not merely in the context dict.
+
+        This is the gap that let the original bug slip through: backend tests
+        confirmed the context was correct, but the template never referenced
+        question.guidance at all.
+        """
+        from .models import Case
+        client = Client()
+        client.login(username='carla', password='testpass123')
+
+        carla = User.objects.get(username='carla')
+        r_simple = Regime.objects.get(regime_id='TEST_SIMPLE')
+        case, _ = Case.objects.get_or_create(
+            user=carla, regime=r_simple,
+            defaults={'case_id': '00000000-0000-0000-0000-000000000099', 'status': 'draft'},
+        )
+
+        session = client.session
+        session['case_id']   = case.case_id
+        session['user_id']   = carla.pk
+        session['actor_id']  = carla.pk
+        session['regime_id'] = r_simple.regime_id
+        session.save()
+
+        # Initialise the routed-add journey (sets up row session, redirects to first node)
+        client.get(f'/section/{self.section_a.section_id}/table/add-routed/')
+
+        # GET the first question node — should render via table_routed_question.html
+        r = client.get(f'/section/{self.section_a.section_id}/table/add-routed/TEST_3/')
+        self.assertEqual(r.status_code, 200)
+        # The SectionQuestionGuidance override text must appear in the page HTML
+        self.assertContains(r, 'Section-specific guidance text.')
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PHASE 5: compound-condition routing evaluation

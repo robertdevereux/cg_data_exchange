@@ -1,4 +1,5 @@
 {% extends "core/base.html" %}
+{% load markdown_extras %}
 
 {% block title %}Add record — {{ section.section_name }}{% endblock %}
 
@@ -21,6 +22,10 @@
             </div>
           </div>
         </div>
+        {% endif %}
+
+        {% if question.guidance %}
+        <div class="govuk-inset-text">{{ question.guidance|render_markdown }}</div>
         {% endif %}
 
         <div class="govuk-form-group">
