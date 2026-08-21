@@ -695,6 +695,26 @@ summary here for backlog tracking.
   D20 radio_inline, numeric formatting, and address rendering in Core data model doc; line count
   and urgency update in Core file map doc. Doc impact: none (doc-only commit).
 
+## Completed (19 August 2026)
+
+- `49cf5cf` — Fix table_routed_question.html not rendering question.guidance: added
+  {% load markdown_extras %} and govuk-inset-text block (matching standard question templates).
+  Also added integration test asserting override text reaches rendered HTML (not just context dict).
+  228 tests, 1 pre-existing failure (test_solicitor1_reaches_sched_s3_table, confirmed broken
+  before this commit), 1 skipped. Doc impact: none.
+
+---
+
+## Completed (16 August 2026)
+
+- `9d5a91e` — Add SectionQuestionGuidance per-section guidance/hint override model, migration,
+  admin registration, views_layer2 wiring (_build_section_tables now accepts section arg and
+  applies overrides per question), interfaces.py caller updated. 3 new tests; 227 tests pass
+  (1 skipped). Doc impact: build doc §3 (data model — new model), build doc §4 (question table
+  assembly in _build_section_tables).
+
+---
+
 ## Completed (15 August 2026)
 
 - **HMRC_S8 property routing — full rebuild (live data against Neon, no code commit)** —
