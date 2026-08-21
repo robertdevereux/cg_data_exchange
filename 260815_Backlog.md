@@ -157,6 +157,40 @@ for what's genuinely outside the data-access boundary. The correctness rule
 (`case.user` vs `request.user`) already documented in Core Platform Reference
 section 4a is the model for what a documented boundary looks like.
 
+### New, 21 August 2026: `_build_section_tables`'s `section=None` default fails silently
+
+`_build_section_tables(routing_rows, section=None)` — added 16 August
+2026 as part of `SectionQuestionGuidance` — only resolves guidance/hint
+overrides when a `section` is actually passed in. When it isn't (the
+default), the function doesn't error or warn; it just falls back to each
+question's own `guidance`/`hint`, indistinguishable from "there's
+genuinely no override for this question." Both current call sites (the
+department-facing routing-replay helper, and `load_cache_for_routed_section`)
+correctly pass `section` through — but nothing prevents a future call
+site from omitting it, and the resulting bug would look exactly like "the
+override exists in the DB but isn't showing," which already cost real
+diagnostic time once this session (chasing session caching and template
+rendering before finding the actual cause was a missing render block —
+not this issue, but the same *symptom*, and a missing `section` argument
+would present identically).
+
+**Options, roughly in order of how much they cost to build:**
+1. **Do nothing, keep documenting it** — current state. Cheapest, but the
+   sharp edge stays sharp for whoever adds the next call site.
+2. **Log a warning when `section` is `None`** — cheap, non-breaking,
+   makes the silent case visible in logs without changing any behaviour
+   or call site.
+3. **Make `section` a required, non-defaulted parameter** — forces every
+   call site to make the choice explicitly (including deliberately
+   passing `None` if that's ever genuinely intended), catches a missing
+   argument at call time via `TypeError` rather than at "why isn't my
+   guidance showing" debugging time. Requires touching both existing call
+   sites (trivial — they already pass it) but is the most robust option.
+
+**Recommendation:** (3) — the existing call sites already pass `section`
+correctly, so this costs nothing for them and closes the gap for good
+rather than just making it easier to notice.
+
 ---
 
 ## SOON — Documentation
