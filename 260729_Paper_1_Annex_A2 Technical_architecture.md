@@ -146,11 +146,53 @@ The model as specified is for named individuals as both grantors and grantees; o
 | Question | A single question, defined once, reusable across regimes | Text, type, hint, options, validation | Parts One and Three (routing); Part Two (flat form) |
 | Question Set | A named grouping of Questions on one page | Set identifier, title | Parts One and Three |
 | Question Set Member | Membership/order of a Question within a Set | Set, Question, order, required | — |
+| Section Question Guidance | Per-section override of a shared Question's guidance/hint text | Section, Question, guidance override, hint override | Parts One and Three (wherever a Question with a section-specific override is asked) |
 | Routing | Conditional logic: node, condition, next node | Section, current node, answer condition, next node | Parts One and Three only — **not used by Part Two** |
 | Answer | A citizen's confirmed single response, with provenance | Question, Case, User, Actor, value, timestamp | Part One |
 | AnswerTable | A section's full set of rows, one JSON list per case | Section, Case, list of row dicts | Parts Two and Three |
 | Permission | A grant of Section access from User to Actor | User, Actor, Sections, delegation rights, granted-by | All three parts, via navigation |
 | Case | A citizen's instance of a regime | Case identifier, User, Regime, status | All three parts |
+
+### Guidance that varies by context
+
+Questions and routing are deliberately minimal and fully shared: a
+question's text, type, and routing conditions are defined once and reused
+everywhere they're asked, with no per-context variation. That's the
+source of the platform's core strength — one question, reused verbatim
+across regimes, means routing logic never has to be re-authored or
+duplicated.
+
+Guidance text is a different kind of thing. It's copy, not logic, and
+sometimes the right copy genuinely depends on context a shared question
+can't know about — for example, "not sure how you own this?" needs
+different advice for a property (check the Land Registry) than for a bank
+account (there's no register; check your account mandate/statements). The
+platform has two live mechanisms for this, at two different granularities:
+
+1. **`QuestionSet.set_hint`** — one hint per *set* (a group of questions
+   shown together on one page). Granularity: per page. Use when the
+   guidance applies to the whole set of questions being asked together,
+   not to one question within it.
+
+2. **`SectionQuestionGuidance`** — one override per *(section, question)*
+   pair. Granularity: per question, within a specific section. Falls back
+   to the shared Question's own default guidance/hint when no override
+   row exists for that pair. Use when the same question is reused across
+   multiple sections (as the property/bank-accounts ownership-fork
+   questions are) and different sections need different guidance attached
+   to the *same* question, without forking the question itself.
+
+Both mechanisms answer the same underlying question — "what do we say
+when a shared thing needs locally-specific advice?" — but at different
+scopes. Neither changes the routing logic itself in any way; both are
+resolved purely at render time, as a lookup with a fallback to a sensible
+default. Nothing about the reuse of a Question in routing is affected by
+whether it carries an overridden hint in a given section.
+
+(An earlier field, `Section.section_guidance`, looked like it might be a
+third such mechanism, but investigation found it isn't wired up to any
+citizen-facing template — see Backlog. It's being removed rather than
+treated as a precedent.)
 
 ### Regime configuration tooling
 
