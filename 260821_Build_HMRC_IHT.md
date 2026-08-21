@@ -1,6 +1,6 @@
 # HMRC IHT — Technical Reference
-Date: 29 July 2026
-Status: Current — reflects code as at 29 July 2026
+Date: 21 August 2026
+Status: Current — reflects code as at 21 August 2026 (HMRC_S8 ownership-fork rebuild, HMRC_S7 build, SectionQuestionGuidance, table_routed_question.html guidance fix)
 
 This document covers the IHT (Inheritance Tax) regime implementation in full.
 

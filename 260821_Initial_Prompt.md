@@ -226,10 +226,10 @@ pattern and reuse checklist.
 | Document | File | Purpose |
 |----------|------|---------|
 | Initial Prompt | `260821_Initial_Prompt.md` | This file — read first in every session |
-| Core Platform Reference | `260815_Build_CORE_data_model_and_interfaces.md` | Platform reference — data model, interfaces, execution engine, design decisions |
-| HMRC IHT Reference | `260815_Build_HMRC_IHT.md` | Complete IHT technical reference — action buttons, matching, reckoner, triage, asset buttons |
+| Core Platform Reference | `260821_Build_CORE_data_model_and_interfaces.md` | Platform reference — data model, interfaces, execution engine, design decisions |
+| HMRC IHT Reference | `260821_Build_HMRC_IHT.md` | Complete IHT technical reference — action buttons, matching, reckoner, triage, asset buttons |
 | Core Map | `260815_Build_CORE_codebase_file_map.md` | File-by-file map of core/ internals |
-| Backlog | `260815_Backlog.md` | Active task list with completed sprint record |
+| Backlog | `260821_Backlog.md` | Active task list with completed sprint record |
 | Ownership-fork routing template | `260815_Ownership_fork_routing_template.md` | Reusable routing pattern for asset-class sections (sole/joint/TIC + spousal destination) — read before authoring routing for any new asset class |
 | HMRC_S8 routing rows (reference) | `260803_HMRC_S8_routing_rows.md` | Full property-section routing, human-readable format — the worked example the template above is built from |
 | file_dump.txt | `file_dump.txt` | Full current codebase (.py and .html) — regenerate before CC work, and after any CC session before relying on it in a new chat |
@@ -249,7 +249,7 @@ particular is the policy source the ownership-fork routing template
 implements — worth reading alongside it if extending the fork to a new
 asset class.
 
-All active build-reference documents are prefixed `260815_`, `260821_`,
+All active build-reference documents are prefixed `260821_`,
 `260802_`, or `260803_` (routing-specific references only).
 
 **Superseded documents** (archive, do not read):
@@ -285,3 +285,6 @@ All active build-reference documents are prefixed `260815_`, `260821_`,
 - `260729_Build_CORE_codebase_file_map.md` — superseded by 260815_
 - `260730_Backlog.md` — superseded by 260815_
 - `260730_Initial_Prompt.md` — superseded by this file
+- `260815_Build_CORE_data_model_and_interfaces.md` — superseded by 260821_
+- `260815_Build_HMRC_IHT.md` — superseded by 260821_
+- `260815_Backlog.md` — superseded by 260821_
