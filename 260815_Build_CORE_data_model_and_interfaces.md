@@ -72,7 +72,14 @@ Models defined in `core/models.py`:
     (routing defines the full row journey; this is the display projection only).
   - `totals_question_ids` (TextField, nullable) — semicolon-delimited IDs of
     numeric questions to total at the foot of the table. Applies to both table types.
-  - `section_guidance` (TextField, nullable) — shown at the top of table sections.
+  - `section_guidance` (TextField, nullable) — **not rendered anywhere
+    citizen-facing** (confirmed by full-codebase search, 19 August 2026,
+    despite this field's original intent, per its own field history, being
+    "shown at the top of table sections"). Settable via admin, carried over
+    on section duplication, but currently inert. Likely superseded by
+    `QuestionSet.set_hint` (which *is* live) for sets, and by
+    `SectionQuestionGuidance` (below) for per-question override needs.
+    See Backlog TIDY — "`Section.section_guidance` appears orphaned."
   - `show_confirmation` (BooleanField, default=True) — if False, auto-commits
     on last question and redirects to section_done without a confirmation page.
 - `Question` — a single question. Key fields:
@@ -95,6 +102,24 @@ Models defined in `core/models.py`:
   tables use `display_question_ids` and have no routing step). Existing
   sections were backfilled by scanning their `Routing` rows for every
   distinct `current_node`/`next_node` at migration time.
+- `SectionQuestionGuidance` — **(new, 16 August 2026)** per-section
+  override of a shared `Question`'s guidance/hint text. Exists because
+  `Question.guidance`/`Question.hint` are global — reused verbatim
+  wherever a question is asked, in any section — but some reusable
+  questions need section-specific advice (e.g. HMRC_46, "how was this
+  owned?", reused across HMRC_S8 and HMRC_S7, needs Land-Registry-specific
+  wording for property but account-mandate wording for bank accounts;
+  see `260815_Ownership_fork_routing_template.md`). Fields:
+  `section` (FK), `question` (FK, `to_field='question_id'`),
+  `guidance_override` (TextField, nullable), `hint_override` (CharField,
+  nullable). `unique_together = ('section', 'question')` — one override
+  row per (section, question) pair; a section may override as many or as
+  few of its questions as it needs, independently. Falls back to the
+  question's own `guidance`/`hint` when no override row exists for a
+  given pair. **Does not resolve for questions embedded in a
+  `QuestionSet`** — see Backlog TIDY, "Policy question — should a
+  branching question ever be embedded inside a QuestionSet?"; only
+  `question_table`-reached questions are covered, not `set_table` members.
 - `Routing` — routing rules between questions/sets within a section. Key fields:
   - `current_node` — the Q or S node this rule applies from
   - `next_node` — destination question/set (NULL = end of section)
@@ -401,10 +426,39 @@ The summary table shows `—` for absent keys.
 
 ### 4e. Shared table helpers and section metadata cache (Phase 1–2, 3 August 2026)
 
-**`_build_section_tables(routing_rows)`** — builds routing/question/set
-metadata from a `Routing` queryset. Returns a dict with keys:
-`routing_table`, `all_node_ids`, `question_node_ids`, `set_node_ids`,
-`question_table`, `set_table`, `question_to_set`, `first_node`.
+**`_build_section_tables(routing_rows, section=None)`** — builds
+routing/question/set metadata from a `Routing` queryset. Returns a dict
+with keys: `routing_table`, `all_node_ids`, `question_node_ids`,
+`set_node_ids`, `question_table`, `set_table`, `question_to_set`,
+`first_node`.
+
+**`section` parameter (added 16 August 2026, `SectionQuestionGuidance`
+work):** when provided, `question_table` entries resolve their
+`guidance`/`hint` via `_resolve_guidance(question, override)` — checking
+for a `SectionQuestionGuidance` row scoped to `(section, question)` before
+falling back to the question's own `guidance`/`hint`. When `section` is
+`None` (or omitted), no override lookup happens at all — falls back
+silently to the question's own defaults, with no error. Both call sites
+(the department-facing routing-replay helper `get_asked_answers_for_section`
+in `interfaces.py`, and `load_cache_for_routed_section`) pass `section`
+through; if a new call site is ever added without it, guidance overrides
+will silently not apply there — worth checking for this if a future
+guidance-override bug looks like "the override exists in the DB but isn't
+showing."
+
+Note: this only resolves overrides for `question_table` — **not**
+`set_table` members. See `SectionQuestionGuidance` entry in §3.
+
+**Template rendering caveat (fixed 19 August 2026, `49cf5cf`):**
+`table_routed_question.html` did not originally render `question.guidance`
+at all — the template was missing both `{% load markdown_extras %}` and
+the `govuk-inset-text` block present in all standard-section question
+templates. This means the backend resolution described above (correct since
+16 August) predated the fix by three days: a session reading only up to
+16 August's build notes would correctly believe overrides were being
+resolved server-side, while in fact the citizen-facing page was not
+displaying them. Both halves (backend resolution via `_resolve_guidance` +
+template rendering via `table_routed_question.html`) are now in place.
 
 `routing_table` is a list of dicts including both the four dead old fields
 (`condition_question_id`, `answer_value`, `comparator`, `threshold_value`)
