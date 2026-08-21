@@ -903,7 +903,7 @@ ownership type (HMRC_46), and the open market value (HMRC_47).
 | SET10 | QuestionSet | Property description and reference (includes HMRC_45) |
 | HMRC_47 | number | Open market value of the whole asset (£) |
 | HMRC_46 | radio | How was this asset owned? |
-| HMRC_48 | number | How many joint tenants owned this property in total? |
+| HMRC_48 | number | How many joint tenants owned this asset in total? |
 | HMRC_49 | number | How many tenants in common owned this asset? |
 | HMRC_50 | radio | Is the deceased's spouse/civil partner one of the other owners? |
 | HMRC_51 | radio | Did the deceased own an equal share with other tenants in common? |
@@ -917,6 +917,8 @@ ownership type (HMRC_46), and the open market value (HMRC_47).
 | HMRC_57 | radio | Was the property let? |
 | HMRC_58 | radio | Was the property value subject to any special factors? |
 | HMRC_59 | radio | Has the property been sold within 12 months of death? |
+
+*HMRC_48's wording was corrected from "property" to "asset" on 18 August 2026, ahead of HMRC_S7 reusing this question — see §12.*
 
 HMRC_14 (marital status, answered in HMRC_S1) is referenced by routing rows
 via `alternate_condition_id` but is never asked again inside HMRC_S8.
@@ -1043,7 +1045,124 @@ These were excluded from the initial build and are tracked as LATER in the Backl
 
 ---
 
-## 12. What is deferred
+## 12. HMRC_S7 — bank and building society accounts section (type-2 routed table)
+
+*Routing authored via direct SQL, 18 August 2026. 23 rows. Fully
+branch-tested 18–19 August 2026 — see §12h.*
+
+HMRC_S7 is the "Bank and building society accounts" section. Each account
+is one row in a repeating type-2 table. It reuses the HMRC_S8 ownership-fork
+block (HMRC_46/48/49/50/51/52/55/54/61/62) **unchanged, by ID** — see
+`260815_Ownership_fork_routing_template.md` for the general reuse pattern
+this instantiates. Two things differ deliberately from HMRC_S8: what
+precedes the fork, and what (if anything) follows it.
+
+`display_question_ids = 'HMRC_40;HMRC_41;HMRC_42'` — the summary table
+columns are bank/building society name, account number, and balance.
+`totals_question_ids = 'HMRC_42'` (balance only — no separate valuation
+question exists for bank accounts, unlike HMRC_S8's HMRC_47).
+`section_type = 2`, `schedule_id = 'HMRC_SCH4'`.
+`show_confirmation = True`.
+
+### 12a. Questions
+
+| ID | Type | Question (abbreviated) | Reused from HMRC_S8? |
+|----|------|------------------------|---|
+| SET11 | QuestionSet | Bank/building society name (HMRC_40), account number (HMRC_41), balance (HMRC_42) | No — bank-specific |
+| HMRC_46 | radio | How was this asset owned? | Yes, unchanged |
+| HMRC_48 | number | How many joint tenants owned this asset in total? | Yes, unchanged |
+| HMRC_49 | number | How many tenants in common owned this asset? | Yes, unchanged |
+| HMRC_50 | radio | Is the deceased's spouse/civil partner one of the other owners? | Yes, unchanged |
+| HMRC_51 | radio | Did the deceased own an equal share with other tenants in common? | Yes, unchanged |
+| HMRC_52 | number | What was the deceased's share of this asset (%)? | Yes, unchanged |
+| HMRC_55 | radio | How much of the deceased's share passes to the surviving spouse/civil partner? | Yes, unchanged |
+| HMRC_54 | radio | Was the portion passing to the spouse specified as a value or a share? | Yes, unchanged |
+| HMRC_61 | number | What value (£) passes to the spouse? | Yes, unchanged |
+| HMRC_62 | number | What percentage of the deceased's share passes to the spouse? | Yes, unchanged |
+
+No equivalent of HMRC_S8's HMRC_60/HMRC_56–59 (valuation gate and
+substitute-evidence tail) — see §12f. HMRC_14 (marital status) is
+referenced exactly as in HMRC_S8, via `alternate_condition_id`, never
+re-asked inside HMRC_S7.
+
+### 12b. Row journey — top-level flow
+
+**No separate value-before-ownership step.** Unlike HMRC_S8, the balance
+(HMRC_42) is already captured as part of the opening SET, so the journey
+goes straight from that page into the ownership fork:
+
+```
+SET11 → HMRC_46 → [ownership fork — identical shape to HMRC_S8 §11b–11e]
+```
+
+The ownership fork itself (§12c–12e below) is byte-for-byte the same
+condition logic as HMRC_S8 §11b–11e, reusing the same question IDs and
+the same compound-condition rows. Only the destination differs — see §12f.
+
+### 12c–12e. Ownership fork, joint names branch, tenants in common branch, spousal destination sub-journey
+
+Identical in shape and condition logic to HMRC_S8 §11c–11e. The only
+difference throughout: **every destination that is `HMRC_60` in HMRC_S8
+is `END` in HMRC_S7.** See `260815_Ownership_fork_routing_template.md`
+for the row-by-row comparison table (S8 destination vs S7 destination).
+The full 23-row SQL as actually run is recorded in the Backlog, Completed
+(18 August 2026) — not duplicated here to avoid a second copy going stale
+independently.
+
+### 12f. No valuation gate or tail
+
+HMRC_S8's HMRC_60 (professional valuation gate) and its tail
+(HMRC_56–HMRC_59: tenure, letting, special factors, sale-within-12-months)
+have no equivalent in HMRC_S7. Bank accounts need no substitute
+chargeable-value evidence — the account balance already stated in SET11
+is treated as sufficient. Every fork branch in HMRC_S7 that would have
+continued into HMRC_60 in HMRC_S8 instead terminates immediately (`END`).
+
+### 12g. Asset-class-specific guidance
+
+HMRC_46's "how was this owned" question needs different "not sure?"
+guidance for bank accounts than for property (no Land Registry equivalent
+— see account mandate/statements instead). Handled via
+`SectionQuestionGuidance` (Core Platform Reference), not by forking the
+question — the override is scoped to `(section='HMRC_S7', question=...)`
+and falls back to the shared `Question.guidance`/`hint` where no override
+exists. Note: this mechanism does not resolve for questions embedded in a
+`QuestionSet` (e.g. within SET11 itself) — see Backlog TIDY, "Policy
+question — should a branching question ever be embedded inside a
+QuestionSet?" — not relevant to HMRC_46 (a standalone routing node, not a
+SET member), but worth knowing about if SET11 itself is ever given
+per-member guidance.
+
+### 12h. Test coverage
+
+Manually exercised via two test cases (one married, one unmarried
+subject), covering all 12 non-END transitions in the routing table:
+
+| Transition | Confirmed |
+|---|---|
+| Sole, spouse → HMRC_55 | ✓ |
+| Sole, no spouse → END | ✓ |
+| Joint → HMRC_48 | ✓ |
+| TIC → HMRC_49 | ✓ |
+| HMRC_48 → HMRC_50 (married) | ✓ |
+| HMRC_48 → END (unmarried) | ✓ |
+| HMRC_50 → END, N=2 compound | ✓ |
+| HMRC_50 → END, plain Yes (N≠2) | ✓ |
+| HMRC_50 → END, No | ✓ |
+| HMRC_49 → HMRC_51 | ✓ |
+| HMRC_51 → HMRC_55 (equal, spouse) | ✓ |
+| HMRC_51 → HMRC_52 (unequal) | ✓ |
+| HMRC_52 → HMRC_55 (spouse) | ✓ |
+| HMRC_52 → END (no spouse) | ✓ |
+| HMRC_55 → HMRC_54 (some of it) | ✓ |
+| HMRC_54 → HMRC_61 (£ value) | ✓ |
+| HMRC_54 → HMRC_62 (% share) | ✓ |
+
+See Backlog, Completed (18 August 2026), for full detail.
+
+---
+
+## 13. What is deferred
 
 | Item | Backlog ref |
 |------|-------------|
@@ -1056,5 +1175,5 @@ These were excluded from the initial build and are tracked as LATER in the Backl
 | S5/S6 `QUESTION_SCHEDULE_MAP` entries and schedule allocation | LATER — see §8a and Backlog |
 | Derived married/widowed/single helper reading HMRC_14+HMRC_43 together | new, 5 July 2026 |
 | HMRC_S8 sub-questions: lease length, damage detail, insurance cover, valuation upload | LATER — see §11h and Backlog |
-| HMRC_46/HMRC_14 compound routing rows not yet authored via admin UX | NOW — compound engine built, rows need authoring; see §11b and Backlog |
+| ~~HMRC_46/HMRC_14 compound routing rows not yet authored via admin UX~~ | Resolved 15 August 2026 — full HMRC_S8 ownership-fork rebuild, see §11 |
 | Admin UX for compound routing (two-slot fields not yet surfaced in routing form) | SOON — blocks authoring above; see Backlog |
