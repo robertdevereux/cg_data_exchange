@@ -249,7 +249,7 @@ particular is the policy source the ownership-fork routing template
 implements — worth reading alongside it if extending the fork to a new
 asset class.
 
-All active build-reference documents are prefixed `260821_`,
+All active build-reference documents are prefixed `260815_`, `260821_`,
 `260802_`, or `260803_` (routing-specific references only).
 
 **Superseded documents** (archive, do not read):
