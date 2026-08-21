@@ -345,6 +345,38 @@ spouse" question, unrelated to valuation.]
   a leftover from an earlier design iteration that should be removed rather than left to confuse
   the next person who reads the model and assumes it does something.
 
+- **New, 16 August 2026: Policy question — should a branching question ever be embedded inside a QuestionSet?**
+  Raised while scoping `SectionQuestionGuidance` (guidance/hint override
+  model, see Completed 16 August 2026). A SET is a single atomic routing
+  node — `question_to_set` maps the whole set to one `current_node`; all
+  members are answered together on one page, and the outer routing
+  evaluates that node once to pick a single `next_node`. There's no
+  mechanism for routing to branch off one member's answer while the set
+  page is still being shown.
+
+  For genuine fork-defining questions — HMRC_46, HMRC_49, HMRC_51, HMRC_52,
+  HMRC_55 (the ownership-fork block; each one's own answer is what routing
+  evaluates to select the next node) — burying one inside a multi-question
+  SET screen doesn't fit this model well and is of doubtful UX value besides
+  (citizen submits a whole page, then branches on just one sub-answer within
+  it). Current view: probably shouldn't be allowed, but not yet a settled
+  policy.
+
+  **Consequence for now:** `SectionQuestionGuidance` deliberately only
+  resolves against `question_table` — i.e. questions reached directly as
+  their own routing node. It does **not** look up overrides for
+  `set_table` members. If a branching question is ever embedded in a SET,
+  its guidance/hint override (if any) would silently be ignored in that
+  context.
+
+  **Action:** settle the underlying policy question (should branching
+  questions be allowed inside SETs at all?) before this gap matters. If the
+  answer ends up "no, never," this item can simply be closed with no build
+  work needed. If "yes, sometimes," extend the guidance-override lookup to
+  also check `set_table` members at that point — the SET-facing code paths
+  in `_build_section_tables` (`views_layer2.py`) are the place to do it,
+  mirroring the `question_table` handling already built.
+
 - **Extract back-link calculation in `_process_answer`** — duplicated ~5 times.
   Extract to `_get_back_url(pss, section_id, question_id)` helper.
 
@@ -702,6 +734,80 @@ summary here for backlog tracking.
   Also added integration test asserting override text reaches rendered HTML (not just context dict).
   228 tests, 1 pre-existing failure (test_solicitor1_reaches_sched_s3_table, confirmed broken
   before this commit), 1 skipped. Doc impact: none.
+
+---
+
+## Completed (18 August 2026)
+
+### HMRC_S7 — bank and building society accounts section built and routing-tested
+
+Built the ownership-fork routing for HMRC_S7 (type-2 routed table),
+reusing the shared block (HMRC_46/48/49/50/51/52/55/54/61/62) unchanged
+from HMRC_S8 per `260815_Ownership_fork_routing_template.md`. Two
+deliberate differences from property:
+
+- **Opening:** `SET11` (bank name HMRC_40, account number HMRC_41,
+  balance HMRC_42, one page) routes straight to HMRC_46 — no separate
+  chained identify/value questions as in S8.
+- **Every S8 destination of `HMRC_60`** (the property valuation-evidence
+  gateway) becomes `END` for S7, and the entire property-specific tail
+  (HMRC_60, HMRC_56–59) is absent — bank accounts need no substitute
+  chargeable-value evidence.
+
+23 routing rows total, inserted via direct SQL (`core_routing`,
+`section_id='HMRC_S7'`), 18 August 2026. `core_section` row confirmed
+correct: `section_type=2`, `schedule_id='HMRC_SCH4'` (pre-existing
+`QUESTION_SCHEDULE_MAP` entry `HMRC_17 → HMRC_SCH4` means reachability
+from S4 triage required no new build).
+
+**Test coverage:** manually exercised via two test cases (a married
+subject and an unmarried subject) covering every reachable branch —
+all 12 non-END transitions in the routing table individually confirmed
+against live `AnswerTable` data:
+
+| Transition | Confirmed by |
+|---|---|
+| Sole, spouse → HMRC_55 | ✓ |
+| Sole, no spouse → END | ✓ |
+| Joint → HMRC_48 | ✓ |
+| TIC → HMRC_49 | ✓ |
+| HMRC_48 → HMRC_50 (married) | ✓ |
+| HMRC_48 → END (unmarried, spouse check skipped) | ✓ |
+| HMRC_50 → END, N=2 compound condition | ✓ |
+| HMRC_50 → END, plain Yes (N≠2) | ✓ |
+| HMRC_50 → END, No | ✓ |
+| HMRC_49 → HMRC_51 | ✓ |
+| HMRC_51 → HMRC_55 (equal share, spouse) | ✓ |
+| HMRC_51 → HMRC_52 (unequal share) | ✓ |
+| HMRC_52 → HMRC_55 (spouse) | ✓ |
+| HMRC_52 → END (no spouse) | ✓ |
+| HMRC_55 → HMRC_54 (some of it) | ✓ |
+| HMRC_54 → HMRC_61 (£ value) | ✓ |
+| HMRC_54 → HMRC_62 (% share) | ✓ |
+
+**Bug found and fixed during testing:** `HMRC_48`'s question text still
+read "...owned this **property**..." — a leftover from when the question
+was first authored for HMRC_S8, never generalised the way its TIC sibling
+HMRC_49 ("...this asset...") was. Fixed globally via direct SQL (see
+entry below) — improves HMRC_S8's wording too, no routing impact.
+
+### HMRC_48 question text corrected — leftover "property" wording
+
+`HMRC_48` ("How many joint tenants owned this [asset/property] in total,
+including the deceased?") still read "property" — a leftover from being
+first authored for HMRC_S8, never generalised the way its TIC sibling
+HMRC_49 was when the ownership-fork block was designed for reuse.
+Surfaced during HMRC_S7 test-data review (a citizen would have seen a
+bank account described with property wording). Fixed globally, live data:
+
+```sql
+UPDATE core_question
+SET question_text = 'How many joint tenants owned this asset in total, including the deceased?'
+WHERE question_id = 'HMRC_48';
+```
+
+No routing impact — text-only change, applies retroactively to HMRC_S8
+as well as HMRC_S7.
 
 ---
 
