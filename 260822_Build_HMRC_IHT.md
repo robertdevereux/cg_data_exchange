@@ -1,6 +1,6 @@
 # HMRC IHT — Technical Reference
-Date: 21 August 2026
-Status: Current — reflects code as at 21 August 2026 (HMRC_S8 ownership-fork rebuild, HMRC_S7 build, SectionQuestionGuidance, table_routed_question.html guidance fix)
+Date: 22 August 2026
+Status: Current — reflects code as at 22 August 2026 (HMRC_S9 build, triage dispatch tuple refactor, set_guidance, migrate_all, row-review Confirm button)
 
 This document covers the IHT (Inheritance Tax) regime implementation in full.
 
@@ -713,20 +713,33 @@ TRIAGE_SECTION_IDS = [t['section_id'] for t in TRIAGE_SETS]
 in the admin tools automatically adds it to `TRIAGE_SETS` — no code changes
 needed. `TRIAGE_SECTION_IDS` is derived from `TRIAGE_SETS` for status lookups.
 
-**`QUESTION_SCHEDULE_MAP`** — maps triage question IDs to asset schedule IDs:
+**`QUESTION_SCHEDULE_MAP`** — maps triage question IDs to `(type, id)` tuples
+**(changed 22 August 2026 — previously bare schedule ID strings):**
 
 ```python
 QUESTION_SCHEDULE_MAP = {
-    'HMRC_16': 'HMRC_SCH2',   # Residential property
-    'HMRC_31': 'HMRC_SCH3',   # Other land, buildings and rights over land
-    'HMRC_17': 'HMRC_SCH4',   # Bank and building society accounts
-    'HMRC_18': 'HMRC_SCH5',   # Premium Bonds and National Savings
-    'HMRC_19': 'HMRC_SCH6',   # Household goods and personal possessions
-    'HMRC_21': 'HMRC_SCH7',   # Gifts and transfers of value
-    'HMRC_22': 'HMRC_SCH8',   # Other debts
-    'HMRC_23': 'HMRC_SCH9',   # Personal loans owed to the deceased
+    'HMRC_16': ('section',  'HMRC_S8'),    # Residential property — direct to section
+    'HMRC_31': ('schedule', 'HMRC_SCH3'),  # Other land, buildings and rights over land
+    'HMRC_17': ('section',  'HMRC_S7'),    # Bank accounts — direct to section
+    'HMRC_18': ('schedule', 'HMRC_SCH5'),  # Premium Bonds and National Savings
+    'HMRC_19': ('schedule', 'HMRC_SCH6'),  # Household goods and personal possessions
+    'HMRC_21': ('schedule', 'HMRC_SCH7'),  # Gifts and transfers of value
+    'HMRC_22': ('schedule', 'HMRC_SCH8'),  # Other debts
+    'HMRC_23': ('schedule', 'HMRC_SCH9'),  # Personal loans owed to the deceased
+    'HMRC_32': ('section',  'HMRC_S9'),    # Listed stocks, shares and ISAs — direct to section
 }
 ```
+
+`type='section'` entries resolve directly to a bare `Section` on the regime
+(bypassing any intermediate schedule-listing page). `type='schedule'` entries
+continue to resolve through a schedule and its section list as before.
+`call_core` already handles both item types — no core change was needed.
+
+HMRC_S7 and HMRC_S8 were re-parented from their previous schedules
+(HMRC_SCH4 and HMRC_SCH2) directly onto `HMRC_IHT` (`schedule_id=null`,
+`regime_id='HMRC_IHT'`). HMRC_SCH3 (other land, HMRC_31) was left as a
+schedule entry — it is an empty schedule and a pre-existing gap; deliberately
+unchanged. HMRC_S9 was built as a bare section on the regime from the start.
 
 ### Action button views and URLs
 
@@ -755,11 +768,18 @@ _get_built_schedule_items(active_items, section_id, QUESTION_SCHEDULE_MAP)
 ```
 
 1. Reads Yes-answered question IDs from `active_items[section_id]`
-2. Maps each to a schedule ID via `QUESTION_SCHEDULE_MAP`
-3. Filters to schedules that have at least one section in DB
-4. Returns ordered list of `{'type': 'schedule', 'id': schedule_id}` dicts
+2. Maps each to a `(type, id)` candidate tuple via `QUESTION_SCHEDULE_MAP`
+3. Splits candidates by type; does two separate DB lookups:
+   - **`type='schedule'`** entries: `CoreSection.objects.filter(schedule__schedule_id__in=schedule_ids)` — checks that the schedule has at least one built section
+   - **`type='section'`** entries: `CoreSection.objects.filter(section_id__in=section_ids)` — checks that the section exists in the DB
+4. Recombines results in triage-question order, emitting either
+   `{'type': 'schedule', 'id': schedule_id}` or `{'type': 'section', 'id': section_id}` dicts
 
 Returns `[]` if nothing built yet → button stays at `#`, no Start shown.
+`call_core` routes `type='section'` items directly to `section_start`, and
+`type='schedule'` items to `regime_schedule_sections`. A single built section
+item causes `call_core` to short-circuit to `/section/<id>/start/` directly,
+with no intermediate listing page.
 
 ### Entry
 
@@ -1053,7 +1073,7 @@ branch-tested 18–19 August 2026 — see §12h.*
 HMRC_S7 is the "Bank and building society accounts" section. Each account
 is one row in a repeating type-2 table. It reuses the HMRC_S8 ownership-fork
 block (HMRC_46/48/49/50/51/52/55/54/61/62) **unchanged, by ID** — see
-`260815_Ownership_fork_routing_template.md` for the general reuse pattern
+`260822_Ownership_fork_routing_template.md` for the general reuse pattern
 this instantiates. Two things differ deliberately from HMRC_S8: what
 precedes the fork, and what (if anything) follows it.
 
@@ -1061,7 +1081,10 @@ precedes the fork, and what (if anything) follows it.
 columns are bank/building society name, account number, and balance.
 `totals_question_ids = 'HMRC_42'` (balance only — no separate valuation
 question exists for bank accounts, unlike HMRC_S8's HMRC_47).
-`section_type = 2`, `schedule_id = 'HMRC_SCH4'`.
+`section_type = 2`. **`schedule_id = null`, `regime_id = 'HMRC_IHT'`** —
+HMRC_S7 was re-parented directly onto the regime on 22 August 2026, removing
+it from HMRC_SCH4. Triage dispatch for HMRC_17 now goes directly to this
+section via `('section', 'HMRC_S7')` in `QUESTION_SCHEDULE_MAP`.
 `show_confirmation = True`.
 
 ### 12a. Questions
@@ -1105,7 +1128,7 @@ Identical in shape and condition logic to HMRC_S8 §11c–11e. The only
 difference throughout: **every destination that is `HMRC_60` in HMRC_S8
 is `END` in HMRC_S7.** See `260817_HMRC_S7_routing_rows_draft.md` for the
 row-by-row comparison table (S8 destination vs S7 destination, marked
-inline) — `260815_Ownership_fork_routing_template.md` documents the
+inline) — `260822_Ownership_fork_routing_template.md` documents the
 general reusable *pattern* the fork implements, but not the S7-specific
 row-by-row diff; that lives in the S7 draft. The full 23-row SQL as
 actually run is recorded in the Backlog, Completed (18 August 2026) — not
@@ -1164,7 +1187,82 @@ See Backlog, Completed (18 August 2026), for full detail.
 
 ---
 
-## 13. What is deferred
+## 13. HMRC_S9 — Stocks and shares section (type-2 routed table)
+
+*Routing authored via direct SQL, 22 August 2026. 30 rows. Fully
+branch-tested 22 August 2026 via live UI.*
+
+HMRC_S9 is the "Stocks and shares" (listed stocks, shares, and ISAs) section.
+Each holding is one row in a repeating type-2 table. It reuses the HMRC_S8
+ownership-fork block (HMRC_46/48/49/50/51/52/55/54/61/62) **unchanged, by ID**
+— see `260822_Ownership_fork_routing_template.md`. Two things differ from S7/S8:
+the opening (which uses `alternate_condition_id` on the identification SET
+itself, the first section where this was needed), and the tail (no valuation
+evidence questions, like S7).
+
+`section_type = 2`. `schedule_id = null`, `regime_id = 'HMRC_IHT'` — bare
+section directly on the regime; triage dispatch via `('section', 'HMRC_S9')`
+in `QUESTION_SCHEDULE_MAP`.
+`show_confirmation = True`.
+
+### 13a. Questions
+
+| ID | Type | Question (abbreviated) | Reused from S7/S8? |
+|----|------|------------------------|----|
+| SET12 | QuestionSet | Holding identification (name, HMRC_63 type-of-holding branch) | No — stocks-specific |
+| SET14 | QuestionSet | Value and unit capture (for paths that need it) | No — stocks-specific |
+| HMRC_63 | radio | What type of holding is this? (5-branch opening) | No |
+| HMRC_64–HMRC_75 | various | Detail questions for each branch | No |
+| HMRC_46 | radio | How was this asset owned? | Yes, unchanged |
+| HMRC_48 | number | How many joint tenants owned this asset in total? | Yes, unchanged |
+| HMRC_49 | number | How many tenants in common owned this asset? | Yes, unchanged |
+| HMRC_50 | radio | Is the deceased's spouse/civil partner one of the other owners? | Yes, unchanged |
+| HMRC_51 | radio | Did the deceased own an equal share with other tenants in common? | Yes, unchanged |
+| HMRC_52 | number | What was the deceased's share of this asset (%)? | Yes, unchanged |
+| HMRC_55 | radio | How much of the deceased's share passes to the surviving spouse? | Yes, unchanged |
+| HMRC_54 | radio | Was the portion passing to the spouse specified as a value or share? | Yes, unchanged |
+| HMRC_61 | number | What value (£) passes to the spouse? | Yes, unchanged |
+| HMRC_62 | number | What percentage of the deceased's share passes to the spouse? | Yes, unchanged |
+
+HMRC_14 (marital status) is referenced via `alternate_condition_id` throughout
+the ownership fork, exactly as in S7/S8. No re-asking inside HMRC_S9.
+
+### 13b. Row journey — top-level flow
+
+**Identification fork at SET12.** Unlike S7/S8 where the identification SET
+routes unconditionally to the next question, HMRC_S9's identification SET (SET12)
+itself requires a branch on the type of holding (HMRC_63). This is the first
+section where `alternate_condition_id` was used on a SET-level routing row
+(not just downstream of a single fixed identification step). The five HMRC_63
+branches lead to different detail question paths (HMRC_64–75 and SET14) before
+all converging at HMRC_46 for the ownership fork.
+
+```
+SET12 → [5 HMRC_63 branches] → detail questions/SET14 → HMRC_46 → [ownership fork]
+```
+
+### 13c–13e. Ownership fork, joint names, tenants in common, spousal destination
+
+Identical in shape and condition logic to HMRC_S8 §11b–11e and HMRC_S7 §12c–12e.
+Every destination that would be `HMRC_60` in HMRC_S8 is `END` in HMRC_S9 —
+no valuation-evidence tail needed.
+
+### 13f. No valuation gate or tail
+
+Like HMRC_S7, HMRC_S9 has no equivalent of HMRC_S8's valuation-evidence gate
+(HMRC_60) and tail (HMRC_56–59). A listed share or ISA value does not require
+a substitute-evidence chain.
+
+### 13g. Test coverage
+
+Manually exercised via live UI through all five HMRC_63 branches, the full
+ownership-fork path (Sole/Joint/TIC-equal/TIC-unequal), and both spousal
+outcomes (All of it / Some of it). Automated dispatch test:
+`test_hmrc_32_yes_dispatches_directly_to_s9` in `TestTriageDirectSectionDispatch`.
+
+---
+
+## 14. What is deferred
 
 | Item | Backlog ref |
 |------|-------------|
@@ -1175,6 +1273,7 @@ See Backlog, Completed (18 August 2026), for full detail.
 | Reconcile `_entry_start` vs `iht_start_new_estate` duplication | confirmed by coherence audit 7 July 2026 |
 | Tailor exit gate — holding page when Yes-answered items have no built sections | NOW — not yet built; see §8a |
 | S5/S6 `QUESTION_SCHEDULE_MAP` entries and schedule allocation | LATER — see §8a and Backlog |
+| HMRC_32 (`QUESTION_SCHEDULE_MAP` entry `('section', 'HMRC_S9')`) | done 22 August 2026, see §8a |
 | Derived married/widowed/single helper reading HMRC_14+HMRC_43 together | new, 5 July 2026 |
 | HMRC_S8 sub-questions: lease length, damage detail, insurance cover, valuation upload | LATER — see §11h and Backlog |
 | ~~HMRC_46/HMRC_14 compound routing rows not yet authored via admin UX~~ | Resolved 15 August 2026 — full HMRC_S8 ownership-fork rebuild, see §11 |

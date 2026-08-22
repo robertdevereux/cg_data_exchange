@@ -51,7 +51,7 @@ Run `manage.py load_test_data` locally to update production data without
 a Render deploy.
 
 **Direct SQL against the live Neon DB** (e.g. authoring routing rows by
-hand — see `260815_Ownership_fork_routing_template.md` for the pattern):
+hand — see `260822_Ownership_fork_routing_template.md` for the pattern):
 if working in Neon's own web SQL editor rather than a persistent `psql`
 terminal session, **do not split `BEGIN;` / `INSERT` / verification
 `SELECT`s / `COMMIT;` across separate "Run" actions.** The web editor does
@@ -216,7 +216,7 @@ it, if anything (property has a substitute-valuation-evidence tail via
 to vary by asset class (e.g. "not sure how this is owned?" pointing to the
 Land Registry for property vs. account statements for bank accounts) is
 handled via `SectionQuestionGuidance`, not by forking the questions
-themselves — see `260815_Ownership_fork_routing_template.md` for the full
+themselves — see `260822_Ownership_fork_routing_template.md` for the full
 pattern and reuse checklist.
 
 ---
@@ -226,11 +226,11 @@ pattern and reuse checklist.
 | Document | File | Purpose |
 |----------|------|---------|
 | Initial Prompt | `260821_Initial_Prompt.md` | This file — read first in every session |
-| Core Platform Reference | `260821_Build_CORE_data_model_and_interfaces.md` | Platform reference — data model, interfaces, execution engine, design decisions |
-| HMRC IHT Reference | `260821_Build_HMRC_IHT.md` | Complete IHT technical reference — action buttons, matching, reckoner, triage, asset buttons |
+| Core Platform Reference | `260822_Build_CORE_data_model_and_interfaces.md` | Platform reference — data model, interfaces, execution engine, design decisions |
+| HMRC IHT Reference | `260822_Build_HMRC_IHT.md` | Complete IHT technical reference — action buttons, matching, reckoner, triage, asset buttons |
 | Core Map | `260815_Build_CORE_codebase_file_map.md` | File-by-file map of core/ internals |
-| Backlog | `260821_Backlog.md` | Active task list with completed sprint record |
-| Ownership-fork routing template | `260815_Ownership_fork_routing_template.md` | Reusable routing pattern for asset-class sections (sole/joint/TIC + spousal destination) — read before authoring routing for any new asset class |
+| Backlog | `260822_Backlog.md` | Active task list with completed sprint record |
+| Ownership-fork routing template | `260822_Ownership_fork_routing_template.md` | Reusable routing pattern for asset-class sections (sole/joint/TIC + spousal destination) — read before authoring routing for any new asset class |
 | HMRC_S8 routing rows (reference) | `260803_HMRC_S8_routing_rows.md` | Full property-section routing, human-readable format — the worked example the template above is built from |
 | file_dump.txt | `file_dump.txt` | Full current codebase (.py and .html) — regenerate before CC work, and after any CC session before relying on it in a new chat |
 
@@ -250,7 +250,10 @@ implements — worth reading alongside it if extending the fork to a new
 asset class.
 
 All active build-reference documents are prefixed `260815_`, `260821_`,
-`260802_`, or `260803_` (routing-specific references only).
+`260822_`, `260802_`, or `260803_` (routing-specific references only).
+`260815_` remains because `260815_Build_CORE_codebase_file_map.md` is still
+current. `260821_` remains because `260821_Initial_Prompt.md` and the two
+Annex A files are still current.
 
 **Superseded documents** (archive, do not read):
 - `260616_IHT_Orchestration_Logic.md` — replaced by HMRC IHT Reference
@@ -285,6 +288,10 @@ All active build-reference documents are prefixed `260815_`, `260821_`,
 - `260729_Build_CORE_codebase_file_map.md` — superseded by 260815_
 - `260730_Backlog.md` — superseded by 260815_
 - `260730_Initial_Prompt.md` — superseded by this file
-- `260815_Build_CORE_data_model_and_interfaces.md` — superseded by 260821_
-- `260815_Build_HMRC_IHT.md` — superseded by 260821_
-- `260815_Backlog.md` — superseded by 260821_
+- `260815_Build_CORE_data_model_and_interfaces.md` — superseded by 260821_ then 260822_
+- `260815_Build_HMRC_IHT.md` — superseded by 260821_ then 260822_
+- `260815_Backlog.md` — superseded by 260821_ then 260822_
+- `260815_Ownership_fork_routing_template.md` — superseded by 260822_
+- `260821_Build_CORE_data_model_and_interfaces.md` — superseded by 260822_
+- `260821_Build_HMRC_IHT.md` — superseded by 260822_
+- `260821_Backlog.md` — superseded by 260822_

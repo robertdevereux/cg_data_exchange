@@ -93,6 +93,19 @@ Models defined in `core/models.py`:
   ID convention is **`SET1`, `SET2`, `SET3`...** (changed 1 July 2026 from
   a bare `S1, S2...` convention, which collided visually with Section IDs
   `{DEPT}_S{N}`). `_next_set_id()` in `views_admin_tools.py` enforces this.
+  Key fields:
+  - `set_hint` (CharField, nullable) — short hint text shown below the set's
+    `<h1>` heading, rendered as `<div class="govuk-hint">`. Live in both
+    `question_set.html` and `table_routed_set.html`.
+  - `set_guidance` (TextField, nullable) — **(new, 22 August 2026,
+    migration 0021)** freeform markdown guidance shown **above** `set_hint`
+    as `<div class="govuk-inset-text">{{ set_guidance|render_markdown }}</div>`.
+    Rendered in both `question_set.html` and `table_routed_set.html` via
+    `{% load markdown_extras %}` and the `render_markdown` filter. Settable
+    and editable in the admin tools (`tools_set_add.html` and
+    `tools_set_edit.html`). Stored as `None` when empty (not empty string).
+    Passed through `_build_section_tables` and all four SET-page view context
+    dicts. Any QuestionSet can carry this — not HMRC-specific.
 - `QuestionSetMember` — membership/ordering within a QuestionSet.
 - `SectionMember` — **(new, 1 July 2026)** explicit pool of Questions/Sets
   available to a Section, independent of and prior to routing. A node must
@@ -109,7 +122,7 @@ Models defined in `core/models.py`:
   questions need section-specific advice (e.g. HMRC_46, "how was this
   owned?", reused across HMRC_S8 and HMRC_S7, needs Land-Registry-specific
   wording for property but account-mandate wording for bank accounts;
-  see `260815_Ownership_fork_routing_template.md`). Fields:
+  see `260822_Ownership_fork_routing_template.md`). Fields:
   `section` (FK), `question` (FK, `to_field='question_id'`),
   `guidance_override` (TextField, nullable), `hint_override` (CharField,
   nullable). `unique_together = ('section', 'question')` — one override
@@ -404,6 +417,20 @@ else:
   and enters the row journey); "Delete" → `section_table_delete`.
   `section_table_routed_change` remains the underlying seed mechanism but is no
   longer linked directly from the landing table (D22, 31 July 2026).
+
+**`section_table_row_review` — type-2 row check-your-answers page:**
+Renders `core/review.html` with `confirm_url=None` (no confirm step — the row
+was already committed on the last routing answer) and a link back to the table.
+`review.html` supports two optional context keys **(added 22 August 2026):**
+- `back_label` — overrides the default "Back to list" link text.
+- `back_primary` — if `True`, renders the back link as a green primary
+  `govuk-button` (no `govuk-button--secondary` class). If absent or `False`,
+  renders as a grey secondary button (default).
+`section_table_row_review` sets `back_label='Confirm'` and `back_primary=True`
+so the link reads "Confirm" and renders green — cosmetic only; no commit
+happens here. All other callers of `review.html` (specifically `section_review`,
+the type-0 check-your-answers) do not set `back_url` at all and are entirely
+unaffected.
 
 **Numeric formatting (D18, 31 July 2026):** Numeric question columns in the
 summary table are right-aligned and comma-formatted. Column values passed as
@@ -780,6 +807,24 @@ and `QuestionSetMember` with `is_platform=True` to the `platform` alias.
 Target architecture: separate Neon project per dept + one platform DB.
 Separation is configuration-only — no code changes needed when provisioned.
 
+**Migration rule — always use `migrate_all`, never bare `migrate`:**
+Any migration that touches `Question`, `QuestionSet`, or `QuestionSetMember`
+(the PlatformRouter-routed models) must be applied with:
+
+```
+python manage.py migrate_all
+```
+
+A bare `python manage.py migrate` will silently report success while actually
+skipping the schema change on the alias where it matters. This happens because
+`allow_migrate` correctly refuses the migration on `default`, but the shared
+`django_migrations` table records it as applied regardless — leaving the
+schema change absent from the database with no error or warning. Confirmed
+incident: `0021_add_set_guidance_to_questionset` (2026-08-22) was marked
+applied on `default` without the column ever being added, until caught and
+re-run against `platform` explicitly. `migrate_all` runs migrate against every
+configured alias in sequence, closing this gap.
+
 **Test isolation note (found 5 July 2026):** because `'default'` and
 `'platform'` are separate DB connections to the same physical database,
 under `READ COMMITTED` isolation a test fixture written via `.using('default')`
@@ -909,6 +954,7 @@ PLATFORM and TEST. Clicking a regime requires login (`?next=` mechanism).
 | `/section/<section_id>/table/add-routed/` | section_table_routed_add | Row journey init (type 2) |
 | `/section/<section_id>/table/add-routed/<q_or_s_id>/` | section_table_routed_question | Row journey question (type 2) |
 | `/section/<section_id>/table/change/<row_index>/` | section_table_routed_change | Row change init (type 2) |
+| `/section/<section_id>/table/row-review/<row_index>/` | section_table_row_review | Check-your-answers for one row (type 2); back link relabelled "Confirm" |
 | `/section/<section_id>/table/row-detail/<row_index>/` | section_table_row_detail | Extra details view (type 2) |
 | `/section/<section_id>/table/delete/<row_index>/` | section_table_delete | Delete row (types 1 and 2) |
 | `/section/<section_id>/table/confirm/` | section_confirm_table | Confirm table section |
