@@ -2560,3 +2560,230 @@ class TestPromoteCaseToVerifiedInterface(TestCase):
         ).first()
         self.assertIsNotNone(perm, 'case-scoped Permission must exist after promotion')
         self.assertFalse(perm.can_delegate)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# QUESTION_SCHEDULE_MAP tuple refactor — section-type dispatch
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestTriageDirectSectionDispatch(TestCase):
+    """
+    HMRC_S7 and HMRC_S8 were re-parented directly onto the regime
+    (schedule_id=NULL); HMRC_S9 is new.  QUESTION_SCHEDULE_MAP now maps their
+    triage question IDs to ('section', 'HMRC_Sx') tuples instead of bare
+    schedule strings.  _get_built_schedule_items must emit
+    {'type': 'section', ...} items for these, so call_core short-circuits
+    straight to /section/{id}/start/ with no intermediate schedule-listing page.
+
+    Also confirms:
+    - Order across mixed section+schedule items matches triage question order.
+    - Schedule-type entries (HMRC_18 → HMRC_SCH5) still produce a schedule
+      listing redirect (regression guard for the multi-section case).
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.regime = _create_iht_base()
+        cls.s1 = Section.objects.create(
+            section_id='HMRC_S1', section_name="Deceased's details",
+            section_type=0, regime=cls.regime, display_order=1,
+        )
+        cls.s2 = Section.objects.create(
+            section_id='HMRC_S2', section_name='Estate ready reckoner',
+            section_type=0, regime=cls.regime, display_order=2,
+        )
+        # Triage schedule and its sections
+        cls.sch1 = Schedule.objects.create(
+            schedule_id='HMRC_SCH1', schedule_name='Estate type',
+            regime=cls.regime, display_order=1,
+        )
+        cls.s4 = Section.objects.create(
+            section_id='HMRC_S4', section_name='Common assets and liabilities',
+            section_type=0, schedule=cls.sch1, display_order=1,
+        )
+        cls.s5 = Section.objects.create(
+            section_id='HMRC_S5', section_name='Pensions and life assurance',
+            section_type=0, schedule=cls.sch1, display_order=2,
+        )
+        cls.s6 = Section.objects.create(
+            section_id='HMRC_S6', section_name='Other assets and liabilities',
+            section_type=0, schedule=cls.sch1, display_order=3,
+        )
+        # Regime-direct sections (schedule_id=NULL) — re-parented in the DB
+        cls.s7 = Section.objects.create(
+            section_id='HMRC_S7', section_name='Bank accounts',
+            section_type=0, regime=cls.regime, display_order=10,
+        )
+        cls.s8 = Section.objects.create(
+            section_id='HMRC_S8', section_name='Residential property',
+            section_type=0, regime=cls.regime, display_order=11,
+        )
+        cls.s9 = Section.objects.create(
+            section_id='HMRC_S9', section_name='Stocks and shares',
+            section_type=0, regime=cls.regime, display_order=12,
+        )
+        # SCH5 with one built section — needed for the HMRC_18 schedule test
+        cls.sch5 = Schedule.objects.create(
+            schedule_id='HMRC_SCH5', schedule_name='Foreign assets',
+            regime=cls.regime, display_order=5,
+        )
+        Section.objects.create(
+            section_id='HMRC_S_SCH5_A', section_name='Foreign assets section',
+            section_type=0, schedule=cls.sch5, display_order=1,
+        )
+        Question.objects.using('default').get_or_create(
+            question_id='HMRC_13',
+            defaults={
+                'question_text': 'Do you need help?',
+                'question_type': 'radio',
+                'options': 'Yes;No',
+            },
+        )
+        cls.alice = User.objects.get(username='alice')
+        Permission.objects.create(
+            actor=cls.alice, user=cls.alice, regime=cls.regime,
+            section=None, can_delegate=False,
+        )
+        cls.case = Case.objects.create(
+            case_id='triage-direct-section-test',
+            user=cls.alice, regime=cls.regime,
+            status='draft', reference='IHT-DIRECT-001',
+        )
+        SectionStatus.objects.create(
+            user=cls.alice, regime=cls.regime, section=cls.s1, status='complete',
+        )
+
+    def setUp(self):
+        self.client = Client()
+        self.client.login(username='alice', password='testpass123')
+        _set_session_case(self.client, self.case.case_id, self.alice.pk)
+        q13 = Question.objects.using('default').get(question_id='HMRC_13')
+        SectionStatus.objects.update_or_create(
+            user=self.alice, regime=self.regime, section=self.s2,
+            defaults={'status': 'complete'},
+        )
+        Answer.objects.update_or_create(
+            user=self.alice, actor=self.alice, regime=self.regime,
+            case=self.case, section=self.s2, question=q13,
+            defaults={'answer': 'No'},
+        )
+        for sec in (self.s4, self.s5, self.s6):
+            SectionStatus.objects.update_or_create(
+                user=self.alice, regime=self.regime, section=sec,
+                defaults={'status': 'complete'},
+            )
+
+    def _set_action(self, action):
+        session = self.client.session
+        session['iht_current_action'] = action
+        session.pop('iht_in_core', None)
+        session.save()
+
+    # ── Unit: _get_built_schedule_items ───────────────────────────────────────
+
+    def test_section_type_entries_emit_section_items(self):
+        """'section' tuple entries emit {'type': 'section', ...} for existing section rows."""
+        from dept_hmrc.views.iht.orchestrate import _get_built_schedule_items, QUESTION_SCHEDULE_MAP
+        items = _get_built_schedule_items(
+            {'HMRC_S4': [
+                {'question_id': 'HMRC_16', 'detail_section': None},
+                {'question_id': 'HMRC_17', 'detail_section': None},
+                {'question_id': 'HMRC_32', 'detail_section': None},
+            ]},
+            'HMRC_S4',
+            QUESTION_SCHEDULE_MAP,
+        )
+        self.assertEqual(items, [
+            {'type': 'section', 'id': 'HMRC_S8'},
+            {'type': 'section', 'id': 'HMRC_S7'},
+            {'type': 'section', 'id': 'HMRC_S9'},
+        ])
+
+    def test_schedule_type_entries_emit_schedule_items(self):
+        """'schedule' tuple entries emit {'type': 'schedule', ...} when a section exists under the schedule."""
+        from dept_hmrc.views.iht.orchestrate import _get_built_schedule_items, QUESTION_SCHEDULE_MAP
+        items = _get_built_schedule_items(
+            {'HMRC_S4': [{'question_id': 'HMRC_18', 'detail_section': None}]},
+            'HMRC_S4',
+            QUESTION_SCHEDULE_MAP,
+        )
+        self.assertEqual(items, [{'type': 'schedule', 'id': 'HMRC_SCH5'}])
+
+    def test_mixed_items_preserve_triage_order(self):
+        """Mixed section+schedule entries preserve the triage question display order."""
+        from dept_hmrc.views.iht.orchestrate import _get_built_schedule_items, QUESTION_SCHEDULE_MAP
+        items = _get_built_schedule_items(
+            {'HMRC_S4': [
+                {'question_id': 'HMRC_16', 'detail_section': None},  # section → S8
+                {'question_id': 'HMRC_18', 'detail_section': None},  # schedule → SCH5
+                {'question_id': 'HMRC_17', 'detail_section': None},  # section → S7
+            ]},
+            'HMRC_S4',
+            QUESTION_SCHEDULE_MAP,
+        )
+        self.assertEqual(items, [
+            {'type': 'section',  'id': 'HMRC_S8'},
+            {'type': 'schedule', 'id': 'HMRC_SCH5'},
+            {'type': 'section',  'id': 'HMRC_S7'},
+        ])
+
+    # ── Dispatch: section-type entries land directly on /section/{id}/start/ ──
+
+    @patch('dept_hmrc.views.iht.orchestrate.TRIAGE_SECTION_IDS', _MOCK_TRIAGE_IDS)
+    @patch('dept_hmrc.views.iht.orchestrate.TRIAGE_SETS', _MOCK_TRIAGE_SETS)
+    @patch('dept_hmrc.views.iht.orchestrate._get_active_triage_items')
+    def test_hmrc_16_yes_dispatches_directly_to_s8(self, mock_active):
+        """HMRC_16=Yes → redirects to /section/HMRC_S8/start/, no intermediate listing page."""
+        mock_active.side_effect = lambda _case: {
+            'HMRC_S4': [{'question_id': 'HMRC_16', 'detail_section': None}],
+            'HMRC_S5': [], 'HMRC_S6': [],
+        }
+        self._set_action('hmrc_s4')
+        r = self.client.get(HOME_URL)
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r['Location'], '/section/HMRC_S8/start/')
+
+    @patch('dept_hmrc.views.iht.orchestrate.TRIAGE_SECTION_IDS', _MOCK_TRIAGE_IDS)
+    @patch('dept_hmrc.views.iht.orchestrate.TRIAGE_SETS', _MOCK_TRIAGE_SETS)
+    @patch('dept_hmrc.views.iht.orchestrate._get_active_triage_items')
+    def test_hmrc_17_yes_dispatches_directly_to_s7(self, mock_active):
+        """HMRC_17=Yes → redirects to /section/HMRC_S7/start/, no intermediate listing page."""
+        mock_active.side_effect = lambda _case: {
+            'HMRC_S4': [{'question_id': 'HMRC_17', 'detail_section': None}],
+            'HMRC_S5': [], 'HMRC_S6': [],
+        }
+        self._set_action('hmrc_s4')
+        r = self.client.get(HOME_URL)
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r['Location'], '/section/HMRC_S7/start/')
+
+    @patch('dept_hmrc.views.iht.orchestrate.TRIAGE_SECTION_IDS', _MOCK_TRIAGE_IDS)
+    @patch('dept_hmrc.views.iht.orchestrate.TRIAGE_SETS', _MOCK_TRIAGE_SETS)
+    @patch('dept_hmrc.views.iht.orchestrate._get_active_triage_items')
+    def test_hmrc_32_yes_dispatches_directly_to_s9(self, mock_active):
+        """HMRC_32=Yes → redirects to /section/HMRC_S9/start/, no intermediate listing page."""
+        mock_active.side_effect = lambda _case: {
+            'HMRC_S4': [{'question_id': 'HMRC_32', 'detail_section': None}],
+            'HMRC_S5': [], 'HMRC_S6': [],
+        }
+        self._set_action('hmrc_s4')
+        r = self.client.get(HOME_URL)
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r['Location'], '/section/HMRC_S9/start/')
+
+    # ── Dispatch: schedule-type entry still produces schedule listing ──────────
+
+    @patch('dept_hmrc.views.iht.orchestrate.TRIAGE_SECTION_IDS', _MOCK_TRIAGE_IDS)
+    @patch('dept_hmrc.views.iht.orchestrate.TRIAGE_SETS', _MOCK_TRIAGE_SETS)
+    @patch('dept_hmrc.views.iht.orchestrate._get_active_triage_items')
+    def test_hmrc_18_yes_dispatches_to_schedule_listing(self, mock_active):
+        """HMRC_18=Yes → schedule entry still redirects to schedule listing, not a bare section."""
+        mock_active.side_effect = lambda _case: {
+            'HMRC_S4': [{'question_id': 'HMRC_18', 'detail_section': None}],
+            'HMRC_S5': [], 'HMRC_S6': [],
+        }
+        self._set_action('hmrc_s4')
+        r = self.client.get(HOME_URL)
+        self.assertEqual(r.status_code, 302)
+        self.assertIn('HMRC_SCH5', r['Location'])
+        self.assertNotIn('/section/HMRC_S', r['Location'])

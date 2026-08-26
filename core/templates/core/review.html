@@ -4,6 +4,12 @@
 
 {% block content %}
 
+<style>
+  .govuk-summary-list__key    { width: 50%; }
+  .govuk-summary-list__value  { width: 35%; }
+  .govuk-summary-list__actions { width: 15%; }
+</style>
+
   <div class="govuk-grid-row">
     <div class="govuk-grid-column-two-thirds">
 
@@ -99,7 +105,7 @@
       </form>
       {% endif %}
       {% if back_url %}
-      <a href="{{ back_url }}" class="govuk-button govuk-button--secondary">Back to list</a>
+      <a href="{{ back_url }}" class="govuk-button{% if not back_primary %} govuk-button--secondary{% endif %}">{{ back_label|default:"Back to list" }}</a>
       {% endif %}
 
     </div>

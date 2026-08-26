@@ -194,6 +194,12 @@
                   <dd class="govuk-summary-list__value">{{ qs.set_hint }}</dd>
                 </div>
                 {% endif %}
+                {% if qs.set_guidance %}
+                <div class="govuk-summary-list__row">
+                  <dt class="govuk-summary-list__key">Guidance</dt>
+                  <dd class="govuk-summary-list__value">{{ qs.set_guidance }}</dd>
+                </div>
+                {% endif %}
               </dl>
 
               <h4 class="govuk-heading-s govuk-!-margin-top-4">Members</h4>

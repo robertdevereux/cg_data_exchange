@@ -273,8 +273,9 @@ def _build_section_tables(routing_rows, section=None):
             qid = member.question_id
             if sid not in set_table:
                 set_table[sid] = {
-                    'set_title': member.question_set.set_title,
-                    'set_hint':  member.question_set.set_hint or '',
+                    'set_title':    member.question_set.set_title,
+                    'set_hint':     member.question_set.set_hint or '',
+                    'set_guidance': member.question_set.set_guidance or '',
                     'members': [],
                 }
             set_table[sid]['members'].append({
@@ -1695,13 +1696,14 @@ def section_table_routed_question(request, section_id, question_or_set_id):
                         }
                     member_dicts.append(mdict)
                 context = {
-                    'section':    section,
-                    'set_id':     node_id,
-                    'set_title':  meta['set_title'],
-                    'set_hint':   meta['set_hint'],
-                    'members':    member_dicts,
-                    'back_url':   back_url,
-                    'acting_for': get_acting_for_name(pss),
+                    'section':      section,
+                    'set_id':       node_id,
+                    'set_title':    meta['set_title'],
+                    'set_hint':     meta['set_hint'],
+                    'set_guidance': meta['set_guidance'],
+                    'members':      member_dicts,
+                    'back_url':     back_url,
+                    'acting_for':   get_acting_for_name(pss),
                     'routing_error': (
                         'There is a configuration problem with this section. '
                         'Your answer could not be processed. Please contact support.'
@@ -1806,13 +1808,14 @@ def section_table_routed_question(request, section_id, question_or_set_id):
                 }
             member_dicts.append(mdict)
         context = {
-            'section':    section,
-            'set_id':     node_id,
-            'set_title':  meta['set_title'],
-            'set_hint':   meta['set_hint'],
-            'members':    member_dicts,
-            'back_url':   back_url,
-            'acting_for': get_acting_for_name(pss),
+            'section':      section,
+            'set_id':       node_id,
+            'set_title':    meta['set_title'],
+            'set_hint':     meta['set_hint'],
+            'set_guidance': meta['set_guidance'],
+            'members':      member_dicts,
+            'back_url':     back_url,
+            'acting_for':   get_acting_for_name(pss),
         }
         return render(request, 'core/table_routed_set.html', context)
     else:
@@ -1997,12 +2000,14 @@ def section_table_row_review(request, section_id, row_index):
 
     from django.urls import reverse as _reverse
     context = {
-        'section':     section,
-        'rows':        rows,
-        'confirm_url': None,
-        'back_url':    _reverse('core:section_table', kwargs={'section_id': section_id}),
-        'breadcrumbs': _build_crumbs(pss, f'Record {row_index + 1}'),
-        'acting_for':  get_acting_for_name(pss),
+        'section':      section,
+        'rows':         rows,
+        'confirm_url':  None,
+        'back_url':     _reverse('core:section_table', kwargs={'section_id': section_id}),
+        'back_label':   'Confirm',
+        'back_primary': True,
+        'breadcrumbs':  _build_crumbs(pss, f'Record {row_index + 1}'),
+        'acting_for':   get_acting_for_name(pss),
     }
     return render(request, 'core/review.html', context)
 
@@ -2326,15 +2331,16 @@ def section_set_page(request, section_id, set_id):
         fields.append(field_dict)
 
     context = {
-        'section':     section,
-        'set_id':      set_id,
-        'set_title':   set_meta['set_title'],
-        'set_hint':    set_meta['set_hint'],
-        'fields':      fields,
-        'errors':      [],
-        'back_url':    back_url,
-        'breadcrumbs': _build_crumbs(pss, section.section_name),
-        'acting_for':  get_acting_for_name(pss),
+        'section':      section,
+        'set_id':       set_id,
+        'set_title':    set_meta['set_title'],
+        'set_hint':     set_meta['set_hint'],
+        'set_guidance': set_meta['set_guidance'],
+        'fields':       fields,
+        'errors':       [],
+        'back_url':     back_url,
+        'breadcrumbs':  _build_crumbs(pss, section.section_name),
+        'acting_for':   get_acting_for_name(pss),
     }
     return render(request, 'core/question_set.html', context)
 
@@ -2456,15 +2462,16 @@ def _process_set_answer(request, section, section_id, set_id, set_meta, pss):
         ]
 
         context = {
-            'section':     section,
-            'set_id':      set_id,
-            'set_title':   set_meta['set_title'],
-            'set_hint':    set_meta['set_hint'],
-            'fields':      fields,
-            'errors':      error_summary,
-            'back_url':    back_url,
-            'breadcrumbs': _build_crumbs(pss, section.section_name),
-            'acting_for':  get_acting_for_name(pss),
+            'section':      section,
+            'set_id':       set_id,
+            'set_title':    set_meta['set_title'],
+            'set_hint':     set_meta['set_hint'],
+            'set_guidance': set_meta['set_guidance'],
+            'fields':       fields,
+            'errors':       error_summary,
+            'back_url':     back_url,
+            'breadcrumbs':  _build_crumbs(pss, section.section_name),
+            'acting_for':   get_acting_for_name(pss),
         }
         return render(request, 'core/question_set.html', context)
 

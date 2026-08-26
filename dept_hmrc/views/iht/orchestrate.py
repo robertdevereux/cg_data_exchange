@@ -79,14 +79,15 @@ TRIAGE_SETS = _get_triage_sets()
 TRIAGE_SECTION_IDS = [t['section_id'] for t in TRIAGE_SETS]
 
 QUESTION_SCHEDULE_MAP = {
-    'HMRC_16': 'HMRC_SCH2',
-    'HMRC_31': 'HMRC_SCH3',
-    'HMRC_17': 'HMRC_SCH4',
-    'HMRC_18': 'HMRC_SCH5',
-    'HMRC_19': 'HMRC_SCH6',
-    'HMRC_21': 'HMRC_SCH7',
-    'HMRC_22': 'HMRC_SCH8',
-    'HMRC_23': 'HMRC_SCH9',
+    'HMRC_16': ('section',  'HMRC_S8'),    # residential property — re-parented direct to regime
+    'HMRC_31': ('schedule', 'HMRC_SCH3'),
+    'HMRC_17': ('section',  'HMRC_S7'),    # bank accounts — re-parented direct to regime
+    'HMRC_18': ('schedule', 'HMRC_SCH5'),
+    'HMRC_19': ('schedule', 'HMRC_SCH6'),
+    'HMRC_21': ('schedule', 'HMRC_SCH7'),
+    'HMRC_22': ('schedule', 'HMRC_SCH8'),
+    'HMRC_23': ('schedule', 'HMRC_SCH9'),
+    'HMRC_32': ('section',  'HMRC_S9'),    # stocks and shares
 }
 
 
@@ -711,9 +712,11 @@ def _triage_set_rollup(section_id, set_items, statuses):
 def _get_built_schedule_items(active_items, section_id, schedule_map):
     """
     Return call_core items list for one triage set's action button.
-    Maps Yes-answered question IDs to schedule IDs via schedule_map,
-    then filters to schedules that have at least one section built.
-    Preserves the triage question display order.
+    Maps Yes-answered question IDs to (type, id) tuples via schedule_map,
+    then filters to entries that are 'built':
+      - 'schedule' entries: built if at least one Section exists under the schedule.
+      - 'section'  entries: built if the Section row exists directly.
+    Preserves the triage question display order across both types combined.
     Returns [] if nothing is built yet.
     """
     from core.models import Section as CoreSection
@@ -721,23 +724,36 @@ def _get_built_schedule_items(active_items, section_id, schedule_map):
         item['question_id']
         for item in active_items.get(section_id, [])
     ]
-    candidate_schedule_ids = [
+    candidates = [
         schedule_map[qid]
         for qid in yes_questions
         if qid in schedule_map
     ]
-    if not candidate_schedule_ids:
+    if not candidates:
         return []
-    built = set(
+
+    schedule_ids = [cid for ctype, cid in candidates if ctype == 'schedule']
+    section_ids  = [cid for ctype, cid in candidates if ctype == 'section']
+
+    built_schedules = set(
         CoreSection.objects
-        .filter(schedule__schedule_id__in=candidate_schedule_ids)
+        .filter(schedule__schedule_id__in=schedule_ids)
         .values_list('schedule__schedule_id', flat=True)
-    )
-    return [
-        {'type': 'schedule', 'id': sid}
-        for sid in candidate_schedule_ids
-        if sid in built
-    ]
+    ) if schedule_ids else set()
+
+    built_sections = set(
+        CoreSection.objects
+        .filter(section_id__in=section_ids)
+        .values_list('section_id', flat=True)
+    ) if section_ids else set()
+
+    result = []
+    for ctype, cid in candidates:
+        if ctype == 'schedule' and cid in built_schedules:
+            result.append({'type': 'schedule', 'id': cid})
+        elif ctype == 'section' and cid in built_sections:
+            result.append({'type': 'section', 'id': cid})
+    return result
 
 
 # ══════════════════════════════════════════════════════════════════════════════

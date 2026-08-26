@@ -64,6 +64,15 @@
                  value="{{ post.set_hint|default:'' }}">
         </div>
 
+        {# ── Set guidance ─────────────────────────────────────────────────────── #}
+        <div class="govuk-form-group">
+          <label class="govuk-label govuk-label--s" for="set_guidance">
+            Guidance <span class="govuk-hint" style="display:inline">(optional — markdown, shown as inset text above hint)</span>
+          </label>
+          <textarea class="govuk-textarea" id="set_guidance" name="set_guidance"
+                    rows="3">{{ post.set_guidance|default:'' }}</textarea>
+        </div>
+
         <hr class="govuk-section-break govuk-section-break--m govuk-section-break--visible">
 
         {# ── Member questions ─────────────────────────────────────────────────── #}

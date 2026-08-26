@@ -333,9 +333,10 @@ def tools_set_add(request):
 
     if request.method == 'POST':
         post = request.POST
-        set_id    = _next_set_id()
-        set_title = post.get('set_title', '').strip()
-        set_hint  = post.get('set_hint', '').strip() or None
+        set_id       = _next_set_id()
+        set_title    = post.get('set_title', '').strip()
+        set_hint     = post.get('set_hint', '').strip() or None
+        set_guidance = post.get('set_guidance', '').strip() or None
 
         if not set_title:
             errors['set_title'] = 'Enter a title for this set'
@@ -374,6 +375,7 @@ def tools_set_add(request):
                 set_id=set_id,
                 set_title=set_title,
                 set_hint=set_hint,
+                set_guidance=set_guidance,
             )
             for m in members:
                 QuestionSetMember.objects.create(
@@ -3160,8 +3162,9 @@ def tools_set_edit(request, set_id):
         back_schedule = request.POST.get('back_schedule', '')
         back_section  = request.POST.get('back_section', '')
 
-        qs.set_title = request.POST.get('set_title', qs.set_title).strip()
-        qs.set_hint  = request.POST.get('set_hint', '').strip() or None
+        qs.set_title    = request.POST.get('set_title', qs.set_title).strip()
+        qs.set_hint     = request.POST.get('set_hint', '').strip() or None
+        qs.set_guidance = request.POST.get('set_guidance', '').strip() or None
         qs.save()
 
         if back == 'picker':

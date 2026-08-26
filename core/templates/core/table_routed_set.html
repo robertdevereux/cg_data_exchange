@@ -1,4 +1,5 @@
 {% extends "core/base.html" %}
+{% load markdown_extras %}
 
 {% block title %}Add record — {{ section.section_name }}{% endblock %}
 
@@ -13,6 +14,10 @@
         {% csrf_token %}
 
         <h1 class="govuk-heading-l">{{ set_title }}</h1>
+
+        {% if set_guidance %}
+        <div class="govuk-inset-text">{{ set_guidance|render_markdown }}</div>
+        {% endif %}
 
         {% if routing_error %}
         <div class="govuk-error-summary" data-module="govuk-error-summary">

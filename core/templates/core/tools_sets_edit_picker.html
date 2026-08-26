@@ -21,8 +21,9 @@
         <thead class="govuk-table__head">
           <tr class="govuk-table__row">
             <th scope="col" class="govuk-table__header" style="width:10%">ID</th>
-            <th scope="col" class="govuk-table__header" style="width:30%">Title</th>
-            <th scope="col" class="govuk-table__header" style="width:25%">Hint</th>
+            <th scope="col" class="govuk-table__header" style="width:25%">Title</th>
+            <th scope="col" class="govuk-table__header" style="width:20%">Hint</th>
+            <th scope="col" class="govuk-table__header" style="width:20%">Guidance</th>
             <th scope="col" class="govuk-table__header" style="width:15%">Members</th>
             <th scope="col" class="govuk-table__header" style="width:20%">
               <span class="govuk-visually-hidden">Actions</span>
@@ -40,6 +41,9 @@
             </td>
             <td class="govuk-table__cell govuk-hint" style="margin:0">
               {{ qs.set_hint|default:"—" }}
+            </td>
+            <td class="govuk-table__cell govuk-hint" style="margin:0">
+              {{ qs.set_guidance|default:"—" }}
             </td>
             <td class="govuk-table__cell">
               {{ qs.members.count }} question{{ qs.members.count|pluralize }}

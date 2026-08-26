@@ -222,7 +222,8 @@ class QuestionSet(models.Model):
     """
     set_id    = models.CharField(max_length=100, primary_key=True)
     set_title = models.CharField(max_length=255)
-    set_hint  = models.CharField(max_length=255, blank=True, null=True)
+    set_hint     = models.CharField(max_length=255, blank=True, null=True)
+    set_guidance = models.TextField(blank=True, null=True)
 
     def __str__(self):
         return f'{self.set_id} — {self.set_title}'
