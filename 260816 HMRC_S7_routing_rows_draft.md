@@ -122,7 +122,7 @@ Q_condition="[% option — confirm exact text]", Alt_condition=(none) => Next_Q=
 
 ## Row count
 
-10 nodes, 20 routing rows total (vs S8's 15 nodes / 24 rows up to and
+10 nodes, 23 routing rows total (vs S8's 15 nodes / 24 rows up to and
 including HMRC_62 — S7 saves 2 rows on the opening by using SET11 instead
 of three chained questions, and shares the same fork/spouse-destination row
 count as S8). No HMRC_60 or tail (HMRC_56–59) — 6 fewer rows than S8's

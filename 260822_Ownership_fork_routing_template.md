@@ -7,6 +7,24 @@ class configuration register — "Full" or "Sole/joint only" fork classes:
 property, other land, bank/savings accounts, shares/investments, business
 interests, chattels, vehicles).
 
+**Confirmed reuse cases (as at 22 August 2026):**
+
+| Section | Asset class | Opening | Tail | Notes |
+|---------|-------------|---------|------|-------|
+| HMRC_S8 | Residential property | SET10 → HMRC_47 → HMRC_46 | HMRC_60 → HMRC_56–59 (valuation-evidence) | Original; template source |
+| HMRC_S7 | Bank and building society accounts | SET11 → HMRC_46 | END (no tail) | 18 August 2026 |
+| HMRC_S9 | Listed stocks, shares and ISAs | SET12 → [5×HMRC_63 branches] → SET14/detail → HMRC_46 | END (no tail) | 22 August 2026; first section where the fork is needed at the identification step itself (see note below) |
+
+**HMRC_S9 identification note:** HMRC_S9 is the first section where the
+ownership fork needed to be reached via a *branching identification step* rather
+than a single fixed opening chain. SET12's routing uses `alternate_condition_id`
+to branch on HMRC_63 (type of holding — 5 options), with different detail
+paths per branch before all merging at HMRC_46. HMRC_S7 and HMRC_S8 route
+unconditionally from their respective identification SETs straight to the
+first fork node. Anyone reusing this template for a section with multiple
+holding types should follow the S9 pattern: use `alternate_condition_id` on
+the SET-level routing row to branch at the identification step itself.
+
 **What's genuinely reusable, unchanged:** the ownership-fork shape itself —
 HMRC_46 (ownership type, already a shared platform Question, asset-neutral
 wording) branching into sole/joint/TIC, the N=2-vs-N≥3 compound condition
@@ -124,6 +142,40 @@ ORDER BY order_in_section;
 -- COMMIT;
 -- (or ROLLBACK; if anything looks wrong)
 ```
+
+---
+
+---
+
+## `condition_question_id` vs `alternate_condition_id` — use the right one
+
+**(Discovered 22 August 2026 during HMRC_S9 build.)**
+
+The `Routing` model has two fields that look like they both redirect a routing
+test to another question's answer:
+
+- **`condition_question_id`** — has its own `help_text` describing this
+  behaviour. However: it is **never actually read by `_evaluate_routing`**.
+  It is a dead field from an earlier migration, superseded by the Phase 3
+  compound-condition overhaul (3 August 2026). The dead-fields note in Core
+  Platform Reference §3 confirms this. Any routing row that sets only
+  `condition_question_id` will have its condition silently ignored at
+  evaluation time — `_evaluate_routing` only reads the five compound-condition
+  fields.
+
+- **`alternate_condition_id`** — slot-2 of the two-slot AND model. This is
+  the field that actually routes evaluation to a different question's answer.
+  Set in combination with `comparator_2` and `test_value_2`. Slot 1
+  (`comparator_1`/`test_value_1`) may be null (i.e. slot-2-only rows are
+  valid — `alternate_condition_id` with slot 1 left unconditional is how the
+  joint-tenants marital-status branch works at `HMRC_48` in the template
+  script above).
+
+**Rule:** anyone routing off a SET member's answer — or off any other
+external question's answer — must use `alternate_condition_id` (with slot 1
+set to null or to a real test value, as appropriate). Setting only
+`condition_question_id` will appear to work in the admin UI (the field
+exists and saves) but the condition will silently never fire.
 
 ---
 

@@ -1,5 +1,5 @@
 # cg_data_exchange — Backlog
-Date: 15 August 2026
+Date: 22 August 2026
 Status: Live working document — update as items are completed or added
 
 ---
@@ -760,6 +760,139 @@ summary here for backlog tracking.
   session changes: D18–D22 and triage fix in HMRC IHT doc; pruning bug/fix, D22 landing table,
   D20 radio_inline, numeric formatting, and address rendering in Core data model doc; line count
   and urgency update in Core file map doc. Doc impact: none (doc-only commit).
+
+## Completed (22 August 2026)
+
+### HMRC_S9 — Stocks and shares section built end-to-end
+
+Built HMRC_S9 (Stocks and shares, type-2 routed table) as a third direct-dispatch
+section alongside HMRC_S7/HMRC_S8, sharing the same ownership-fork block
+(HMRC_46–62) unchanged by ID. Key differences from S7/S8:
+
+- **Opening:** SET12 (identification — name of holding, HMRC_63 broker/platform,
+  HMRC_64 description) and an initial identification-type branch question
+  (HMRC_63) with five branches — the first section where the fork applies to the
+  identification step itself rather than only downstream of a single fixed opening.
+  SET14 handles the value/unit capture for the path that needs it. Unlike S7 and
+  S8, the identification fork required using `alternate_condition_id` (not
+  `condition_question_id`) at SET12 itself — the first live use of the
+  `alternate_condition_id` field on a SET-level routing row.
+- **Questions:** HMRC_63–75. 30 routing rows total.
+- **Tail:** no equivalent of HMRC_S8's valuation-evidence tail (HMRC_60/56–59).
+  Like S7, every fork branch terminates at the ownership fork or the spousal
+  destination — no substitute evidence questions needed.
+- **`QUESTION_SCHEDULE_MAP` entry:** `'HMRC_32': ('section', 'HMRC_S9')` —
+  triage Yes-answer on HMRC_32 dispatches directly to HMRC_S9 rather than
+  through a schedule listing, identical pattern to HMRC_16→S8 and HMRC_17→S7.
+- **SectionMember associations:** all routing nodes added as `SectionMember`
+  rows for HMRC_S9.
+
+**Test coverage:** Manually exercised via live UI through all five HMRC_63
+branches, both ownership-fork paths (Sole/Joint/TIC-equal/TIC-unequal),
+and both spousal-destination outcomes (All of it / Some of it). All routes
+confirmed against live `AnswerTable` data. Automated test:
+`test_hmrc_32_yes_dispatches_directly_to_s9` (new, in `TestTriageDirectSectionDispatch`).
+
+Doc impact: HMRC IHT Reference (new §13 — HMRC_S9); Ownership-fork routing
+template (third confirmed reuse case); Backlog §8a (QUESTION_SCHEDULE_MAP entry).
+
+---
+
+### `set_guidance` added to `QuestionSet`
+
+New optional `TextField` (`set_guidance`, blank=True, null=True) on `QuestionSet`.
+Migration `0021_add_set_guidance_to_questionset`. Rendered above the existing
+`set_hint` line as `govuk-inset-text` using the `render_markdown` filter.
+
+Touchpoints: model + migration; `_build_section_tables` (builder); four view
+context dicts (`section_set_page`, `_process_set_answer`, `section_table_routed_question`
+×2); `question_set.html` and `table_routed_set.html` templates (both gain
+`{% load markdown_extras %}` and the guidance block); admin add/edit form
+templates (`tools_set_add.html`, `tools_set_edit.html`); admin display views
+(`tools_sets_list.html`, `tools_sets_edit_picker.html`, `tools_viewer.html`);
+`tools_set_add` and `tools_set_edit` POST handlers in `views_admin_tools.py`.
+
+General platform capability — not HMRC_S9-specific. Any QuestionSet can now
+carry freeform markdown guidance shown as an inset-text block above the hint.
+
+Doc impact: Core Platform Reference §3 (`QuestionSet` field docs).
+
+---
+
+### PlatformRouter migration-bookkeeping bug found and fixed
+
+`PlatformRouter.allow_migrate` correctly refuses migrations on the `default`
+alias for `Question`, `QuestionSet`, and `QuestionSetMember` — but `django_migrations`
+records them as applied anyway (because `default` and `platform` share one
+physical DB and one migrations table). The result: `python manage.py migrate`
+silently reports success while leaving the schema change absent from the alias
+that actually matters.
+
+Confirmed incident: `0021_add_set_guidance_to_questionset` was marked applied
+on `default` without the `set_guidance` column ever being added, until caught
+and re-run explicitly against `platform`.
+
+**Fix:** `core/management/commands/migrate_all.py` — iterates `settings.DATABASES`
+and calls Django's built-in `migrate` against every alias in sequence. Use
+`python manage.py migrate_all` (not bare `migrate`) for any migration touching
+the three PlatformRouter-routed models. Rule documented in Core Platform
+Reference §7 and in `CLAUDE.md`.
+
+Doc impact: Core Platform Reference §7 (already updated in this session).
+
+---
+
+### Triage dispatch fix — QUESTION_SCHEDULE_MAP values changed to (type, id) tuples
+
+`QUESTION_SCHEDULE_MAP` in `orchestrate.py` previously mapped triage question IDs
+to bare schedule ID strings. Changed to `(type, id)` tuples, where `type` is
+`'section'` or `'schedule'`. `_get_built_schedule_items` updated to branch on
+type: section-type entries check `CoreSection.objects.filter(section_id__in=...)`
+and emit `{'type': 'section', 'id': ...}` items; schedule-type entries continue
+as before.
+
+Effect: a triage "Yes" answer can now resolve directly to a bare `Section` on
+the regime (bypassing any schedule-listing intermediate page), or to a schedule
+as before. `call_core` already handles both `type: 'section'` and `type: 'schedule'`
+items — no core change needed.
+
+**Re-parenting:** HMRC_S7 and HMRC_S8 were re-parented from their schedules
+(HMRC_SCH4 and HMRC_SCH2 respectively) to bare sections directly on `HMRC_IHT`
+(schedule_id → null, regime_id set). `HMRC_16`, `HMRC_17`, `HMRC_32` map
+updated to `('section', 'HMRC_S8')`, `('section', 'HMRC_S7')`, `('section', 'HMRC_S9')`.
+`HMRC_SCH3` (other land, HMRC_31) left as a schedule entry — empty schedule,
+pre-existing gap, untouched deliberately.
+
+7 new tests (`TestTriageDirectSectionDispatch`): unit tests for section-type
+and schedule-type resolution and order preservation; dispatch integration tests
+for HMRC_16→S8, HMRC_17→S7, HMRC_32→S9; regression guard for HMRC_18→SCH5.
+235 tests total (all pass).
+
+Doc impact: HMRC IHT Reference §8a (QUESTION_SCHEDULE_MAP and
+`_get_built_schedule_items` description); §12 (HMRC_S7 schedule assignment
+corrected).
+
+---
+
+### Row-review Confirm button — `back_label`/`back_primary` context keys
+
+`core/templates/core/review.html` and `section_table_row_review` in
+`views_layer2.py` now support two optional context keys:
+
+- `back_label` — overrides the default "Back to list" link text
+- `back_primary` — if True, renders the button without `govuk-button--secondary`
+  (i.e., green primary button instead of grey secondary)
+
+`section_table_row_review` sets both (`back_label='Confirm'`, `back_primary=True`)
+so the row-review page's link appears as a green "Confirm" button. Cosmetic only
+— the row commit still happens on the last routing answer node, not on this click.
+All other callers of `review.html` that don't set `back_url` are entirely
+unaffected (confirmed by grep: only two callers, `section_review` and
+`section_table_row_review`; `section_review` does not set `back_url`).
+
+Doc impact: Core Platform Reference §4d (type-2 row review).
+
+---
 
 ## Completed (19 August 2026)
 
