@@ -18,7 +18,9 @@ Responsibility boundary
 """
 
 import logging
+import re
 import uuid
+from datetime import date as _date_type
 from decimal import Decimal, InvalidOperation
 
 from django.contrib.auth.decorators import login_required
@@ -252,11 +254,22 @@ def _build_section_tables(routing_rows, section=None):
     for q in questions:
         guidance, hint = _resolve_guidance(q, overrides.get(q.question_id))
         question_table[q.question_id] = {
-            'question_text': q.question_text,
-            'question_type': q.question_type,
-            'guidance':      guidance,
-            'hint':          hint,
-            'options':       q.options or '',
+            'question_text':  q.question_text,
+            'question_type':  q.question_type,
+            'guidance':       guidance,
+            'hint':           hint,
+            'options':        q.options or '',
+            # Validation constraints (plain-answer types only).
+            # Decimal → float and date → ISO string so the dict is JSON-serialisable
+            # (question_table is stored in the session).
+            'required':       q.required,
+            'max_length':     q.max_length,
+            'min':            float(q.min)            if q.min      is not None else None,
+            'max':            float(q.max)            if q.max      is not None else None,
+            'min_date':       q.min_date.isoformat()  if q.min_date is not None else None,
+            'max_date':       q.max_date.isoformat()  if q.max_date is not None else None,
+            'no_future_date': q.no_future_date,
+            'regex':          q.regex,
         }
 
     set_table = {}
@@ -837,40 +850,100 @@ def _process_answer(request, section, section_id, question_id, q_meta, pss):
             }
             return render(request, 'core/question_compound.html', context)
 
-    # ── Basic non-empty validation for non-date types ─────────────────────────
-    elif not answer and answer != 0:
-        # Re-render with error rather than accepting empty answer
-        options = [o.strip() for o in q_meta['options'].split(';') if o.strip()]
-        asked_ids = pss.get('asked_ids', [question_id])
-        if len(asked_ids) > 1 and question_id == asked_ids[-1]:
-            prev_node = asked_ids[-2]
-            _set_table = pss.get('set_table', {})
-            if prev_node in _set_table:
-                back_url = f'/section/{section_id}/set/{prev_node}/'
-            else:
-                back_url = f'/section/{section_id}/question/{prev_node}/'
+    # ── Plain-answer validation (text, textarea, number, radio, radio_inline, checkbox) ──
+    elif q_meta['question_type'] not in ('date', 'personal_name', 'address'):
+        label = q_meta['question_text'].lower().rstrip('?').rstrip('.')
+        answer_empty = not answer and answer != 0
+        error = None
+
+        if answer_empty:
+            if q_meta.get('required', True):
+                error = 'Enter ' + label
         else:
-            back_url = f'/section/{section_id}/start/'
-        context = {
-            'section':        section,
-            'question_id':    question_id,
-            'question_text':  q_meta['question_text'],
-            'guidance':       q_meta['guidance'],
-            'hint':           q_meta['hint'],
-            'question_type':  q_meta['question_type'],
-            'options':        options,
-            'current_answer': None,
-            'suggestion':     None,
-            'provenance':     None,
-            'back_url':       back_url,
-            'asked_ids':      asked_ids,
-            'error':          'Please answer this question before continuing.',
-            'breadcrumbs':    _build_crumbs(pss, section.section_name),
-            'acting_for':     get_acting_for_name(pss),
-        }
-        template_map = {'radio': 'core/question_radio.html', 'radio_inline': 'core/question_radio_inline.html', 'checkbox': 'core/question_checkbox.html'}
-        template = template_map.get(q_meta['question_type'], 'core/question_text.html')
-        return render(request, template, context)
+            # max_length
+            if q_meta.get('max_length') is not None and isinstance(answer, str):
+                if len(answer) > q_meta['max_length']:
+                    error = (
+                        f'{q_meta["question_text"].rstrip("?").rstrip(".")} '
+                        f'must be {q_meta["max_length"]} characters or fewer'
+                    )
+            # min / max (numeric; stored as float in q_meta)
+            if not error and (q_meta.get('min') is not None or q_meta.get('max') is not None):
+                try:
+                    num_val = float(answer)
+                    qt = q_meta['question_text'].rstrip('?').rstrip('.')
+                    if q_meta.get('min') is not None and num_val < q_meta['min']:
+                        min_disp = int(q_meta['min']) if q_meta['min'] == int(q_meta['min']) else q_meta['min']
+                        error = f'{qt} must be {min_disp} or more'
+                    elif q_meta.get('max') is not None and num_val > q_meta['max']:
+                        max_disp = int(q_meta['max']) if q_meta['max'] == int(q_meta['max']) else q_meta['max']
+                        error = f'{qt} must be {max_disp} or less'
+                except (TypeError, ValueError):
+                    pass
+            # min_date / max_date / no_future_date (ISO-string text answers;
+            # stored as ISO strings in q_meta)
+            if not error and isinstance(answer, str):
+                _date_val = None
+                try:
+                    _date_val = _date_type.fromisoformat(answer)
+                except (ValueError, TypeError):
+                    pass
+                if _date_val is not None:
+                    qt = q_meta['question_text'].rstrip('?').rstrip('.')
+                    if not error and q_meta.get('min_date') is not None:
+                        _min_d = _date_type.fromisoformat(q_meta['min_date'])
+                        if _date_val < _min_d:
+                            error = f'{qt} must be on or after {_min_d.strftime("%d %B %Y")}'
+                    if not error and q_meta.get('max_date') is not None:
+                        _max_d = _date_type.fromisoformat(q_meta['max_date'])
+                        if _date_val > _max_d:
+                            error = f'{qt} must be on or before {_max_d.strftime("%d %B %Y")}'
+                    if not error and q_meta.get('no_future_date') and _date_val > _date_type.today():
+                        error = f'{qt} must be today or in the past'
+            # regex
+            if not error and q_meta.get('regex') and isinstance(answer, str):
+                if not re.match(q_meta['regex'], answer):
+                    error = (
+                        f'{q_meta["question_text"].rstrip("?").rstrip(".")} '
+                        f'is not in the correct format'
+                    )
+
+        if error:
+            options = [o.strip() for o in q_meta['options'].split(';') if o.strip()]
+            asked_ids = pss.get('asked_ids', [question_id])
+            if len(asked_ids) > 1 and question_id == asked_ids[-1]:
+                prev_node = asked_ids[-2]
+                _set_table = pss.get('set_table', {})
+                if prev_node in _set_table:
+                    back_url = f'/section/{section_id}/set/{prev_node}/'
+                else:
+                    back_url = f'/section/{section_id}/question/{prev_node}/'
+            else:
+                back_url = f'/section/{section_id}/start/'
+            context = {
+                'section':        section,
+                'question_id':    question_id,
+                'question_text':  q_meta['question_text'],
+                'guidance':       q_meta['guidance'],
+                'hint':           q_meta['hint'],
+                'question_type':  q_meta['question_type'],
+                'options':        options,
+                'current_answer': None if answer_empty else answer,
+                'suggestion':     None,
+                'provenance':     None,
+                'back_url':       back_url,
+                'asked_ids':      asked_ids,
+                'error':          error,
+                'breadcrumbs':    _build_crumbs(pss, section.section_name),
+                'acting_for':     get_acting_for_name(pss),
+            }
+            template_map = {
+                'radio':        'core/question_radio.html',
+                'radio_inline': 'core/question_radio_inline.html',
+                'checkbox':     'core/question_checkbox.html',
+            }
+            template = template_map.get(q_meta['question_type'], 'core/question_text.html')
+            return render(request, template, context)
 
     # ── Store answer in session ───────────────────────────────────────────────
     basic_answers = pss.get('basic_answers', {})

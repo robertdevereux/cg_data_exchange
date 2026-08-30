@@ -263,11 +263,39 @@ def tools_question_add(request):
         else:
             is_platform = False
             question_id = _next_question_id(request=request)
-        question_text = post.get('question_text', '').strip()
-        question_type = post.get('question_type', '').strip()
-        hint          = post.get('hint', '').strip() or None
-        guidance      = post.get('guidance', '').strip() or None
-        options       = post.get('options', '').strip() or None
+        question_text  = post.get('question_text', '').strip()
+        question_type  = post.get('question_type', '').strip()
+        hint           = post.get('hint', '').strip() or None
+        guidance       = post.get('guidance', '').strip() or None
+        options        = post.get('options', '').strip() or None
+        required       = post.get('required', 'true') != 'false'
+        max_length_raw = post.get('max_length', '').strip()
+        min_raw        = post.get('min', '').strip()
+        max_raw        = post.get('max', '').strip()
+        min_date_raw   = post.get('min_date', '').strip()
+        max_date_raw   = post.get('max_date', '').strip()
+        no_future_date = post.get('no_future_date') == 'true'
+        regex_raw      = post.get('regex', '').strip() or None
+
+        def _parse_int(val):
+            try:
+                return int(val) if val else None
+            except (ValueError, TypeError):
+                return None
+
+        def _parse_decimal(val):
+            from decimal import Decimal as _D, InvalidOperation as _IE
+            try:
+                return _D(val) if val else None
+            except (_IE, TypeError):
+                return None
+
+        def _parse_date(val):
+            from datetime import date as _dt
+            try:
+                return _dt.fromisoformat(val) if val else None
+            except (ValueError, TypeError):
+                return None
 
         if not question_text:
             errors['question_text'] = 'Enter the question text'
@@ -284,6 +312,14 @@ def tools_question_add(request):
                 guidance=guidance,
                 options=options,
                 is_platform=is_platform,
+                required=required,
+                max_length=_parse_int(max_length_raw),
+                min=_parse_decimal(min_raw),
+                max=_parse_decimal(max_raw),
+                min_date=_parse_date(min_date_raw),
+                max_date=_parse_date(max_date_raw),
+                no_future_date=no_future_date,
+                regex=regex_raw,
             )
             if back == 'section' and back_section:
                 section = Section.objects.filter(section_id=back_section).first()
@@ -3112,11 +3148,40 @@ def tools_question_edit(request, question_id):
         back_schedule = request.POST.get('back_schedule', '')
         back_section  = request.POST.get('back_section', '')
 
-        question.question_text = request.POST.get('question_text', question.question_text).strip()
-        question.question_type = request.POST.get('question_type', question.question_type).strip()
-        question.guidance = request.POST.get('guidance', '').strip() or None
-        question.hint     = request.POST.get('hint', '').strip() or None
-        question.options  = request.POST.get('options', '').strip() or None
+        from decimal import Decimal as _D, InvalidOperation as _IE
+        from datetime import date as _dt
+
+        def _parse_int(val):
+            try:
+                return int(val) if val else None
+            except (ValueError, TypeError):
+                return None
+
+        def _parse_decimal(val):
+            try:
+                return _D(val) if val else None
+            except (_IE, TypeError):
+                return None
+
+        def _parse_date(val):
+            try:
+                return _dt.fromisoformat(val) if val else None
+            except (ValueError, TypeError):
+                return None
+
+        question.question_text  = request.POST.get('question_text', question.question_text).strip()
+        question.question_type  = request.POST.get('question_type', question.question_type).strip()
+        question.guidance       = request.POST.get('guidance', '').strip() or None
+        question.hint           = request.POST.get('hint', '').strip() or None
+        question.options        = request.POST.get('options', '').strip() or None
+        question.required       = request.POST.get('required', 'true') != 'false'
+        question.max_length     = _parse_int(request.POST.get('max_length', '').strip())
+        question.min            = _parse_decimal(request.POST.get('min', '').strip())
+        question.max            = _parse_decimal(request.POST.get('max', '').strip())
+        question.min_date       = _parse_date(request.POST.get('min_date', '').strip())
+        question.max_date       = _parse_date(request.POST.get('max_date', '').strip())
+        question.no_future_date = request.POST.get('no_future_date') == 'true'
+        question.regex          = request.POST.get('regex', '').strip() or None
         question.save()
 
         if back == 'picker':

@@ -4215,3 +4215,276 @@ class TestQuestionErrorHandling(TestCase):
             'address_postcode': '',
         })
         self.assertContains(r, 'href="#address"')
+
+
+class TestQuestionValidationFields(TestCase):
+    """
+    Tests for the Question-level validation fields:
+      required, max_length, min, max, min_date, max_date, no_future_date, regex.
+
+    Each rule has a passing case (constraint satisfied → 302 advance) and a
+    failing case (constraint violated → 200 re-render with error).
+    A question with all new fields unset (the default) also verifies behaviour
+    is identical to before this change.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from decimal import Decimal
+        import datetime
+        r_simple = Regime.objects.get(regime_id='TEST_SIMPLE')
+
+        def _section(section_id, q):
+            s = Section.objects.create(
+                section_id=section_id,
+                section_name=section_id,
+                section_type=0,
+                regime=r_simple,
+            )
+            Routing.objects.create(
+                section=s, current_node=q.question_id,
+                answer_value=None, next_node=None, order_in_section=10,
+            )
+            return s
+
+        # Question with all new fields unset (default behaviour unchanged)
+        cls.q_default = Question.objects.create(
+            question_id='VAL_DEFAULT',
+            question_text='Default question',
+            question_type='text',
+        )
+        cls.s_default = _section('VAL_S_DEFAULT', cls.q_default)
+
+        # required=False — blank answer accepted
+        cls.q_optional = Question.objects.create(
+            question_id='VAL_OPTIONAL',
+            question_text='Optional question',
+            question_type='text',
+            required=False,
+        )
+        cls.s_optional = _section('VAL_S_OPTIONAL', cls.q_optional)
+
+        # max_length=10
+        cls.q_maxlen = Question.objects.create(
+            question_id='VAL_MAXLEN',
+            question_text='Short answer',
+            question_type='text',
+            max_length=10,
+        )
+        cls.s_maxlen = _section('VAL_S_MAXLEN', cls.q_maxlen)
+
+        # min=50
+        cls.q_min = Question.objects.create(
+            question_id='VAL_MIN',
+            question_text='Enter amount',
+            question_type='number',
+            answer_type='number',
+            min=Decimal('50'),
+        )
+        cls.s_min = _section('VAL_S_MIN', cls.q_min)
+
+        # max=100
+        cls.q_max = Question.objects.create(
+            question_id='VAL_MAX',
+            question_text='Enter percentage',
+            question_type='number',
+            answer_type='number',
+            max=Decimal('100'),
+        )
+        cls.s_max = _section('VAL_S_MAX', cls.q_max)
+
+        # min_date=2020-01-01
+        cls.q_mindate = Question.objects.create(
+            question_id='VAL_MINDATE',
+            question_text='Enter from date',
+            question_type='text',
+            min_date=datetime.date(2020, 1, 1),
+        )
+        cls.s_mindate = _section('VAL_S_MINDATE', cls.q_mindate)
+
+        # max_date=2030-12-31
+        cls.q_maxdate = Question.objects.create(
+            question_id='VAL_MAXDATE',
+            question_text='Enter to date',
+            question_type='text',
+            max_date=datetime.date(2030, 12, 31),
+        )
+        cls.s_maxdate = _section('VAL_S_MAXDATE', cls.q_maxdate)
+
+        # no_future_date=True
+        cls.q_nofuture = Question.objects.create(
+            question_id='VAL_NOFUTURE',
+            question_text='Date of birth',
+            question_type='text',
+            no_future_date=True,
+        )
+        cls.s_nofuture = _section('VAL_S_NOFUTURE', cls.q_nofuture)
+
+        # regex=^\d{4}$
+        cls.q_regex = Question.objects.create(
+            question_id='VAL_REGEX',
+            question_text='Four digit code',
+            question_type='text',
+            regex=r'^\d{4}$',
+        )
+        cls.s_regex = _section('VAL_S_REGEX', cls.q_regex)
+
+    def setUp(self):
+        self.client = Client()
+        self.client.login(username='alice', password='testpass123')
+
+    def _start(self, section_id):
+        self.client.get(f'/section/{section_id}/start/', follow=True)
+
+    def _post(self, section_id, qid, answer):
+        return self.client.post(f'/section/{section_id}/question/{qid}/', {'answer': answer})
+
+    # ── Default (all new fields unset) ───────────────────────────────────────
+
+    def test_default_blank_still_errors(self):
+        """A question with no new fields set still rejects a blank answer."""
+        self._start('VAL_S_DEFAULT')
+        r = self._post('VAL_S_DEFAULT', 'VAL_DEFAULT', '')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'govuk-error-summary')
+
+    def test_default_non_blank_advances(self):
+        """A question with no new fields set advances on a non-blank answer."""
+        self._start('VAL_S_DEFAULT')
+        r = self._post('VAL_S_DEFAULT', 'VAL_DEFAULT', 'hello')
+        self.assertEqual(r.status_code, 302)
+
+    def test_default_error_message_uses_question_text(self):
+        """Error message derives from question_text, not the old generic string."""
+        self._start('VAL_S_DEFAULT')
+        r = self._post('VAL_S_DEFAULT', 'VAL_DEFAULT', '')
+        self.assertContains(r, 'Enter default question')
+        self.assertNotContains(r, 'Please answer this question before continuing.')
+
+    # ── required=False ────────────────────────────────────────────────────────
+
+    def test_optional_blank_advances(self):
+        """required=False: blank answer advances rather than erroring."""
+        self._start('VAL_S_OPTIONAL')
+        r = self._post('VAL_S_OPTIONAL', 'VAL_OPTIONAL', '')
+        self.assertEqual(r.status_code, 302)
+
+    def test_optional_non_blank_advances(self):
+        """required=False: non-blank answer also advances."""
+        self._start('VAL_S_OPTIONAL')
+        r = self._post('VAL_S_OPTIONAL', 'VAL_OPTIONAL', 'anything')
+        self.assertEqual(r.status_code, 302)
+
+    # ── max_length ────────────────────────────────────────────────────────────
+
+    def test_max_length_pass(self):
+        """Answer within max_length advances."""
+        self._start('VAL_S_MAXLEN')
+        r = self._post('VAL_S_MAXLEN', 'VAL_MAXLEN', '1234567890')  # exactly 10
+        self.assertEqual(r.status_code, 302)
+
+    def test_max_length_fail(self):
+        """Answer exceeding max_length re-renders with error."""
+        self._start('VAL_S_MAXLEN')
+        r = self._post('VAL_S_MAXLEN', 'VAL_MAXLEN', '12345678901')  # 11 chars
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, '10 characters or fewer')
+
+    # ── min ───────────────────────────────────────────────────────────────────
+
+    def test_min_pass(self):
+        """Answer >= min advances."""
+        self._start('VAL_S_MIN')
+        r = self._post('VAL_S_MIN', 'VAL_MIN', '50')
+        self.assertEqual(r.status_code, 302)
+
+    def test_min_fail(self):
+        """Answer < min re-renders with error mentioning the minimum."""
+        self._start('VAL_S_MIN')
+        r = self._post('VAL_S_MIN', 'VAL_MIN', '49')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, '50 or more')
+
+    # ── max ───────────────────────────────────────────────────────────────────
+
+    def test_max_pass(self):
+        """Answer <= max advances."""
+        self._start('VAL_S_MAX')
+        r = self._post('VAL_S_MAX', 'VAL_MAX', '100')
+        self.assertEqual(r.status_code, 302)
+
+    def test_max_fail(self):
+        """Answer > max re-renders with error mentioning the maximum."""
+        self._start('VAL_S_MAX')
+        r = self._post('VAL_S_MAX', 'VAL_MAX', '101')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, '100 or less')
+
+    # ── min_date ──────────────────────────────────────────────────────────────
+
+    def test_min_date_pass(self):
+        """ISO date answer >= min_date advances."""
+        self._start('VAL_S_MINDATE')
+        r = self._post('VAL_S_MINDATE', 'VAL_MINDATE', '2020-01-01')
+        self.assertEqual(r.status_code, 302)
+
+    def test_min_date_fail(self):
+        """ISO date answer before min_date re-renders with error."""
+        self._start('VAL_S_MINDATE')
+        r = self._post('VAL_S_MINDATE', 'VAL_MINDATE', '2019-12-31')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'on or after')
+
+    def test_min_date_non_date_answer_passes_check(self):
+        """A non-ISO answer on a min_date question is not a date-check failure
+        (the check is silently skipped if the answer cannot be parsed as a date)."""
+        self._start('VAL_S_MINDATE')
+        r = self._post('VAL_S_MINDATE', 'VAL_MINDATE', 'not-a-date')
+        # Non-date answer passes the date check; required=True so blank would error
+        # but 'not-a-date' is non-empty — advances
+        self.assertEqual(r.status_code, 302)
+
+    # ── max_date ──────────────────────────────────────────────────────────────
+
+    def test_max_date_pass(self):
+        """ISO date answer <= max_date advances."""
+        self._start('VAL_S_MAXDATE')
+        r = self._post('VAL_S_MAXDATE', 'VAL_MAXDATE', '2030-12-31')
+        self.assertEqual(r.status_code, 302)
+
+    def test_max_date_fail(self):
+        """ISO date answer after max_date re-renders with error."""
+        self._start('VAL_S_MAXDATE')
+        r = self._post('VAL_S_MAXDATE', 'VAL_MAXDATE', '2031-01-01')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'on or before')
+
+    # ── no_future_date ────────────────────────────────────────────────────────
+
+    def test_no_future_date_pass(self):
+        """Past ISO date on a no_future_date question advances."""
+        self._start('VAL_S_NOFUTURE')
+        r = self._post('VAL_S_NOFUTURE', 'VAL_NOFUTURE', '2000-06-15')
+        self.assertEqual(r.status_code, 302)
+
+    def test_no_future_date_fail(self):
+        """Future ISO date on a no_future_date question re-renders with error."""
+        self._start('VAL_S_NOFUTURE')
+        r = self._post('VAL_S_NOFUTURE', 'VAL_NOFUTURE', '2099-01-01')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'today or in the past')
+
+    # ── regex ─────────────────────────────────────────────────────────────────
+
+    def test_regex_pass(self):
+        """Answer matching the regex advances."""
+        self._start('VAL_S_REGEX')
+        r = self._post('VAL_S_REGEX', 'VAL_REGEX', '1234')
+        self.assertEqual(r.status_code, 302)
+
+    def test_regex_fail(self):
+        """Answer not matching the regex re-renders with error."""
+        self._start('VAL_S_REGEX')
+        r = self._post('VAL_S_REGEX', 'VAL_REGEX', 'abcd')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'not in the correct format')

@@ -48,6 +48,106 @@
                  value="{{ question.hint|default:'' }}">
         </div>
 
+        {# ── Validation constraints ────────────────────────────────────────────── #}
+        <details class="govuk-details govuk-!-margin-bottom-2" {% if not question.required or question.max_length or question.min is not None or question.max is not None or question.min_date or question.max_date or question.no_future_date or question.regex %}open{% endif %}>
+          <summary class="govuk-details__summary">
+            <span class="govuk-details__summary-text">Validation constraints</span>
+          </summary>
+          <div class="govuk-details__text">
+            <p class="govuk-body-s govuk-!-colour-secondary">
+              Applies to plain-answer types (text, textarea, number, radio, radio_inline, checkbox).
+            </p>
+
+            <div class="govuk-form-group">
+              <fieldset class="govuk-fieldset">
+                <legend class="govuk-fieldset__legend govuk-fieldset__legend--s">Required</legend>
+                <div class="govuk-radios govuk-radios--inline">
+                  <div class="govuk-radios__item">
+                    <input class="govuk-radios__input" id="required-true" name="required"
+                           type="radio" value="true"
+                           {% if question.required %}checked{% endif %}>
+                    <label class="govuk-label govuk-radios__label" for="required-true">Yes (default)</label>
+                  </div>
+                  <div class="govuk-radios__item">
+                    <input class="govuk-radios__input" id="required-false" name="required"
+                           type="radio" value="false"
+                           {% if not question.required %}checked{% endif %}>
+                    <label class="govuk-label govuk-radios__label" for="required-false">No (optional question)</label>
+                  </div>
+                </div>
+              </fieldset>
+            </div>
+
+            <div class="govuk-form-group">
+              <label class="govuk-label govuk-label--s" for="max_length">
+                Max length <span class="govuk-hint" style="display:inline">(characters, text/textarea)</span>
+              </label>
+              <input class="govuk-input govuk-input--width-5" id="max_length" name="max_length"
+                     type="number" min="1" value="{{ question.max_length|default:'' }}">
+            </div>
+
+            <div class="govuk-form-group">
+              <label class="govuk-label govuk-label--s" for="min">
+                Min value <span class="govuk-hint" style="display:inline">(number questions)</span>
+              </label>
+              <input class="govuk-input govuk-input--width-10" id="min" name="min"
+                     type="text" value="{{ question.min|default:'' }}">
+            </div>
+
+            <div class="govuk-form-group">
+              <label class="govuk-label govuk-label--s" for="max">
+                Max value <span class="govuk-hint" style="display:inline">(number questions)</span>
+              </label>
+              <input class="govuk-input govuk-input--width-10" id="max" name="max"
+                     type="text" value="{{ question.max|default:'' }}">
+            </div>
+
+            <div class="govuk-form-group">
+              <label class="govuk-label govuk-label--s" for="min_date">
+                Earliest date <span class="govuk-hint" style="display:inline">(YYYY-MM-DD)</span>
+              </label>
+              <input class="govuk-input govuk-input--width-10" id="min_date" name="min_date"
+                     type="text" value="{{ question.min_date|default:'' }}">
+            </div>
+
+            <div class="govuk-form-group">
+              <label class="govuk-label govuk-label--s" for="max_date">
+                Latest date <span class="govuk-hint" style="display:inline">(YYYY-MM-DD)</span>
+              </label>
+              <input class="govuk-input govuk-input--width-10" id="max_date" name="max_date"
+                     type="text" value="{{ question.max_date|default:'' }}">
+            </div>
+
+            <div class="govuk-form-group">
+              <fieldset class="govuk-fieldset">
+                <legend class="govuk-fieldset__legend govuk-fieldset__legend--s">No future date</legend>
+                <div class="govuk-radios govuk-radios--inline">
+                  <div class="govuk-radios__item">
+                    <input class="govuk-radios__input" id="no_future_date-false" name="no_future_date"
+                           type="radio" value="false"
+                           {% if not question.no_future_date %}checked{% endif %}>
+                    <label class="govuk-label govuk-radios__label" for="no_future_date-false">No (default)</label>
+                  </div>
+                  <div class="govuk-radios__item">
+                    <input class="govuk-radios__input" id="no_future_date-true" name="no_future_date"
+                           type="radio" value="true"
+                           {% if question.no_future_date %}checked{% endif %}>
+                    <label class="govuk-label govuk-radios__label" for="no_future_date-true">Yes (reject future dates)</label>
+                  </div>
+                </div>
+              </fieldset>
+            </div>
+
+            <div class="govuk-form-group">
+              <label class="govuk-label govuk-label--s" for="regex">
+                Regex pattern <span class="govuk-hint" style="display:inline">(optional, text questions)</span>
+              </label>
+              <input class="govuk-input" id="regex" name="regex" type="text"
+                     value="{{ question.regex|default:'' }}">
+            </div>
+          </div>
+        </details>
+
         <div class="govuk-form-group">
           <label class="govuk-label govuk-label--s" for="id_question_type">
             Question type

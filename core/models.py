@@ -207,6 +207,43 @@ class Question(models.Model):
         help_text='True for META/wizard questions. Excluded from the shared question bank views.',
     )
 
+    # ── Validation constraints (plain-answer types only) ──────────────────────
+    # Apply to: text, textarea, number, radio, radio_inline, checkbox.
+    # Do not apply to: date, personal_name, address, compound (those types have
+    # their own dedicated validation blocks that are unaffected by these fields).
+    required = models.BooleanField(
+        default=True,
+        help_text='If False, a blank submission is accepted for this question.',
+    )
+    max_length = models.IntegerField(
+        null=True, blank=True,
+        help_text='Maximum number of characters allowed (text/textarea questions).',
+    )
+    min = models.DecimalField(
+        max_digits=12, decimal_places=4, null=True, blank=True,
+        help_text='Minimum numeric value allowed (number questions).',
+    )
+    max = models.DecimalField(
+        max_digits=12, decimal_places=4, null=True, blank=True,
+        help_text='Maximum numeric value allowed (number questions).',
+    )
+    min_date = models.DateField(
+        null=True, blank=True,
+        help_text='Earliest date allowed (ISO-formatted text answers).',
+    )
+    max_date = models.DateField(
+        null=True, blank=True,
+        help_text='Latest date allowed (ISO-formatted text answers).',
+    )
+    no_future_date = models.BooleanField(
+        default=False,
+        help_text='If True, reject answers that are after today (ISO-formatted text answers).',
+    )
+    regex = models.CharField(
+        max_length=255, null=True, blank=True,
+        help_text='Regular expression the answer must match (text questions).',
+    )
+
     def __str__(self):
         return f'{self.question_id} — {self.question_text[:60]}'
 
