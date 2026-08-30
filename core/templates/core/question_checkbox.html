@@ -15,7 +15,9 @@
         <div role="alert">
           <h2 class="govuk-error-summary__title">There is a problem</h2>
           <div class="govuk-error-summary__body">
-            <p class="govuk-body">{{ error }}</p>
+            <ul class="govuk-list govuk-error-summary__list">
+              <li><a href="#answer">{{ error }}</a></li>
+            </ul>
           </div>
         </div>
       </div>
@@ -34,14 +36,21 @@
         </div>
         {% endif %}
 
-        <div class="govuk-form-group">
-          <fieldset class="govuk-fieldset">
+        <div class="govuk-form-group{% if error %} govuk-form-group--error{% endif %}">
+          <fieldset class="govuk-fieldset" id="answer"
+                    aria-describedby="{% if hint %}answer-hint {% endif %}{% if error %}answer-error{% endif %}">
             <legend class="govuk-fieldset__legend govuk-fieldset__legend--l">
               <h1 class="govuk-fieldset__heading">{{ question_text }}</h1>
             </legend>
 
             {% if hint %}
-            <div class="govuk-hint">{{ hint }}</div>
+            <div class="govuk-hint" id="answer-hint">{{ hint }}</div>
+            {% endif %}
+
+            {% if error %}
+            <p id="answer-error" class="govuk-error-message">
+              <span class="govuk-visually-hidden">Error:</span> {{ error }}
+            </p>
             {% endif %}
 
             <p class="govuk-hint">Select all that apply.</p>

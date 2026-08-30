@@ -3974,3 +3974,244 @@ class TestRoutingEquivalence(TestCase):
                 f'{len(failures)} equivalence failure(s):\n' +
                 '\n'.join(failures)
             )
+
+
+class TestQuestionErrorHandling(TestCase):
+    """
+    Verifies the GOV.UK error-handling pattern on all seven simple question
+    templates: question_text, question_radio, question_radio_inline,
+    question_checkbox, question_date, question_personal_name, question_address.
+
+    Each template must:
+      (a) render a field-level error message with the correct id
+      (b) apply govuk-form-group--error to the field wrapper
+      (c) link the error summary to the field id via href
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        r_simple = Regime.objects.get(regime_id='TEST_SIMPLE')
+
+        def make_section(section_id, qid, section_name):
+            s = Section.objects.create(
+                section_id=section_id,
+                section_name=section_name,
+                section_type=0,
+                regime=r_simple,
+            )
+            Routing.objects.create(
+                section=s, current_node=qid,
+                answer_value=None, next_node=None, order_in_section=10,
+            )
+            return s
+
+        # text: TEST_4 (has hint)
+        cls.text_section = make_section('EH_TEXT_S1', 'TEST_4', 'EH Text')
+        # radio: TEST_3 (no hint, options Yes;No)
+        cls.radio_section = make_section('EH_RADIO_S1', 'TEST_3', 'EH Radio')
+        # radio_inline: dedicated question (no hint, options Yes;No)
+        cls.ri_q = Question.objects.create(
+            question_id='EH_RI_Q1',
+            question_text='Is this inline?',
+            question_type='radio_inline',
+            options='Yes;No',
+        )
+        cls.ri_section = make_section('EH_RI_S1', 'EH_RI_Q1', 'EH Radio Inline')
+        # checkbox: TEST_10 (no hint)
+        cls.cb_section = make_section('EH_CB_S1', 'TEST_10', 'EH Checkbox')
+        # date: TEST_2 (has hint)
+        cls.date_section = make_section('EH_DATE_S1', 'TEST_2', 'EH Date')
+        # personal_name: P_1 (no hint)
+        cls.name_section = make_section('EH_NAME_S1', 'P_1', 'EH Name')
+        # address: P_2 (no hint)
+        cls.addr_section = make_section('EH_ADDR_S1', 'P_2', 'EH Address')
+
+    def setUp(self):
+        self.client = Client()
+        self.client.login(username='alice', password='testpass123')
+
+    def _start(self, section_id):
+        self.client.get(f'/section/{section_id}/start/', follow=True)
+
+    # ── question_text.html ────────────────────────────────────────────────────
+
+    def test_text_error_shows_field_level_message(self):
+        """Blank text POST renders govuk-error-message with id=answer-error."""
+        self._start('EH_TEXT_S1')
+        r = self.client.post('/section/EH_TEXT_S1/question/TEST_4/', {'answer': ''})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'id="answer-error"')
+
+    def test_text_error_applies_error_class(self):
+        """Blank text POST applies govuk-form-group--error to the field wrapper."""
+        self._start('EH_TEXT_S1')
+        r = self.client.post('/section/EH_TEXT_S1/question/TEST_4/', {'answer': ''})
+        self.assertContains(r, 'govuk-form-group--error')
+
+    def test_text_error_summary_links_to_field(self):
+        """Error summary link href points to #answer (the input id)."""
+        self._start('EH_TEXT_S1')
+        r = self.client.post('/section/EH_TEXT_S1/question/TEST_4/', {'answer': ''})
+        self.assertContains(r, 'href="#answer"')
+
+    # ── question_radio.html ───────────────────────────────────────────────────
+
+    def test_radio_error_shows_field_level_message(self):
+        """Missing radio selection renders govuk-error-message with id=answer-error."""
+        self._start('EH_RADIO_S1')
+        r = self.client.post('/section/EH_RADIO_S1/question/TEST_3/', {})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'id="answer-error"')
+
+    def test_radio_error_applies_error_class(self):
+        """Missing radio selection applies govuk-form-group--error."""
+        self._start('EH_RADIO_S1')
+        r = self.client.post('/section/EH_RADIO_S1/question/TEST_3/', {})
+        self.assertContains(r, 'govuk-form-group--error')
+
+    def test_radio_error_summary_links_to_field(self):
+        """Error summary link href points to #answer (the fieldset id)."""
+        self._start('EH_RADIO_S1')
+        r = self.client.post('/section/EH_RADIO_S1/question/TEST_3/', {})
+        self.assertContains(r, 'href="#answer"')
+
+    # ── question_radio_inline.html ────────────────────────────────────────────
+
+    def test_radio_inline_error_shows_field_level_message(self):
+        """Missing inline radio selection renders govuk-error-message with id=answer-error."""
+        self._start('EH_RI_S1')
+        r = self.client.post('/section/EH_RI_S1/question/EH_RI_Q1/', {})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'id="answer-error"')
+
+    def test_radio_inline_error_applies_error_class(self):
+        """Missing inline radio selection applies govuk-form-group--error."""
+        self._start('EH_RI_S1')
+        r = self.client.post('/section/EH_RI_S1/question/EH_RI_Q1/', {})
+        self.assertContains(r, 'govuk-form-group--error')
+
+    def test_radio_inline_error_summary_links_to_field(self):
+        """Error summary link href points to #answer (the fieldset id)."""
+        self._start('EH_RI_S1')
+        r = self.client.post('/section/EH_RI_S1/question/EH_RI_Q1/', {})
+        self.assertContains(r, 'href="#answer"')
+
+    # ── question_checkbox.html ────────────────────────────────────────────────
+
+    def test_checkbox_error_shows_field_level_message(self):
+        """No checkboxes selected renders govuk-error-message with id=answer-error."""
+        self._start('EH_CB_S1')
+        r = self.client.post('/section/EH_CB_S1/question/TEST_10/', {})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'id="answer-error"')
+
+    def test_checkbox_error_applies_error_class(self):
+        """No checkboxes selected applies govuk-form-group--error."""
+        self._start('EH_CB_S1')
+        r = self.client.post('/section/EH_CB_S1/question/TEST_10/', {})
+        self.assertContains(r, 'govuk-form-group--error')
+
+    def test_checkbox_error_summary_links_to_field(self):
+        """Error summary link href points to #answer (the fieldset id)."""
+        self._start('EH_CB_S1')
+        r = self.client.post('/section/EH_CB_S1/question/TEST_10/', {})
+        self.assertContains(r, 'href="#answer"')
+
+    # ── question_date.html ────────────────────────────────────────────────────
+
+    def test_date_error_shows_field_level_message(self):
+        """Invalid date POST renders govuk-error-message with id=date-error."""
+        self._start('EH_DATE_S1')
+        r = self.client.post('/section/EH_DATE_S1/question/TEST_2/',
+                             {'date_day': '', 'date_month': '', 'date_year': ''})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'id="date-error"')
+
+    def test_date_error_applies_error_class(self):
+        """Invalid date POST applies govuk-form-group--error."""
+        self._start('EH_DATE_S1')
+        r = self.client.post('/section/EH_DATE_S1/question/TEST_2/',
+                             {'date_day': '', 'date_month': '', 'date_year': ''})
+        self.assertContains(r, 'govuk-form-group--error')
+
+    def test_date_error_summary_links_to_field(self):
+        """Error summary link href points to #date (the fieldset id)."""
+        self._start('EH_DATE_S1')
+        r = self.client.post('/section/EH_DATE_S1/question/TEST_2/',
+                             {'date_day': '', 'date_month': '', 'date_year': ''})
+        self.assertContains(r, 'href="#date"')
+
+    # ── question_personal_name.html ───────────────────────────────────────────
+
+    def test_personal_name_error_shows_field_level_message(self):
+        """Blank name POST renders govuk-error-message with id=name-error."""
+        self._start('EH_NAME_S1')
+        r = self.client.post('/section/EH_NAME_S1/question/P_1/', {
+            'personal_name_title': '',
+            'personal_name_first_name': '',
+            'personal_name_middle_name': '',
+            'personal_name_last_name': '',
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'id="name-error"')
+
+    def test_personal_name_error_applies_error_class(self):
+        """Blank name POST applies govuk-form-group--error."""
+        self._start('EH_NAME_S1')
+        r = self.client.post('/section/EH_NAME_S1/question/P_1/', {
+            'personal_name_title': '',
+            'personal_name_first_name': '',
+            'personal_name_middle_name': '',
+            'personal_name_last_name': '',
+        })
+        self.assertContains(r, 'govuk-form-group--error')
+
+    def test_personal_name_error_summary_links_to_field(self):
+        """Error summary link href points to #name (the fieldset id)."""
+        self._start('EH_NAME_S1')
+        r = self.client.post('/section/EH_NAME_S1/question/P_1/', {
+            'personal_name_title': '',
+            'personal_name_first_name': '',
+            'personal_name_middle_name': '',
+            'personal_name_last_name': '',
+        })
+        self.assertContains(r, 'href="#name"')
+
+    # ── question_address.html ─────────────────────────────────────────────────
+
+    def test_address_error_shows_field_level_message(self):
+        """Blank address POST renders govuk-error-message with id=address-error."""
+        self._start('EH_ADDR_S1')
+        r = self.client.post('/section/EH_ADDR_S1/question/P_2/', {
+            'address_line1': '',
+            'address_line2': '',
+            'address_city': '',
+            'address_county': '',
+            'address_postcode': '',
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'id="address-error"')
+
+    def test_address_error_applies_error_class(self):
+        """Blank address POST applies govuk-form-group--error."""
+        self._start('EH_ADDR_S1')
+        r = self.client.post('/section/EH_ADDR_S1/question/P_2/', {
+            'address_line1': '',
+            'address_line2': '',
+            'address_city': '',
+            'address_county': '',
+            'address_postcode': '',
+        })
+        self.assertContains(r, 'govuk-form-group--error')
+
+    def test_address_error_summary_links_to_field(self):
+        """Error summary link href points to #address (the fieldset id)."""
+        self._start('EH_ADDR_S1')
+        r = self.client.post('/section/EH_ADDR_S1/question/P_2/', {
+            'address_line1': '',
+            'address_line2': '',
+            'address_city': '',
+            'address_county': '',
+            'address_postcode': '',
+        })
+        self.assertContains(r, 'href="#address"')

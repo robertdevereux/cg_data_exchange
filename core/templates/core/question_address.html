@@ -15,7 +15,9 @@
         <div role="alert">
           <h2 class="govuk-error-summary__title">There is a problem</h2>
           <div class="govuk-error-summary__body">
-            <p class="govuk-body">{{ error }}</p>
+            <ul class="govuk-list govuk-error-summary__list">
+              <li><a href="#address">{{ error }}</a></li>
+            </ul>
           </div>
         </div>
       </div>
@@ -35,7 +37,7 @@
         {% endif %}
 
         <div class="govuk-form-group {% if error %}govuk-form-group--error{% endif %}">
-          <fieldset class="govuk-fieldset"
+          <fieldset class="govuk-fieldset" id="address"
                     aria-describedby="{% if hint %}address-hint {% endif %}{% if error %}address-error{% endif %}">
             <legend class="govuk-fieldset__legend govuk-fieldset__legend--l">
               <h1 class="govuk-fieldset__heading">{{ question_text }}</h1>
