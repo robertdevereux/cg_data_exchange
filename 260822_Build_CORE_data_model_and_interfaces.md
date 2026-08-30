@@ -825,6 +825,27 @@ applied on `default` without the column ever being added, until caught and
 re-run against `platform` explicitly. `migrate_all` runs migrate against every
 configured alias in sequence, closing this gap.
 
+**Important — alias ordering within `migrate_all` (addendum 2026-08-30):**
+`migrate_all` must run `platform` *before* `default`. Both aliases point to the
+same physical Neon DB and therefore share one `django_migrations` table. Whichever
+alias runs `migrate` first writes the migration record. If `default` runs first,
+the record is written, and when `platform` subsequently runs, Django sees the
+migration as already applied and skips its `AddField` operations — silently, with
+no error. The schema change is never executed.
+
+This ordering bug was the actual cause of the 0022 migration incident
+(`0022_question_validation_fields`): `migrate_all` iterated `settings.DATABASES`
+in dict insertion order (`default` before `platform`). Fix: `migrate_all.py` now
+sorts aliases with `platform` first:
+
+```python
+aliases = sorted(settings.DATABASES, key=lambda a: (0 if a == 'platform' else 1, a))
+```
+
+The rule "always use `migrate_all`" remains correct, but is now more precisely:
+`migrate_all` must be used *and* `platform` must run before `default`. The
+management command enforces this automatically from `b99880f` onward.
+
 **Test isolation note (found 5 July 2026):** because `'default'` and
 `'platform'` are separate DB connections to the same physical database,
 under `READ COMMITTED` isolation a test fixture written via `.using('default')`

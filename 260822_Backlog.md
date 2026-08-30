@@ -980,7 +980,7 @@ DB / one `django_migrations` table; whichever alias runs first marks the migrati
 applied. Running `default` first caused PlatformRouter-routed `AddField` operations to
 be silently skipped. Fix: `sorted(settings.DATABASES, key=lambda a: (0 if a == 'platform' else 1, a))`.
 
-- `XXXXXXX` — Date constraint validation + migrate_all ordering fix. Doc impact:
+- `b99880f` — Date constraint validation + migrate_all ordering fix. Doc impact:
   Core Platform Reference §5 (migrate_all — ordering requirement not previously documented).
 
 ---
