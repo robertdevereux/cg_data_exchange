@@ -4488,3 +4488,158 @@ class TestQuestionValidationFields(TestCase):
         r = self._post('VAL_S_REGEX', 'VAL_REGEX', 'abcd')
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, 'not in the correct format')
+
+
+class TestDateQuestionConstraints(TestCase):
+    """
+    Tests for min_date, max_date, and no_future_date applied to date-type
+    questions in _process_answer.
+
+    The three date-range constraints are only checked once day/month/year have
+    individually passed their existing validation — i.e. after a real date can
+    be constructed from the submitted values.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        import datetime
+        r_simple = Regime.objects.get(regime_id='TEST_SIMPLE')
+
+        def _make(section_id, qid, **q_kwargs):
+            q = Question.objects.create(
+                question_id=qid,
+                question_text=q_kwargs.pop('question_text', qid),
+                question_type='date',
+                answer_type='date',
+                hint='For example, 27 3 1980',
+                **q_kwargs,
+            )
+            s = Section.objects.create(
+                section_id=section_id,
+                section_name=section_id,
+                section_type=0,
+                regime=r_simple,
+            )
+            Routing.objects.create(
+                section=s, current_node=qid,
+                answer_value=None, next_node=None, order_in_section=10,
+            )
+            return q, s
+
+        # No constraints — baseline behaviour unchanged
+        cls.q_plain, cls.s_plain = _make('DQ_PLAIN_S', 'DQ_PLAIN',
+                                         question_text='Date of test')
+
+        # no_future_date=True
+        cls.q_nofuture, cls.s_nofuture = _make('DQ_NOFUTURE_S', 'DQ_NOFUTURE',
+                                                question_text='Date of birth',
+                                                no_future_date=True)
+
+        # min_date=2020-01-01, max_date=2029-12-31
+        cls.q_range, cls.s_range = _make('DQ_RANGE_S', 'DQ_RANGE',
+                                          question_text='Relevant date',
+                                          min_date=datetime.date(2020, 1, 1),
+                                          max_date=datetime.date(2029, 12, 31))
+
+    def setUp(self):
+        self.client = Client()
+        self.client.login(username='alice', password='testpass123')
+
+    def _start(self, section_id):
+        self.client.get(f'/section/{section_id}/start/', follow=True)
+
+    def _post_date(self, section_id, qid, day, month, year):
+        return self.client.post(f'/section/{section_id}/question/{qid}/', {
+            'date_day': str(day), 'date_month': str(month), 'date_year': str(year),
+        })
+
+    # ── Baseline: no constraints — existing behaviour unchanged ──────────────
+
+    def test_plain_valid_date_advances(self):
+        """Date question with no constraints: valid date advances."""
+        self._start('DQ_PLAIN_S')
+        r = self._post_date('DQ_PLAIN_S', 'DQ_PLAIN', 15, 6, 1990)
+        self.assertEqual(r.status_code, 302)
+
+    def test_plain_blank_day_errors(self):
+        """Date question with no constraints: blank day still errors (required unchanged)."""
+        self._start('DQ_PLAIN_S')
+        r = self._post_date('DQ_PLAIN_S', 'DQ_PLAIN', '', 6, 1990)
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Enter a valid day')
+
+    # ── no_future_date ────────────────────────────────────────────────────────
+
+    def test_no_future_date_past_advances(self):
+        """no_future_date: a clearly past date advances."""
+        self._start('DQ_NOFUTURE_S')
+        r = self._post_date('DQ_NOFUTURE_S', 'DQ_NOFUTURE', 1, 1, 2000)
+        self.assertEqual(r.status_code, 302)
+
+    def test_no_future_date_today_advances(self):
+        """no_future_date: today's date advances (boundary inclusive)."""
+        import datetime
+        today = datetime.date.today()
+        self._start('DQ_NOFUTURE_S')
+        r = self._post_date('DQ_NOFUTURE_S', 'DQ_NOFUTURE',
+                            today.day, today.month, today.year)
+        self.assertEqual(r.status_code, 302)
+
+    def test_no_future_date_future_errors(self):
+        """no_future_date: a future date re-renders with the derived error message."""
+        self._start('DQ_NOFUTURE_S')
+        r = self._post_date('DQ_NOFUTURE_S', 'DQ_NOFUTURE', 1, 1, 2099)
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'today or in the past')
+
+    def test_no_future_date_not_checked_on_invalid_components(self):
+        """no_future_date constraint is skipped when individual fields are invalid."""
+        self._start('DQ_NOFUTURE_S')
+        # Bad year — individual check fires first; no date can be constructed
+        r = self._post_date('DQ_NOFUTURE_S', 'DQ_NOFUTURE', 1, 1, 99)
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Enter a valid year')
+        self.assertNotContains(r, 'today or in the past')
+
+    # ── min_date / max_date ───────────────────────────────────────────────────
+
+    def test_range_inside_advances(self):
+        """Date within [min_date, max_date] advances."""
+        self._start('DQ_RANGE_S')
+        r = self._post_date('DQ_RANGE_S', 'DQ_RANGE', 15, 6, 2025)
+        self.assertEqual(r.status_code, 302)
+
+    def test_range_on_min_boundary_advances(self):
+        """Date equal to min_date advances (boundary inclusive)."""
+        self._start('DQ_RANGE_S')
+        r = self._post_date('DQ_RANGE_S', 'DQ_RANGE', 1, 1, 2020)
+        self.assertEqual(r.status_code, 302)
+
+    def test_range_on_max_boundary_advances(self):
+        """Date equal to max_date advances (boundary inclusive)."""
+        self._start('DQ_RANGE_S')
+        r = self._post_date('DQ_RANGE_S', 'DQ_RANGE', 31, 12, 2029)
+        self.assertEqual(r.status_code, 302)
+
+    def test_range_before_min_errors(self):
+        """Date before min_date re-renders with 'on or after' error."""
+        self._start('DQ_RANGE_S')
+        r = self._post_date('DQ_RANGE_S', 'DQ_RANGE', 31, 12, 2019)
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'on or after')
+
+    def test_range_after_max_errors(self):
+        """Date after max_date re-renders with 'on or before' error."""
+        self._start('DQ_RANGE_S')
+        r = self._post_date('DQ_RANGE_S', 'DQ_RANGE', 1, 1, 2030)
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'on or before')
+
+    def test_range_constraint_skipped_on_bad_day(self):
+        """Range check not attempted when day is invalid — no spurious date error."""
+        self._start('DQ_RANGE_S')
+        r = self._post_date('DQ_RANGE_S', 'DQ_RANGE', 32, 6, 2025)
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Enter a valid day')
+        self.assertNotContains(r, 'on or after')
+        self.assertNotContains(r, 'on or before')

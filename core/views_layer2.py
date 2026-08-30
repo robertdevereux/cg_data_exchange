@@ -682,6 +682,24 @@ def _process_answer(request, section, section_id, question_id, q_meta, pss):
             errors.append('Enter a valid month (1–12)')
         if not year or not year.isdigit() or len(year) != 4:
             errors.append('Enter a valid year (4 digits)')
+        # Only check date-range constraints once day/month/year individually pass —
+        # a real date can only be constructed at that point.
+        if not errors:
+            try:
+                _constructed = _date_type(int(year), int(month), int(day))
+                qt = q_meta['question_text'].rstrip('?').rstrip('.')
+                if q_meta.get('min_date') is not None:
+                    _min_d = _date_type.fromisoformat(q_meta['min_date'])
+                    if _constructed < _min_d:
+                        errors.append(f'{qt} must be on or after {_min_d.strftime("%d %B %Y")}')
+                if not errors and q_meta.get('max_date') is not None:
+                    _max_d = _date_type.fromisoformat(q_meta['max_date'])
+                    if _constructed > _max_d:
+                        errors.append(f'{qt} must be on or before {_max_d.strftime("%d %B %Y")}')
+                if not errors and q_meta.get('no_future_date') and _constructed > _date_type.today():
+                    errors.append(f'{qt} must be today or in the past')
+            except ValueError:
+                errors.append('Enter a valid date')
         if errors:
             asked_ids = pss.get('asked_ids', [question_id])
             if len(asked_ids) > 1 and question_id == asked_ids[-1]:

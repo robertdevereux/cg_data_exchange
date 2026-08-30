@@ -894,6 +894,97 @@ Doc impact: Core Platform Reference §4d (type-2 row review).
 
 ---
 
+### GOV.UK error-handling standard — seven question templates
+
+Applied the full GOV.UK error pattern to all seven simple question templates
+that were previously missing field-level errors or correct summary linking:
+
+**Group A** (`question_text`, `question_radio`, `question_radio_inline`,
+`question_checkbox`): added `govuk-form-group--error` wrapper class;
+`govuk-error-message` paragraph with `id="{field}-error"` and `<span
+class="govuk-visually-hidden">Error:</span>`; `aria-describedby` on inputs/
+fieldsets chaining hint id and error id; `govuk-input--error` /
+`govuk-textarea--error` on inputs; error summary updated from bare `<p>` to
+`<ul><li><a href="#answer">`.
+
+**Group B** (`question_date`, `question_personal_name`, `question_address`):
+added `id` to `<fieldset>` (`date`/`name`/`address`) so summary `href`
+resolves; error summary updated to `<ul><li><a href="#{id}">`.
+Removed the duplicate `id="date"` from `govuk-date-input` inner div (moved
+to fieldset instead).
+
+21 new tests in `TestQuestionErrorHandling` asserting (a) field-level error
+message id, (b) `govuk-form-group--error` class, (c) summary href per template.
+256 tests pass.
+
+- `7a91f65` — GOV.UK error-handling standard applied to all seven simple question
+  templates + 21 new tests. Doc impact: none (pattern change only, no doc section covers this).
+
+---
+
+### Question-level validation fields (required, max_length, min/max, min_date/max_date, no_future_date, regex)
+
+**Phase 1 — Schema.** Eight new fields on `Question` (migration `0022_question_validation_fields`):
+`required` (BooleanField, default=True), `max_length` (nullable IntegerField), `min`/`max`
+(nullable DecimalField, max_digits=12, decimal_places=4), `min_date`/`max_date` (nullable
+DateField), `no_future_date` (BooleanField, default=False), `regex` (nullable CharField,
+max_length=255). All nullable/Boolean-defaulted so no backfill needed; default=True on
+`required` preserves every existing row's current behaviour exactly.
+
+Migration applied to the physical table via fake-unapply-on-default workaround (identical
+root cause to 0021 incident: PlatformRouter skips `Question` ops on `default` alias but
+marks the migration as applied in the shared `django_migrations` table, so `platform` alias
+then finds nothing to do). Confirmed correct: all 8 columns now exist in `core_question`.
+
+**Phase 2 — Validation.** `_process_answer` in `views_layer2.py` refactored for plain-answer
+types (text, textarea, number, radio, radio_inline, checkbox):
+- Replaced unconditional non-empty check with `required`-gated check. `required=False` lets
+  a blank answer advance. `required=True` (default) errors with derived message
+  `'Enter ' + question_text.lower().rstrip('?').rstrip('.')` — matching `_process_set_answer`
+  pattern, replacing the old generic 'Please answer this question before continuing.'.
+- Additional checks (each only when the field is set): `max_length` → character count;
+  `min`/`max` → float comparison; `min_date`/`max_date` → parse answer as ISO date and
+  compare; `no_future_date` → compare parsed date to today; `regex` → `re.match`.
+  All messages derived from `question_text`. Non-date answers silently skip date checks.
+- Decimal→float and date→ISO-string conversions in `_build_section_tables` so `question_table`
+  remains JSON-serialisable when stored in the session.
+- Existing date/personal_name/address/compound validation blocks untouched.
+
+**Phase 3 — Admin.** `tools_question_add` and `tools_question_edit` views updated to
+read/save all 8 new fields. Both templates gain a collapsed `<details>` section for the
+new fields (auto-open on edit if any constraint is set). `required` and `no_future_date`
+render as inline radios; numeric/date/regex fields as text inputs.
+
+20 new tests in `TestQuestionValidationFields`; 276 pass (was 256).
+
+- `2bf5927` — Question validation fields (schema + logic + admin). Doc impact:
+  Core Platform Reference §3 (Question field docs — new fields not yet documented).
+
+### Date-question constraint validation + migrate_all ordering fix
+
+**Instruction 1 — date constraints.** Extended the date-type validation block in
+`_process_answer` (`views_layer2.py`) to check `min_date`, `max_date`, and
+`no_future_date` after individual day/month/year checks pass. Guard: if day/month/year
+individually fail, constraint checks are skipped (no date construction attempted).
+Error messages derived from `question_text`. `try/except ValueError` catches invalid
+combinations (e.g. Feb 31) that pass individual checks.
+
+13 new tests in `TestDateQuestionConstraints`: baseline behaviour (no constraints),
+`no_future_date` (past/today advance, future errors, invalid components skip constraint),
+`min_date`/`max_date` (inside/on-boundary advance, outside range errors, invalid
+components skip constraint). 288 tests pass (1 skip).
+
+**Instruction 2 — migrate_all ordering.** Fixed `migrate_all.py` to sort `platform`
+before `default`. Root cause of migration 0022 incident: both aliases share one physical
+DB / one `django_migrations` table; whichever alias runs first marks the migration as
+applied. Running `default` first caused PlatformRouter-routed `AddField` operations to
+be silently skipped. Fix: `sorted(settings.DATABASES, key=lambda a: (0 if a == 'platform' else 1, a))`.
+
+- `XXXXXXX` — Date constraint validation + migrate_all ordering fix. Doc impact:
+  Core Platform Reference §5 (migrate_all — ordering requirement not previously documented).
+
+---
+
 ## Completed (19 August 2026)
 
 - `49cf5cf` — Fix table_routed_question.html not rendering question.guidance: added

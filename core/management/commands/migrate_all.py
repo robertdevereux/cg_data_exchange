@@ -15,7 +15,14 @@ class Command(BaseCommand):
         parser.add_argument('migration_name', nargs='?')
 
     def handle(self, *args, **options):
-        for alias in settings.DATABASES:
+        # Run 'platform' before 'default'. Both aliases share one physical DB and
+        # one django_migrations table. Whichever alias runs first marks migrations
+        # as applied — so the alias that actually needs the operations (platform,
+        # for Question/QuestionSet/QuestionSetMember migrations) must go first.
+        # If 'platform' runs second, the migration is already recorded from the
+        # 'default' run and its AddField operations are silently skipped.
+        aliases = sorted(settings.DATABASES, key=lambda a: (0 if a == 'platform' else 1, a))
+        for alias in aliases:
             self.stdout.write(self.style.MIGRATE_HEADING(f"--- migrating '{alias}' ---"))
             call_command(
                 'migrate',
