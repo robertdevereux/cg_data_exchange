@@ -984,6 +984,10 @@ be silently skipped. Fix: `sorted(settings.DATABASES, key=lambda a: (0 if a == '
   Core Platform Reference §5 (migrate_all — ordering requirement not previously documented).
 - `c3a5779` — Extend validation constraints to Set-member questions. Doc impact: none
   (build docs don't document the constraint fields in detail yet).
+- `02a8e9c` — Extract `_extract_answer`/`_validate_answer` helpers; wire all three POST
+  paths (`_process_answer`, `_process_set_answer`, `section_table_routed_question`).
+  Fixes missing date/personal_name extraction in table-routed views; adds validation
+  to `section_table_routed_question` (previously had none). Doc impact: none.
 
 ---
 
