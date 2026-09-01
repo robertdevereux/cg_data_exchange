@@ -299,6 +299,15 @@ def _build_section_tables(routing_rows, section=None):
                 'hint':          member.question.hint or '',
                 'options':       member.question.options or '',
                 'required':      member.required,
+                # Validation constraints from Question — same JSON-safe conversions
+                # as question_table above (Decimal→float, date→ISO string).
+                'max_length':     member.question.max_length,
+                'min':            float(member.question.min)            if member.question.min      is not None else None,
+                'max':            float(member.question.max)            if member.question.max      is not None else None,
+                'min_date':       member.question.min_date.isoformat()  if member.question.min_date is not None else None,
+                'max_date':       member.question.max_date.isoformat()  if member.question.max_date is not None else None,
+                'no_future_date': member.question.no_future_date,
+                'regex':          member.question.regex,
             })
             question_to_set[qid] = sid
 
@@ -2494,6 +2503,91 @@ def _process_set_answer(request, section, section_id, set_id, set_meta, pss):
                     field_errors[qid] = ' / '.join(sub_errors)
             elif not value and value != 0:
                 field_errors[qid] = 'Enter ' + m['question_text'].lower().rstrip('?').rstrip('.')
+
+        # ── Plain-answer constraint checks (text/textarea/number/radio/checkbox) ──
+        if qid not in field_errors and m['question_type'] not in ('date', 'personal_name', 'address'):
+            answer_empty = not value and value != 0
+            if not answer_empty:
+                # max_length
+                if m.get('max_length') is not None and isinstance(value, str):
+                    if len(value) > m['max_length']:
+                        field_errors[qid] = (
+                            f'{m["question_text"].rstrip("?").rstrip(".")} '
+                            f'must be {m["max_length"]} characters or fewer'
+                        )
+                # min / max (stored as float)
+                if qid not in field_errors and (m.get('min') is not None or m.get('max') is not None):
+                    try:
+                        num_val = float(value)
+                        qt = m['question_text'].rstrip('?').rstrip('.')
+                        if m.get('min') is not None and num_val < m['min']:
+                            min_disp = int(m['min']) if m['min'] == int(m['min']) else m['min']
+                            field_errors[qid] = f'{qt} must be {min_disp} or more'
+                        elif m.get('max') is not None and num_val > m['max']:
+                            max_disp = int(m['max']) if m['max'] == int(m['max']) else m['max']
+                            field_errors[qid] = f'{qt} must be {max_disp} or less'
+                    except (TypeError, ValueError):
+                        pass
+                # min_date / max_date / no_future_date (ISO-string text answers)
+                if qid not in field_errors and isinstance(value, str):
+                    _date_val = None
+                    try:
+                        _date_val = _date_type.fromisoformat(value)
+                    except (ValueError, TypeError):
+                        pass
+                    if _date_val is not None:
+                        qt = m['question_text'].rstrip('?').rstrip('.')
+                        if m.get('min_date') is not None:
+                            _min_d = _date_type.fromisoformat(m['min_date'])
+                            if _date_val < _min_d:
+                                field_errors[qid] = f'{qt} must be on or after {_min_d.strftime("%d %B %Y")}'
+                        if qid not in field_errors and m.get('max_date') is not None:
+                            _max_d = _date_type.fromisoformat(m['max_date'])
+                            if _date_val > _max_d:
+                                field_errors[qid] = f'{qt} must be on or before {_max_d.strftime("%d %B %Y")}'
+                        if qid not in field_errors and m.get('no_future_date') and _date_val > _date_type.today():
+                            field_errors[qid] = f'{qt} must be today or in the past'
+                # regex
+                if qid not in field_errors and m.get('regex') and isinstance(value, str):
+                    if not re.match(m['regex'], value):
+                        field_errors[qid] = (
+                            f'{m["question_text"].rstrip("?").rstrip(".")} '
+                            f'is not in the correct format'
+                        )
+
+        # ── Date-type constraint checks (min_date / max_date / no_future_date) ──
+        elif m['question_type'] == 'date' and qid not in field_errors:
+            _has_date_constraints = m.get('min_date') or m.get('max_date') or m.get('no_future_date')
+            if _has_date_constraints:
+                day   = value.get('day', '')
+                month = value.get('month', '')
+                year  = value.get('year', '')
+                _date_errs = []
+                if not day or not day.isdigit() or not (1 <= int(day) <= 31):
+                    _date_errs.append('Enter a valid day (1–31)')
+                if not month or not month.isdigit() or not (1 <= int(month) <= 12):
+                    _date_errs.append('Enter a valid month (1–12)')
+                if not year or not year.isdigit() or len(year) != 4:
+                    _date_errs.append('Enter a valid year (4 digits)')
+                if not _date_errs:
+                    try:
+                        _constructed = _date_type(int(year), int(month), int(day))
+                        qt = m['question_text'].rstrip('?').rstrip('.')
+                        if m.get('min_date') is not None:
+                            _min_d = _date_type.fromisoformat(m['min_date'])
+                            if _constructed < _min_d:
+                                _date_errs.append(f'{qt} must be on or after {_min_d.strftime("%d %B %Y")}')
+                        if not _date_errs and m.get('max_date') is not None:
+                            _max_d = _date_type.fromisoformat(m['max_date'])
+                            if _constructed > _max_d:
+                                _date_errs.append(f'{qt} must be on or before {_max_d.strftime("%d %B %Y")}')
+                        if not _date_errs and m.get('no_future_date') and _constructed > _date_type.today():
+                            _date_errs.append(f'{qt} must be today or in the past')
+                    except ValueError:
+                        _date_errs.append('Enter a valid date')
+                if _date_errs:
+                    field_errors[qid] = ' / '.join(_date_errs)
+
         field_values[qid] = value
 
     # ── Re-render with errors if any field failed ─────────────────────────────

@@ -4643,3 +4643,257 @@ class TestDateQuestionConstraints(TestCase):
         self.assertContains(r, 'Enter a valid day')
         self.assertNotContains(r, 'on or after')
         self.assertNotContains(r, 'on or before')
+
+
+class TestSetMemberValidationFields(TestCase):
+    """
+    Confirms that the seven Question-level validation constraints
+    (max_length, min, max, min_date, max_date, no_future_date, regex)
+    are enforced for Set-member questions, not just standalone question-page
+    questions.
+
+    Each constraint has a passing case (→ 302) and a failing case (→ 200 with
+    error text), mirroring TestQuestionValidationFields but POSTing to the
+    set URL instead of a question URL.
+
+    Setup: one Section per constraint, each containing a single QuestionSet
+    node with one constrained member question.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from decimal import Decimal
+        import datetime
+        r_simple = Regime.objects.get(regime_id='TEST_SIMPLE')
+
+        def _make_set_section(section_id, set_id, member_q, **member_kwargs):
+            """Create a section whose only routing node is a QuestionSet."""
+            s = Section.objects.create(
+                section_id=section_id,
+                section_name=section_id,
+                section_type=0,
+                regime=r_simple,
+            )
+            qs = QuestionSet.objects.create(
+                set_id=set_id,
+                set_title=set_id,
+            )
+            QuestionSetMember.objects.create(
+                question_set=qs,
+                question=member_q,
+                display_order=10,
+                **member_kwargs,
+            )
+            Routing.objects.create(
+                section=s, current_node=set_id,
+                answer_value=None, next_node=None, order_in_section=10,
+            )
+            return s, qs
+
+        # max_length=10 — text member
+        cls.q_maxlen = Question.objects.create(
+            question_id='VSET_MAXLEN', question_text='Short answer', question_type='text',
+            max_length=10,
+        )
+        cls.s_maxlen, cls.qs_maxlen = _make_set_section('VSET_S_MAXLEN', 'VSET_SET_MAXLEN', cls.q_maxlen)
+
+        # min=50 — number member
+        cls.q_min = Question.objects.create(
+            question_id='VSET_MIN', question_text='Enter amount', question_type='number',
+            min=Decimal('50'),
+        )
+        cls.s_min, cls.qs_min = _make_set_section('VSET_S_MIN', 'VSET_SET_MIN', cls.q_min)
+
+        # max=100 — number member
+        cls.q_max = Question.objects.create(
+            question_id='VSET_MAX', question_text='Enter percentage', question_type='number',
+            max=Decimal('100'),
+        )
+        cls.s_max, cls.qs_max = _make_set_section('VSET_S_MAX', 'VSET_SET_MAX', cls.q_max)
+
+        # min_date=2020-01-01 — text member (ISO date string)
+        cls.q_mindate = Question.objects.create(
+            question_id='VSET_MINDATE', question_text='Enter from date', question_type='text',
+            min_date=datetime.date(2020, 1, 1),
+        )
+        cls.s_mindate, cls.qs_mindate = _make_set_section('VSET_S_MINDATE', 'VSET_SET_MINDATE', cls.q_mindate)
+
+        # max_date=2030-12-31 — text member (ISO date string)
+        cls.q_maxdate = Question.objects.create(
+            question_id='VSET_MAXDATE', question_text='Enter to date', question_type='text',
+            max_date=datetime.date(2030, 12, 31),
+        )
+        cls.s_maxdate, cls.qs_maxdate = _make_set_section('VSET_S_MAXDATE', 'VSET_SET_MAXDATE', cls.q_maxdate)
+
+        # no_future_date=True — text member (ISO date string)
+        cls.q_nofuture = Question.objects.create(
+            question_id='VSET_NOFUTURE', question_text='Date of birth', question_type='text',
+            no_future_date=True,
+        )
+        cls.s_nofuture, cls.qs_nofuture = _make_set_section('VSET_S_NOFUTURE', 'VSET_SET_NOFUTURE', cls.q_nofuture)
+
+        # regex=^\d{4}$ — text member
+        cls.q_regex = Question.objects.create(
+            question_id='VSET_REGEX', question_text='Four digit code', question_type='text',
+            regex=r'^\d{4}$',
+        )
+        cls.s_regex, cls.qs_regex = _make_set_section('VSET_S_REGEX', 'VSET_SET_REGEX', cls.q_regex)
+
+        # no_future_date=True — date-type member (day/month/year fields)
+        cls.q_date_nofuture = Question.objects.create(
+            question_id='VSET_DATE_NOFUTURE', question_text='Event date', question_type='date',
+            no_future_date=True,
+        )
+        cls.s_date_nofuture, cls.qs_date_nofuture = _make_set_section(
+            'VSET_S_DATE_NF', 'VSET_SET_DATE_NF', cls.q_date_nofuture,
+        )
+
+    def setUp(self):
+        self.client = Client()
+        self.client.login(username='alice', password='testpass123')
+
+    def _start(self, section_id):
+        self.client.get(f'/section/{section_id}/start/', follow=True)
+
+    def _post_set(self, section_id, set_id, field_values):
+        return self.client.post(f'/section/{section_id}/set/{set_id}/', field_values)
+
+    # ── max_length ────────────────────────────────────────────────────────────
+
+    def test_set_max_length_pass(self):
+        """Set member within max_length advances."""
+        self._start('VSET_S_MAXLEN')
+        r = self._post_set('VSET_S_MAXLEN', 'VSET_SET_MAXLEN', {'VSET_MAXLEN': '1234567890'})
+        self.assertEqual(r.status_code, 302)
+
+    def test_set_max_length_fail(self):
+        """Set member exceeding max_length re-renders with error."""
+        self._start('VSET_S_MAXLEN')
+        r = self._post_set('VSET_S_MAXLEN', 'VSET_SET_MAXLEN', {'VSET_MAXLEN': '12345678901'})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, '10 characters or fewer')
+
+    # ── min ───────────────────────────────────────────────────────────────────
+
+    def test_set_min_pass(self):
+        """Set member >= min advances."""
+        self._start('VSET_S_MIN')
+        r = self._post_set('VSET_S_MIN', 'VSET_SET_MIN', {'VSET_MIN': '50'})
+        self.assertEqual(r.status_code, 302)
+
+    def test_set_min_fail(self):
+        """Set member < min re-renders with error mentioning the minimum."""
+        self._start('VSET_S_MIN')
+        r = self._post_set('VSET_S_MIN', 'VSET_SET_MIN', {'VSET_MIN': '49'})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, '50 or more')
+
+    # ── max ───────────────────────────────────────────────────────────────────
+
+    def test_set_max_pass(self):
+        """Set member <= max advances."""
+        self._start('VSET_S_MAX')
+        r = self._post_set('VSET_S_MAX', 'VSET_SET_MAX', {'VSET_MAX': '100'})
+        self.assertEqual(r.status_code, 302)
+
+    def test_set_max_fail(self):
+        """Set member > max re-renders with error mentioning the maximum."""
+        self._start('VSET_S_MAX')
+        r = self._post_set('VSET_S_MAX', 'VSET_SET_MAX', {'VSET_MAX': '101'})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, '100 or less')
+
+    # ── min_date ──────────────────────────────────────────────────────────────
+
+    def test_set_min_date_pass(self):
+        """Set member ISO date >= min_date advances."""
+        self._start('VSET_S_MINDATE')
+        r = self._post_set('VSET_S_MINDATE', 'VSET_SET_MINDATE', {'VSET_MINDATE': '2020-01-01'})
+        self.assertEqual(r.status_code, 302)
+
+    def test_set_min_date_fail(self):
+        """Set member ISO date before min_date re-renders with error."""
+        self._start('VSET_S_MINDATE')
+        r = self._post_set('VSET_S_MINDATE', 'VSET_SET_MINDATE', {'VSET_MINDATE': '2019-12-31'})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'on or after')
+
+    # ── max_date ──────────────────────────────────────────────────────────────
+
+    def test_set_max_date_pass(self):
+        """Set member ISO date <= max_date advances."""
+        self._start('VSET_S_MAXDATE')
+        r = self._post_set('VSET_S_MAXDATE', 'VSET_SET_MAXDATE', {'VSET_MAXDATE': '2030-12-31'})
+        self.assertEqual(r.status_code, 302)
+
+    def test_set_max_date_fail(self):
+        """Set member ISO date after max_date re-renders with error."""
+        self._start('VSET_S_MAXDATE')
+        r = self._post_set('VSET_S_MAXDATE', 'VSET_SET_MAXDATE', {'VSET_MAXDATE': '2031-01-01'})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'on or before')
+
+    # ── no_future_date (plain-text ISO answer) ────────────────────────────────
+
+    def test_set_no_future_date_pass(self):
+        """Set member past ISO date on no_future_date question advances."""
+        self._start('VSET_S_NOFUTURE')
+        r = self._post_set('VSET_S_NOFUTURE', 'VSET_SET_NOFUTURE', {'VSET_NOFUTURE': '2000-06-15'})
+        self.assertEqual(r.status_code, 302)
+
+    def test_set_no_future_date_fail(self):
+        """Set member future ISO date on no_future_date question re-renders with error."""
+        self._start('VSET_S_NOFUTURE')
+        r = self._post_set('VSET_S_NOFUTURE', 'VSET_SET_NOFUTURE', {'VSET_NOFUTURE': '2099-01-01'})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'today or in the past')
+
+    # ── regex ─────────────────────────────────────────────────────────────────
+
+    def test_set_regex_pass(self):
+        """Set member answer matching regex advances."""
+        self._start('VSET_S_REGEX')
+        r = self._post_set('VSET_S_REGEX', 'VSET_SET_REGEX', {'VSET_REGEX': '1234'})
+        self.assertEqual(r.status_code, 302)
+
+    def test_set_regex_fail(self):
+        """Set member answer not matching regex re-renders with error."""
+        self._start('VSET_S_REGEX')
+        r = self._post_set('VSET_S_REGEX', 'VSET_SET_REGEX', {'VSET_REGEX': 'abcd'})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'not in the correct format')
+
+    # ── no_future_date on a date-type member (day/month/year fields) ──────────
+
+    def test_set_date_type_no_future_date_pass(self):
+        """Date-type set member with no_future_date: past date advances."""
+        self._start('VSET_S_DATE_NF')
+        r = self._post_set('VSET_S_DATE_NF', 'VSET_SET_DATE_NF', {
+            'VSET_DATE_NOFUTURE_day':   '15',
+            'VSET_DATE_NOFUTURE_month': '6',
+            'VSET_DATE_NOFUTURE_year':  '2000',
+        })
+        self.assertEqual(r.status_code, 302)
+
+    def test_set_date_type_no_future_date_fail(self):
+        """Date-type set member with no_future_date: future date re-renders with error."""
+        self._start('VSET_S_DATE_NF')
+        r = self._post_set('VSET_S_DATE_NF', 'VSET_SET_DATE_NF', {
+            'VSET_DATE_NOFUTURE_day':   '1',
+            'VSET_DATE_NOFUTURE_month': '1',
+            'VSET_DATE_NOFUTURE_year':  '2099',
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'today or in the past')
+
+    def test_set_date_type_constraint_skipped_on_bad_day(self):
+        """Date-type set member: constraint not checked when day component invalid."""
+        self._start('VSET_S_DATE_NF')
+        r = self._post_set('VSET_S_DATE_NF', 'VSET_SET_DATE_NF', {
+            'VSET_DATE_NOFUTURE_day':   '32',
+            'VSET_DATE_NOFUTURE_month': '6',
+            'VSET_DATE_NOFUTURE_year':  '2099',
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Enter a valid day')
+        self.assertNotContains(r, 'today or in the past')
