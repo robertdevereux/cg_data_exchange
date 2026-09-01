@@ -640,59 +640,110 @@ def section_question(request, section_id, question_id):
     return render(request, template, context)
 
 
-def _process_answer(request, section, section_id, question_id, q_meta, pss):
-    """Handle POST for section_question — store answer, advance routing."""
+# ─────────────────────────────────────────────────────────────────────────────
+# Shared answer-extraction and validation helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _extract_answer(request, question_type, qid=None, options=''):
+    """Return the correctly-shaped submitted value for any question type.
+
+    qid=None  → standalone question-page convention: POST keys are 'answer',
+                 'date_day', 'personal_name_first_name', 'address_line1', etc.
+    qid=<str> → set-member / table-routed convention: POST keys are '{qid}',
+                 '{qid}_day', 'personal_name_first_name_{qid}', etc.
+    options   → raw options string, needed only for compound type.
+    """
     import json as _json
 
-    # ── Extract answer ────────────────────────────────────────────────────────
-    if q_meta['question_type'] == 'checkbox':
-        answer = request.POST.getlist('answer')
-    elif q_meta['question_type'] == 'date':
-        day   = request.POST.get('date_day', '').strip()
-        month = request.POST.get('date_month', '').strip()
-        year  = request.POST.get('date_year', '').strip()
-        answer = {'day': day, 'month': month, 'year': year}
-    elif q_meta['question_type'] == 'personal_name':
-        answer = {
-            'title':       request.POST.get('personal_name_title', '').strip(),
-            'first_name':  request.POST.get('personal_name_first_name', '').strip(),
-            'middle_name': request.POST.get('personal_name_middle_name', '').strip(),
-            'last_name':   request.POST.get('personal_name_last_name', '').strip(),
+    if question_type == 'checkbox':
+        return request.POST.getlist(qid if qid else 'answer')
+
+    if question_type == 'date':
+        if qid:
+            return {
+                'day':   request.POST.get(f'{qid}_day',   '').strip(),
+                'month': request.POST.get(f'{qid}_month', '').strip(),
+                'year':  request.POST.get(f'{qid}_year',  '').strip(),
+            }
+        return {
+            'day':   request.POST.get('date_day',   '').strip(),
+            'month': request.POST.get('date_month', '').strip(),
+            'year':  request.POST.get('date_year',  '').strip(),
         }
-    elif q_meta['question_type'] == 'address':
-        answer = {
-            'line1':    request.POST.get('address_line1', '').strip(),
-            'line2':    request.POST.get('address_line2', '').strip(),
-            'city':     request.POST.get('address_city', '').strip(),
-            'county':   request.POST.get('address_county', '').strip(),
+
+    if question_type == 'personal_name':
+        if qid:
+            return {
+                'title':       request.POST.get(f'personal_name_title_{qid}',       '').strip(),
+                'first_name':  request.POST.get(f'personal_name_first_name_{qid}',  '').strip(),
+                'middle_name': request.POST.get(f'personal_name_middle_name_{qid}', '').strip(),
+                'last_name':   request.POST.get(f'personal_name_last_name_{qid}',   '').strip(),
+            }
+        return {
+            'title':       request.POST.get('personal_name_title',       '').strip(),
+            'first_name':  request.POST.get('personal_name_first_name',  '').strip(),
+            'middle_name': request.POST.get('personal_name_middle_name', '').strip(),
+            'last_name':   request.POST.get('personal_name_last_name',   '').strip(),
+        }
+
+    if question_type == 'address':
+        if qid:
+            return {
+                'line1':    request.POST.get(f'address_line1_{qid}',   '').strip(),
+                'line2':    request.POST.get(f'address_line2_{qid}',   '').strip(),
+                'city':     request.POST.get(f'address_city_{qid}',    '').strip(),
+                'county':   request.POST.get(f'address_county_{qid}',  '').strip(),
+                'postcode': request.POST.get(f'address_postcode_{qid}','').strip(),
+            }
+        return {
+            'line1':    request.POST.get('address_line1',    '').strip(),
+            'line2':    request.POST.get('address_line2',    '').strip(),
+            'city':     request.POST.get('address_city',     '').strip(),
+            'county':   request.POST.get('address_county',   '').strip(),
             'postcode': request.POST.get('address_postcode', '').strip(),
         }
-    elif q_meta['question_type'] == 'compound':
+
+    if question_type == 'compound':
         try:
-            _components = _json.loads(q_meta['options']) if q_meta['options'] else []
+            _components = _json.loads(options) if options else []
         except (ValueError, TypeError):
             _components = []
-        answer = {
+        return {
             comp.get('label', f'Component {i + 1}'): request.POST.get(f'component_{i}', '').strip()
             for i, comp in enumerate(_components)
         }
-    else:
-        answer = request.POST.get('answer', '').strip()
 
-    # ── Date validation ───────────────────────────────────────────────────────
-    if q_meta['question_type'] == 'date':
+    # Plain types (text, textarea, number, radio, radio_inline)
+    return request.POST.get(qid if qid else 'answer', '').strip()
+
+
+def _validate_answer(q_meta, value):
+    """Validate a submitted value against a question's metadata.
+
+    Returns a dict:
+        {
+            'error':           str | None,  # first/only error message, or None
+            'compound_parts':  list,        # per-component detail (compound only)
+            'compound_errors': list,        # component-level error list (compound only)
+        }
+    For non-compound types, compound_parts and compound_errors are always [].
+    """
+    import json as _json
+
+    qt_text = q_meta['question_type']
+
+    # ── date ─────────────────────────────────────────────────────────────────
+    if qt_text == 'date':
         errors = []
-        day   = answer.get('day', '')
-        month = answer.get('month', '')
-        year  = answer.get('year', '')
-        if not day or not day.isdigit() or not (1 <= int(day) <= 31):
+        day   = value.get('day',   '') if isinstance(value, dict) else ''
+        month = value.get('month', '') if isinstance(value, dict) else ''
+        year  = value.get('year',  '') if isinstance(value, dict) else ''
+        if not day   or not day.isdigit()   or not (1 <= int(day)   <= 31):
             errors.append('Enter a valid day (1–31)')
         if not month or not month.isdigit() or not (1 <= int(month) <= 12):
             errors.append('Enter a valid month (1–12)')
-        if not year or not year.isdigit() or len(year) != 4:
+        if not year  or not year.isdigit()  or len(year) != 4:
             errors.append('Enter a valid year (4 digits)')
-        # Only check date-range constraints once day/month/year individually pass —
-        # a real date can only be constructed at that point.
         if not errors:
             try:
                 _constructed = _date_type(int(year), int(month), int(day))
@@ -709,130 +760,44 @@ def _process_answer(request, section, section_id, question_id, q_meta, pss):
                     errors.append(f'{qt} must be today or in the past')
             except ValueError:
                 errors.append('Enter a valid date')
-        if errors:
-            asked_ids = pss.get('asked_ids', [question_id])
-            if len(asked_ids) > 1 and question_id == asked_ids[-1]:
-                prev_node = asked_ids[-2]
-                _set_table = pss.get('set_table', {})
-                if prev_node in _set_table:
-                    back_url = f'/section/{section_id}/set/{prev_node}/'
-                else:
-                    back_url = f'/section/{section_id}/question/{prev_node}/'
-            else:
-                back_url = f'/section/{section_id}/start/'
-            date_parts = {'day': day, 'month': month, 'year': year}
-            context = {
-                'section':        section,
-                'question_id':    question_id,
-                'question_text':  q_meta['question_text'],
-                'guidance':       q_meta['guidance'],
-                'hint':           q_meta['hint'],
-                'question_type':  q_meta['question_type'],
-                'options':        [],
-                'current_answer': answer,
-                'date_parts':     date_parts,
-                'suggestion':     None,
-                'provenance':     None,
-                'back_url':       back_url,
-                'asked_ids':      asked_ids,
-                'error':          ' / '.join(errors),
-                'breadcrumbs':    _build_crumbs(pss, section.section_name),
-                'acting_for':     get_acting_for_name(pss),
-            }
-            return render(request, 'core/question_date.html', context)
+        return {'error': ' / '.join(errors) if errors else None,
+                'compound_parts': [], 'compound_errors': []}
 
-    # ── personal_name validation ──────────────────────────────────────────────
-    if q_meta['question_type'] == 'personal_name':
+    # ── personal_name ─────────────────────────────────────────────────────────
+    if qt_text == 'personal_name':
         errors = []
-        if not answer.get('first_name'):
+        if not (value.get('first_name') if isinstance(value, dict) else ''):
             errors.append('Enter a first name')
-        if not answer.get('last_name'):
+        if not (value.get('last_name') if isinstance(value, dict) else ''):
             errors.append('Enter a last name')
-        if errors:
-            asked_ids = pss.get('asked_ids', [question_id])
-            if len(asked_ids) > 1 and question_id == asked_ids[-1]:
-                prev_node = asked_ids[-2]
-                _set_table = pss.get('set_table', {})
-                if prev_node in _set_table:
-                    back_url = f'/section/{section_id}/set/{prev_node}/'
-                else:
-                    back_url = f'/section/{section_id}/question/{prev_node}/'
-            else:
-                back_url = f'/section/{section_id}/start/'
-            name_parts = answer
-            context = {
-                'section':        section,
-                'question_id':    question_id,
-                'question_text':  q_meta['question_text'],
-                'guidance':       q_meta['guidance'],
-                'hint':           q_meta['hint'],
-                'question_type':  q_meta['question_type'],
-                'options':        [],
-                'current_answer': answer,
-                'name_parts':     name_parts,
-                'suggestion':     None,
-                'provenance':     None,
-                'back_url':       back_url,
-                'asked_ids':      asked_ids,
-                'error':          ' / '.join(errors),
-                'breadcrumbs':    _build_crumbs(pss, section.section_name),
-                'acting_for':     get_acting_for_name(pss),
-            }
-            return render(request, 'core/question_personal_name.html', context)
+        return {'error': ' / '.join(errors) if errors else None,
+                'compound_parts': [], 'compound_errors': []}
 
-    # ── address validation ────────────────────────────────────────────────────
-    if q_meta['question_type'] == 'address':
+    # ── address ───────────────────────────────────────────────────────────────
+    if qt_text == 'address':
         errors = []
-        if not answer.get('line1'):
+        if not (value.get('line1')    if isinstance(value, dict) else ''):
             errors.append('Enter the first line of the address')
-        if not answer.get('city'):
+        if not (value.get('city')     if isinstance(value, dict) else ''):
             errors.append('Enter a town or city')
-        if not answer.get('postcode'):
+        if not (value.get('postcode') if isinstance(value, dict) else ''):
             errors.append('Enter a postcode')
-        if errors:
-            asked_ids = pss.get('asked_ids', [question_id])
-            if len(asked_ids) > 1 and question_id == asked_ids[-1]:
-                prev_node = asked_ids[-2]
-                _set_table = pss.get('set_table', {})
-                if prev_node in _set_table:
-                    back_url = f'/section/{section_id}/set/{prev_node}/'
-                else:
-                    back_url = f'/section/{section_id}/question/{prev_node}/'
-            else:
-                back_url = f'/section/{section_id}/start/'
-            address_parts = answer
-            context = {
-                'section':        section,
-                'question_id':    question_id,
-                'question_text':  q_meta['question_text'],
-                'guidance':       q_meta['guidance'],
-                'hint':           q_meta['hint'],
-                'question_type':  q_meta['question_type'],
-                'options':        [],
-                'current_answer': answer,
-                'address_parts':  address_parts,
-                'suggestion':     None,
-                'provenance':     None,
-                'back_url':       back_url,
-                'asked_ids':      asked_ids,
-                'error':          ' / '.join(errors),
-                'breadcrumbs':    _build_crumbs(pss, section.section_name),
-                'acting_for':     get_acting_for_name(pss),
-            }
-            return render(request, 'core/question_address.html', context)
+        return {'error': ' / '.join(errors) if errors else None,
+                'compound_parts': [], 'compound_errors': []}
 
-    # ── Compound validation ───────────────────────────────────────────────────
-    if q_meta['question_type'] == 'compound':
+    # ── compound ──────────────────────────────────────────────────────────────
+    if qt_text == 'compound':
         try:
-            _components = _json.loads(q_meta['options']) if q_meta['options'] else []
+            _components = _json.loads(q_meta.get('options', '')) if q_meta.get('options') else []
         except (ValueError, TypeError):
             _components = []
         compound_errors = []
-        compound_parts = []
+        compound_parts  = []
+        answer_dict = value if isinstance(value, dict) else {}
         for i, comp in enumerate(_components):
             label = comp.get('label', f'Component {i + 1}')
             ctype = comp.get('type', 'text')
-            val   = answer.get(label, '')
+            val   = answer_dict.get(label, '')
             err   = None
             if not val:
                 err = f'Enter {label}'
@@ -845,132 +810,130 @@ def _process_answer(request, section, section_id, question_id, q_meta, pss):
                     compound_errors.append(err)
             compound_parts.append({'index': i, 'label': label, 'type': ctype,
                                    'value': val, 'error': err})
-        if compound_errors:
-            asked_ids = pss.get('asked_ids', [question_id])
-            if len(asked_ids) > 1 and question_id == asked_ids[-1]:
-                prev_node = asked_ids[-2]
-                _set_table = pss.get('set_table', {})
-                if prev_node in _set_table:
-                    back_url = f'/section/{section_id}/set/{prev_node}/'
-                else:
-                    back_url = f'/section/{section_id}/question/{prev_node}/'
+        return {
+            'error':           compound_errors[0] if compound_errors else None,
+            'compound_parts':  compound_parts,
+            'compound_errors': compound_errors,
+        }
+
+    # ── Plain-answer (text, textarea, number, radio, radio_inline, checkbox) ──
+    answer_empty = not value and value != 0
+    error = None
+    if answer_empty:
+        if q_meta.get('required', True):
+            error = 'Enter ' + q_meta['question_text'].lower().rstrip('?').rstrip('.')
+    else:
+        qt = q_meta['question_text'].rstrip('?').rstrip('.')
+        # max_length
+        if q_meta.get('max_length') is not None and isinstance(value, str):
+            if len(value) > q_meta['max_length']:
+                error = f'{qt} must be {q_meta["max_length"]} characters or fewer'
+        # min / max (stored as float)
+        if not error and (q_meta.get('min') is not None or q_meta.get('max') is not None):
+            try:
+                num_val = float(value)
+                if q_meta.get('min') is not None and num_val < q_meta['min']:
+                    min_disp = int(q_meta['min']) if q_meta['min'] == int(q_meta['min']) else q_meta['min']
+                    error = f'{qt} must be {min_disp} or more'
+                elif q_meta.get('max') is not None and num_val > q_meta['max']:
+                    max_disp = int(q_meta['max']) if q_meta['max'] == int(q_meta['max']) else q_meta['max']
+                    error = f'{qt} must be {max_disp} or less'
+            except (TypeError, ValueError):
+                pass
+        # min_date / max_date / no_future_date (ISO-string text answers)
+        if not error and isinstance(value, str):
+            _date_val = None
+            try:
+                _date_val = _date_type.fromisoformat(value)
+            except (ValueError, TypeError):
+                pass
+            if _date_val is not None:
+                if q_meta.get('min_date') is not None:
+                    _min_d = _date_type.fromisoformat(q_meta['min_date'])
+                    if _date_val < _min_d:
+                        error = f'{qt} must be on or after {_min_d.strftime("%d %B %Y")}'
+                if not error and q_meta.get('max_date') is not None:
+                    _max_d = _date_type.fromisoformat(q_meta['max_date'])
+                    if _date_val > _max_d:
+                        error = f'{qt} must be on or before {_max_d.strftime("%d %B %Y")}'
+                if not error and q_meta.get('no_future_date') and _date_val > _date_type.today():
+                    error = f'{qt} must be today or in the past'
+        # regex
+        if not error and q_meta.get('regex') and isinstance(value, str):
+            if not re.match(q_meta['regex'], value):
+                error = f'{qt} is not in the correct format'
+    return {'error': error, 'compound_parts': [], 'compound_errors': []}
+
+
+def _process_answer(request, section, section_id, question_id, q_meta, pss):
+    """Handle POST for section_question — store answer, advance routing."""
+
+    # ── Extract and validate ──────────────────────────────────────────────────
+    answer = _extract_answer(request, q_meta['question_type'], qid=None,
+                             options=q_meta.get('options', ''))
+    vr     = _validate_answer(q_meta, answer)
+    error  = vr['error']
+
+    if error:
+        asked_ids = pss.get('asked_ids', [question_id])
+        if len(asked_ids) > 1 and question_id == asked_ids[-1]:
+            prev_node = asked_ids[-2]
+            _set_table = pss.get('set_table', {})
+            if prev_node in _set_table:
+                back_url = f'/section/{section_id}/set/{prev_node}/'
             else:
-                back_url = f'/section/{section_id}/start/'
-            context = {
-                'section':        section,
-                'question_id':    question_id,
-                'question_text':  q_meta['question_text'],
-                'guidance':       q_meta['guidance'],
-                'hint':           q_meta['hint'],
-                'question_type':  q_meta['question_type'],
-                'options':        [],
-                'current_answer': answer,
-                'compound_parts': compound_parts,
-                'compound_errors': compound_errors,
-                'suggestion':     None,
-                'provenance':     None,
-                'back_url':       back_url,
-                'asked_ids':      asked_ids,
-                'error':          compound_errors[0],
-                'breadcrumbs':    _build_crumbs(pss, section.section_name),
-                'acting_for':     get_acting_for_name(pss),
-            }
-            return render(request, 'core/question_compound.html', context)
-
-    # ── Plain-answer validation (text, textarea, number, radio, radio_inline, checkbox) ──
-    elif q_meta['question_type'] not in ('date', 'personal_name', 'address'):
-        label = q_meta['question_text'].lower().rstrip('?').rstrip('.')
-        answer_empty = not answer and answer != 0
-        error = None
-
-        if answer_empty:
-            if q_meta.get('required', True):
-                error = 'Enter ' + label
+                back_url = f'/section/{section_id}/question/{prev_node}/'
         else:
-            # max_length
-            if q_meta.get('max_length') is not None and isinstance(answer, str):
-                if len(answer) > q_meta['max_length']:
-                    error = (
-                        f'{q_meta["question_text"].rstrip("?").rstrip(".")} '
-                        f'must be {q_meta["max_length"]} characters or fewer'
-                    )
-            # min / max (numeric; stored as float in q_meta)
-            if not error and (q_meta.get('min') is not None or q_meta.get('max') is not None):
-                try:
-                    num_val = float(answer)
-                    qt = q_meta['question_text'].rstrip('?').rstrip('.')
-                    if q_meta.get('min') is not None and num_val < q_meta['min']:
-                        min_disp = int(q_meta['min']) if q_meta['min'] == int(q_meta['min']) else q_meta['min']
-                        error = f'{qt} must be {min_disp} or more'
-                    elif q_meta.get('max') is not None and num_val > q_meta['max']:
-                        max_disp = int(q_meta['max']) if q_meta['max'] == int(q_meta['max']) else q_meta['max']
-                        error = f'{qt} must be {max_disp} or less'
-                except (TypeError, ValueError):
-                    pass
-            # min_date / max_date / no_future_date (ISO-string text answers;
-            # stored as ISO strings in q_meta)
-            if not error and isinstance(answer, str):
-                _date_val = None
-                try:
-                    _date_val = _date_type.fromisoformat(answer)
-                except (ValueError, TypeError):
-                    pass
-                if _date_val is not None:
-                    qt = q_meta['question_text'].rstrip('?').rstrip('.')
-                    if not error and q_meta.get('min_date') is not None:
-                        _min_d = _date_type.fromisoformat(q_meta['min_date'])
-                        if _date_val < _min_d:
-                            error = f'{qt} must be on or after {_min_d.strftime("%d %B %Y")}'
-                    if not error and q_meta.get('max_date') is not None:
-                        _max_d = _date_type.fromisoformat(q_meta['max_date'])
-                        if _date_val > _max_d:
-                            error = f'{qt} must be on or before {_max_d.strftime("%d %B %Y")}'
-                    if not error and q_meta.get('no_future_date') and _date_val > _date_type.today():
-                        error = f'{qt} must be today or in the past'
-            # regex
-            if not error and q_meta.get('regex') and isinstance(answer, str):
-                if not re.match(q_meta['regex'], answer):
-                    error = (
-                        f'{q_meta["question_text"].rstrip("?").rstrip(".")} '
-                        f'is not in the correct format'
-                    )
+            back_url = f'/section/{section_id}/start/'
 
-        if error:
-            options = [o.strip() for o in q_meta['options'].split(';') if o.strip()]
-            asked_ids = pss.get('asked_ids', [question_id])
-            if len(asked_ids) > 1 and question_id == asked_ids[-1]:
-                prev_node = asked_ids[-2]
-                _set_table = pss.get('set_table', {})
-                if prev_node in _set_table:
-                    back_url = f'/section/{section_id}/set/{prev_node}/'
-                else:
-                    back_url = f'/section/{section_id}/question/{prev_node}/'
-            else:
-                back_url = f'/section/{section_id}/start/'
-            context = {
-                'section':        section,
-                'question_id':    question_id,
-                'question_text':  q_meta['question_text'],
-                'guidance':       q_meta['guidance'],
-                'hint':           q_meta['hint'],
-                'question_type':  q_meta['question_type'],
-                'options':        options,
-                'current_answer': None if answer_empty else answer,
-                'suggestion':     None,
-                'provenance':     None,
-                'back_url':       back_url,
-                'asked_ids':      asked_ids,
-                'error':          error,
-                'breadcrumbs':    _build_crumbs(pss, section.section_name),
-                'acting_for':     get_acting_for_name(pss),
+        qt_text = q_meta['question_type']
+        base_ctx = {
+            'section':        section,
+            'question_id':    question_id,
+            'question_text':  q_meta['question_text'],
+            'guidance':       q_meta['guidance'],
+            'hint':           q_meta['hint'],
+            'question_type':  qt_text,
+            'options':        [o.strip() for o in q_meta.get('options', '').split(';') if o.strip()],
+            'current_answer': answer,
+            'suggestion':     None,
+            'provenance':     None,
+            'back_url':       back_url,
+            'asked_ids':      asked_ids,
+            'error':          error,
+            'breadcrumbs':    _build_crumbs(pss, section.section_name),
+            'acting_for':     get_acting_for_name(pss),
+        }
+
+        if qt_text == 'date':
+            base_ctx['date_parts'] = {
+                'day':   answer.get('day',   '') if isinstance(answer, dict) else '',
+                'month': answer.get('month', '') if isinstance(answer, dict) else '',
+                'year':  answer.get('year',  '') if isinstance(answer, dict) else '',
             }
-            template_map = {
-                'radio':        'core/question_radio.html',
-                'radio_inline': 'core/question_radio_inline.html',
-                'checkbox':     'core/question_checkbox.html',
-            }
-            template = template_map.get(q_meta['question_type'], 'core/question_text.html')
-            return render(request, template, context)
+            return render(request, 'core/question_date.html', base_ctx)
+
+        if qt_text == 'personal_name':
+            base_ctx['name_parts'] = answer
+            return render(request, 'core/question_personal_name.html', base_ctx)
+
+        if qt_text == 'address':
+            base_ctx['address_parts'] = answer
+            return render(request, 'core/question_address.html', base_ctx)
+
+        if qt_text == 'compound':
+            base_ctx['compound_parts']  = vr['compound_parts']
+            base_ctx['compound_errors'] = vr['compound_errors']
+            return render(request, 'core/question_compound.html', base_ctx)
+
+        # Plain types
+        base_ctx['current_answer'] = None if (not answer and answer != 0) else answer
+        template_map = {
+            'radio':        'core/question_radio.html',
+            'radio_inline': 'core/question_radio_inline.html',
+            'checkbox':     'core/question_checkbox.html',
+        }
+        return render(request, template_map.get(qt_text, 'core/question_text.html'), base_ctx)
 
     # ── Store answer in session ───────────────────────────────────────────────
     basic_answers = pss.get('basic_answers', {})
@@ -1744,23 +1707,55 @@ def section_table_routed_question(request, section_id, question_or_set_id):
 
     if request.method == 'POST':
         if is_set:
-            # Collect field values for all set members
+            # Extract and validate all set-member fields
             members = set_table[node_id]['members']
             field_values = {}
+            field_errors = {}
             for m in members:
-                qid = m['question_id']
-                if m['question_type'] == 'checkbox':
-                    field_values[qid] = request.POST.getlist(qid)
-                elif m['question_type'] == 'address':
-                    field_values[qid] = {
-                        'line1':    request.POST.get(f'address_line1_{qid}', '').strip(),
-                        'line2':    request.POST.get(f'address_line2_{qid}', '').strip(),
-                        'city':     request.POST.get(f'address_city_{qid}', '').strip(),
-                        'county':   request.POST.get(f'address_county_{qid}', '').strip(),
-                        'postcode': request.POST.get(f'address_postcode_{qid}', '').strip(),
+                qid   = m['question_id']
+                value = _extract_answer(request, m['question_type'], qid=qid,
+                                        options=m.get('options', ''))
+                err   = _validate_answer(m, value)['error']
+                if err:
+                    field_errors[qid] = err
+                field_values[qid] = value
+
+            def _build_set_member_dicts(fv):
+                meta = set_table[node_id]
+                dicts = []
+                for m in meta['members']:
+                    qid = m['question_id']
+                    cur = fv.get(qid, '')
+                    md = {
+                        'question_id':   qid,
+                        'question_text': m['question_text'],
+                        'question_type': m['question_type'],
+                        'hint':          m['hint'],
+                        'options':       [o.strip() for o in m['options'].split(';') if o.strip()],
+                        'required':      m['required'],
+                        'current_value': cur,
                     }
-                else:
-                    field_values[qid] = request.POST.get(qid, '').strip()
+                    if m['question_type'] == 'address':
+                        src = cur if isinstance(cur, dict) else {}
+                        md['address_parts'] = {k: src.get(k, '') for k in
+                                               ('line1', 'line2', 'city', 'county', 'postcode')}
+                    dicts.append(md)
+                return dicts
+
+            if field_errors:
+                meta = set_table[node_id]
+                context = {
+                    'section':      section,
+                    'set_id':       node_id,
+                    'set_title':    meta['set_title'],
+                    'set_hint':     meta['set_hint'],
+                    'set_guidance': meta['set_guidance'],
+                    'members':      _build_set_member_dicts(field_values),
+                    'back_url':     back_url,
+                    'acting_for':   get_acting_for_name(pss),
+                    'routing_error': ' / '.join(field_errors.values()),
+                }
+                return render(request, 'core/table_routed_set.html', context)
 
             all_answers = {**{k: v for k, v in row_data.items() if not k.startswith('_')},
                            **field_values}
@@ -1773,35 +1768,13 @@ def section_table_routed_question(request, section_id, question_or_set_id):
                     section_id, node_id,
                 )
                 meta = set_table[node_id]
-                member_dicts = []
-                for m in meta['members']:
-                    qid = m['question_id']
-                    mdict = {
-                        'question_id':   qid,
-                        'question_text': m['question_text'],
-                        'question_type': m['question_type'],
-                        'hint':          m['hint'],
-                        'options':       [o.strip() for o in m['options'].split(';') if o.strip()],
-                        'required':      m['required'],
-                        'current_value': field_values.get(qid, ''),
-                    }
-                    if m['question_type'] == 'address':
-                        src = field_values.get(qid) or {}
-                        mdict['address_parts'] = {
-                            'line1':    src.get('line1', '') if isinstance(src, dict) else '',
-                            'line2':    src.get('line2', '') if isinstance(src, dict) else '',
-                            'city':     src.get('city', '') if isinstance(src, dict) else '',
-                            'county':   src.get('county', '') if isinstance(src, dict) else '',
-                            'postcode': src.get('postcode', '') if isinstance(src, dict) else '',
-                        }
-                    member_dicts.append(mdict)
                 context = {
                     'section':      section,
                     'set_id':       node_id,
                     'set_title':    meta['set_title'],
                     'set_hint':     meta['set_hint'],
                     'set_guidance': meta['set_guidance'],
-                    'members':      member_dicts,
+                    'members':      _build_set_member_dicts(field_values),
                     'back_url':     back_url,
                     'acting_for':   get_acting_for_name(pss),
                     'routing_error': (
@@ -1815,10 +1788,28 @@ def section_table_routed_question(request, section_id, question_or_set_id):
             row_data.update(field_values)
         else:
             q_meta = question_table[node_id]
-            if q_meta['question_type'] == 'checkbox':
-                answer = request.POST.getlist(node_id)
-            else:
-                answer = request.POST.get(node_id, '').strip()
+            answer = _extract_answer(request, q_meta['question_type'], qid=node_id,
+                                     options=q_meta.get('options', ''))
+            vr = _validate_answer(q_meta, answer)
+
+            if vr['error']:
+                question_dict = {
+                    'question_id':   node_id,
+                    'question_text': q_meta['question_text'],
+                    'question_type': q_meta['question_type'],
+                    'guidance':      q_meta['guidance'],
+                    'hint':          q_meta['hint'],
+                    'options':       [o.strip() for o in q_meta['options'].split(';') if o.strip()],
+                    'current_value': answer,
+                }
+                context = {
+                    'section':       section,
+                    'question':      question_dict,
+                    'back_url':      back_url,
+                    'acting_for':    get_acting_for_name(pss),
+                    'routing_error': vr['error'],
+                }
+                return render(request, 'core/table_routed_question.html', context)
 
             all_answers = {**{k: v for k, v in row_data.items() if not k.startswith('_')},
                            node_id: answer}
@@ -2456,138 +2447,12 @@ def _process_set_answer(request, section, section_id, set_id, set_meta, pss):
     field_values = {}
     field_errors = {}
     for m in set_meta['members']:
-        qid = m['question_id']
-        if m['question_type'] == 'checkbox':
-            value = request.POST.getlist(qid)
-        elif m['question_type'] == 'date':
-            value = {
-                'day':   request.POST.get(f'{qid}_day', '').strip(),
-                'month': request.POST.get(f'{qid}_month', '').strip(),
-                'year':  request.POST.get(f'{qid}_year', '').strip(),
-            }
-        elif m['question_type'] == 'personal_name':
-            value = {
-                'title':       request.POST.get(f'personal_name_title_{qid}', '').strip(),
-                'first_name':  request.POST.get(f'personal_name_first_name_{qid}', '').strip(),
-                'middle_name': request.POST.get(f'personal_name_middle_name_{qid}', '').strip(),
-                'last_name':   request.POST.get(f'personal_name_last_name_{qid}', '').strip(),
-            }
-        elif m['question_type'] == 'address':
-            value = {
-                'line1':    request.POST.get(f'address_line1_{qid}', '').strip(),
-                'line2':    request.POST.get(f'address_line2_{qid}', '').strip(),
-                'city':     request.POST.get(f'address_city_{qid}', '').strip(),
-                'county':   request.POST.get(f'address_county_{qid}', '').strip(),
-                'postcode': request.POST.get(f'address_postcode_{qid}', '').strip(),
-            }
-        else:
-            value = request.POST.get(qid, '').strip()
-        if m['required']:
-            if m['question_type'] == 'personal_name':
-                sub_errors = []
-                if not value.get('first_name'):
-                    sub_errors.append('Enter a first name')
-                if not value.get('last_name'):
-                    sub_errors.append('Enter a last name')
-                if sub_errors:
-                    field_errors[qid] = ' / '.join(sub_errors)
-            elif m['question_type'] == 'address':
-                sub_errors = []
-                if not value.get('line1'):
-                    sub_errors.append('Enter the first line of the address')
-                if not value.get('city'):
-                    sub_errors.append('Enter a town or city')
-                if not value.get('postcode'):
-                    sub_errors.append('Enter a postcode')
-                if sub_errors:
-                    field_errors[qid] = ' / '.join(sub_errors)
-            elif not value and value != 0:
-                field_errors[qid] = 'Enter ' + m['question_text'].lower().rstrip('?').rstrip('.')
-
-        # ── Plain-answer constraint checks (text/textarea/number/radio/checkbox) ──
-        if qid not in field_errors and m['question_type'] not in ('date', 'personal_name', 'address'):
-            answer_empty = not value and value != 0
-            if not answer_empty:
-                # max_length
-                if m.get('max_length') is not None and isinstance(value, str):
-                    if len(value) > m['max_length']:
-                        field_errors[qid] = (
-                            f'{m["question_text"].rstrip("?").rstrip(".")} '
-                            f'must be {m["max_length"]} characters or fewer'
-                        )
-                # min / max (stored as float)
-                if qid not in field_errors and (m.get('min') is not None or m.get('max') is not None):
-                    try:
-                        num_val = float(value)
-                        qt = m['question_text'].rstrip('?').rstrip('.')
-                        if m.get('min') is not None and num_val < m['min']:
-                            min_disp = int(m['min']) if m['min'] == int(m['min']) else m['min']
-                            field_errors[qid] = f'{qt} must be {min_disp} or more'
-                        elif m.get('max') is not None and num_val > m['max']:
-                            max_disp = int(m['max']) if m['max'] == int(m['max']) else m['max']
-                            field_errors[qid] = f'{qt} must be {max_disp} or less'
-                    except (TypeError, ValueError):
-                        pass
-                # min_date / max_date / no_future_date (ISO-string text answers)
-                if qid not in field_errors and isinstance(value, str):
-                    _date_val = None
-                    try:
-                        _date_val = _date_type.fromisoformat(value)
-                    except (ValueError, TypeError):
-                        pass
-                    if _date_val is not None:
-                        qt = m['question_text'].rstrip('?').rstrip('.')
-                        if m.get('min_date') is not None:
-                            _min_d = _date_type.fromisoformat(m['min_date'])
-                            if _date_val < _min_d:
-                                field_errors[qid] = f'{qt} must be on or after {_min_d.strftime("%d %B %Y")}'
-                        if qid not in field_errors and m.get('max_date') is not None:
-                            _max_d = _date_type.fromisoformat(m['max_date'])
-                            if _date_val > _max_d:
-                                field_errors[qid] = f'{qt} must be on or before {_max_d.strftime("%d %B %Y")}'
-                        if qid not in field_errors and m.get('no_future_date') and _date_val > _date_type.today():
-                            field_errors[qid] = f'{qt} must be today or in the past'
-                # regex
-                if qid not in field_errors and m.get('regex') and isinstance(value, str):
-                    if not re.match(m['regex'], value):
-                        field_errors[qid] = (
-                            f'{m["question_text"].rstrip("?").rstrip(".")} '
-                            f'is not in the correct format'
-                        )
-
-        # ── Date-type constraint checks (min_date / max_date / no_future_date) ──
-        elif m['question_type'] == 'date' and qid not in field_errors:
-            _has_date_constraints = m.get('min_date') or m.get('max_date') or m.get('no_future_date')
-            if _has_date_constraints:
-                day   = value.get('day', '')
-                month = value.get('month', '')
-                year  = value.get('year', '')
-                _date_errs = []
-                if not day or not day.isdigit() or not (1 <= int(day) <= 31):
-                    _date_errs.append('Enter a valid day (1–31)')
-                if not month or not month.isdigit() or not (1 <= int(month) <= 12):
-                    _date_errs.append('Enter a valid month (1–12)')
-                if not year or not year.isdigit() or len(year) != 4:
-                    _date_errs.append('Enter a valid year (4 digits)')
-                if not _date_errs:
-                    try:
-                        _constructed = _date_type(int(year), int(month), int(day))
-                        qt = m['question_text'].rstrip('?').rstrip('.')
-                        if m.get('min_date') is not None:
-                            _min_d = _date_type.fromisoformat(m['min_date'])
-                            if _constructed < _min_d:
-                                _date_errs.append(f'{qt} must be on or after {_min_d.strftime("%d %B %Y")}')
-                        if not _date_errs and m.get('max_date') is not None:
-                            _max_d = _date_type.fromisoformat(m['max_date'])
-                            if _constructed > _max_d:
-                                _date_errs.append(f'{qt} must be on or before {_max_d.strftime("%d %B %Y")}')
-                        if not _date_errs and m.get('no_future_date') and _constructed > _date_type.today():
-                            _date_errs.append(f'{qt} must be today or in the past')
-                    except ValueError:
-                        _date_errs.append('Enter a valid date')
-                if _date_errs:
-                    field_errors[qid] = ' / '.join(_date_errs)
-
+        qid   = m['question_id']
+        value = _extract_answer(request, m['question_type'], qid=qid,
+                                options=m.get('options', ''))
+        err   = _validate_answer(m, value)['error']
+        if err:
+            field_errors[qid] = err
         field_values[qid] = value
 
     # ── Re-render with errors if any field failed ─────────────────────────────

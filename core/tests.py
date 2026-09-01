@@ -4897,3 +4897,147 @@ class TestSetMemberValidationFields(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, 'Enter a valid day')
         self.assertNotContains(r, 'today or in the past')
+
+
+class TestTableRoutedQuestionValidation(TestCase):
+    """
+    Confirms that section_table_routed_question (the section_type=2 routed
+    add-row journey) now validates answers on POST — previously it had no
+    validation at all, silently accepting any input including blank required
+    fields and values violating constraints.
+
+    This is confirmed to be the FIRST test class in the suite that exercises
+    section_table_routed_question's validation path: all prior tests for this
+    view POST valid values and check for 302 advances, so no prior test would
+    have caught a missing required-check or constraint-check.
+
+    Covers:
+      - Single bare question node: blank required → 200 + error; valid → 302
+      - Single bare question node with max_length: over-length → 200 + error
+      - Set node: blank required member → 200 + error; valid → 302
+      - Set node with max_length member: over-length → 200 + error
+
+    All sections use section_type=2 with the same minimal
+    single-node routing used throughout TestConditionalTableSection.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        r_simple = Regime.objects.get(regime_id='TEST_SIMPLE')
+
+        # ── Single question node — required (default) + max_length=5 ──────────
+        cls.q_val = Question.objects.create(
+            question_id='TRV_Q1',
+            question_text='Enter a short code',
+            question_type='text',
+            max_length=5,
+        )
+        cls.s_val = Section.objects.create(
+            section_id='TRV_S1',
+            section_name='Validation test — single Q',
+            section_type=2,
+            regime=r_simple,
+            display_question_ids='TRV_Q1',
+        )
+        Routing.objects.create(
+            section=cls.s_val, current_node='TRV_Q1',
+            answer_value=None, next_node=None, order_in_section=10,
+        )
+
+        # ── Set node — one member with max_length=5 ───────────────────────────
+        cls.q_set_member = Question.objects.create(
+            question_id='TRV_SET_Q1',
+            question_text='Enter a short label',
+            question_type='text',
+            max_length=5,
+        )
+        cls.qs_val = QuestionSet.objects.create(
+            set_id='TRV_SET1',
+            set_title='Validation set',
+        )
+        QuestionSetMember.objects.create(
+            question_set=cls.qs_val, question=cls.q_set_member, display_order=10,
+        )
+        cls.s_set_val = Section.objects.create(
+            section_id='TRV_S2',
+            section_name='Validation test — set node',
+            section_type=2,
+            regime=r_simple,
+            display_question_ids='TRV_SET_Q1',
+        )
+        Routing.objects.create(
+            section=cls.s_set_val, current_node='TRV_SET1',
+            answer_value=None, next_node=None, order_in_section=10,
+        )
+
+    def setUp(self):
+        self.client = Client()
+        self.client.login(username='alice', password='testpass123')
+
+    def _init_row(self, section_id):
+        """GET /table/add-routed/ to initialise the row session."""
+        self.client.get(f'/section/{section_id}/table/add-routed/')
+
+    def _post_q(self, section_id, qid, value):
+        return self.client.post(
+            f'/section/{section_id}/table/add-routed/{qid}/', {qid: value}
+        )
+
+    def _post_set(self, section_id, set_id, data):
+        return self.client.post(
+            f'/section/{section_id}/table/add-routed/{set_id}/', data
+        )
+
+    # ── Single question node ──────────────────────────────────────────────────
+
+    def test_single_q_blank_required_rerenders(self):
+        """Blank required field on a table-routed question returns 200."""
+        self._init_row('TRV_S1')
+        r = self._post_q('TRV_S1', 'TRV_Q1', '')
+        self.assertEqual(r.status_code, 200)
+
+    def test_single_q_blank_required_shows_error(self):
+        """Blank required field shows the derived error message."""
+        self._init_row('TRV_S1')
+        r = self._post_q('TRV_S1', 'TRV_Q1', '')
+        self.assertContains(r, 'Enter a short code')
+
+    def test_single_q_max_length_exceeded_rerenders(self):
+        """Answer exceeding max_length on a table-routed question returns 200."""
+        self._init_row('TRV_S1')
+        r = self._post_q('TRV_S1', 'TRV_Q1', 'toolongvalue')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, '5 characters or fewer')
+
+    def test_single_q_valid_advances(self):
+        """Valid answer on a table-routed question redirects (302)."""
+        self._init_row('TRV_S1')
+        r = self._post_q('TRV_S1', 'TRV_Q1', 'abc')
+        self.assertEqual(r.status_code, 302)
+
+    # ── Set node ──────────────────────────────────────────────────────────────
+
+    def test_set_node_blank_required_rerenders(self):
+        """Blank required set member on a table-routed set node returns 200."""
+        self._init_row('TRV_S2')
+        r = self._post_set('TRV_S2', 'TRV_SET1', {'TRV_SET_Q1': ''})
+        self.assertEqual(r.status_code, 200)
+
+    def test_set_node_blank_required_shows_error(self):
+        """Blank required set member shows the derived error message."""
+        self._init_row('TRV_S2')
+        r = self._post_set('TRV_S2', 'TRV_SET1', {'TRV_SET_Q1': ''})
+        self.assertContains(r, 'Enter a short label')
+
+    def test_set_node_max_length_exceeded_rerenders(self):
+        """Set member exceeding max_length on a table-routed set node returns 200."""
+        self._init_row('TRV_S2')
+        r = self._post_set('TRV_S2', 'TRV_SET1', {'TRV_SET_Q1': 'toolongvalue'})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, '5 characters or fewer')
+
+    def test_set_node_valid_advances(self):
+        """Valid set member on a table-routed set node redirects (302)."""
+        self._init_row('TRV_S2')
+        r = self._post_set('TRV_S2', 'TRV_SET1', {'TRV_SET_Q1': 'ok'})
+        self.assertEqual(r.status_code, 302)
