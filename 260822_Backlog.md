@@ -982,6 +982,8 @@ be silently skipped. Fix: `sorted(settings.DATABASES, key=lambda a: (0 if a == '
 
 - `b99880f` — Date constraint validation + migrate_all ordering fix. Doc impact:
   Core Platform Reference §5 (migrate_all — ordering requirement not previously documented).
+- `c3a5779` — Extend validation constraints to Set-member questions. Doc impact: none
+  (build docs don't document the constraint fields in detail yet).
 
 ---
 
