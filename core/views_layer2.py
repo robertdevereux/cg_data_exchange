@@ -1720,8 +1720,9 @@ def section_table_routed_question(request, section_id, question_or_set_id):
                     field_errors[qid] = err
                 field_values[qid] = value
 
-            def _build_set_member_dicts(fv):
+            def _build_set_member_dicts(fv, errs=None):
                 meta = set_table[node_id]
+                errs = errs or {}
                 dicts = []
                 for m in meta['members']:
                     qid = m['question_id']
@@ -1734,6 +1735,7 @@ def section_table_routed_question(request, section_id, question_or_set_id):
                         'options':       [o.strip() for o in m['options'].split(';') if o.strip()],
                         'required':      m['required'],
                         'current_value': cur,
+                        'error':         errs.get(qid),
                     }
                     if m['question_type'] == 'address':
                         src = cur if isinstance(cur, dict) else {}
@@ -1750,10 +1752,11 @@ def section_table_routed_question(request, section_id, question_or_set_id):
                     'set_title':    meta['set_title'],
                     'set_hint':     meta['set_hint'],
                     'set_guidance': meta['set_guidance'],
-                    'members':      _build_set_member_dicts(field_values),
+                    'members':      _build_set_member_dicts(field_values, field_errors),
                     'back_url':     back_url,
                     'acting_for':   get_acting_for_name(pss),
-                    'routing_error': ' / '.join(field_errors.values()),
+                    'errors':       [{'qid': qid, 'message': msg}
+                                     for qid, msg in field_errors.items()],
                 }
                 return render(request, 'core/table_routed_set.html', context)
 
@@ -1801,13 +1804,14 @@ def section_table_routed_question(request, section_id, question_or_set_id):
                     'hint':          q_meta['hint'],
                     'options':       [o.strip() for o in q_meta['options'].split(';') if o.strip()],
                     'current_value': answer,
+                    'error':         vr['error'],
                 }
                 context = {
-                    'section':       section,
-                    'question':      question_dict,
-                    'back_url':      back_url,
-                    'acting_for':    get_acting_for_name(pss),
-                    'routing_error': vr['error'],
+                    'section':    section,
+                    'question':   question_dict,
+                    'back_url':   back_url,
+                    'acting_for': get_acting_for_name(pss),
+                    'errors':     [{'qid': node_id, 'message': vr['error']}],
                 }
                 return render(request, 'core/table_routed_question.html', context)
 

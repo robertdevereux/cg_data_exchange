@@ -10,6 +10,34 @@
   <div class="govuk-grid-row">
     <div class="govuk-grid-column-two-thirds">
 
+      {% if errors %}
+      <div class="govuk-error-summary" data-module="govuk-error-summary">
+        <div role="alert">
+          <h2 class="govuk-error-summary__title">There is a problem</h2>
+          <div class="govuk-error-summary__body">
+            <ul class="govuk-list govuk-error-summary__list">
+              {% for error in errors %}
+              <li>
+                <a href="#field-{{ error.qid }}">{{ error.message }}</a>
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if routing_error %}
+      <div class="govuk-error-summary" data-module="govuk-error-summary">
+        <div role="alert">
+          <h2 class="govuk-error-summary__title">There is a problem</h2>
+          <div class="govuk-error-summary__body">
+            <p>{{ routing_error }}</p>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
       <form method="post" action="">
         {% csrf_token %}
 
@@ -19,33 +47,27 @@
         <div class="govuk-inset-text">{{ set_guidance|render_markdown }}</div>
         {% endif %}
 
-        {% if routing_error %}
-        <div class="govuk-error-summary" data-module="govuk-error-summary">
-          <div role="alert">
-            <h2 class="govuk-error-summary__title">There is a problem</h2>
-            <div class="govuk-error-summary__body">
-              <p>{{ routing_error }}</p>
-            </div>
-          </div>
-        </div>
-        {% endif %}
-
         {% if set_hint %}
         <div class="govuk-hint">{{ set_hint }}</div>
         {% endif %}
 
         {% for field in members %}
-        <div class="govuk-form-group">
+        <div class="govuk-form-group{% if field.error %} govuk-form-group--error{% endif %}">
 
           {% if field.question_type == "radio" or field.question_type == "radio_inline" %}
-          <fieldset class="govuk-fieldset">
+          <fieldset class="govuk-fieldset" {% if field.error %}aria-describedby="field-{{ field.question_id }}-error"{% endif %}>
             <legend class="govuk-fieldset__legend">
               <label class="govuk-label" for="field-{{ field.question_id }}-1">
                 {{ field.question_text }}
               </label>
             </legend>
             {% if field.hint %}
-            <div class="govuk-hint">{{ field.hint }}</div>
+            <div class="govuk-hint" id="field-{{ field.question_id }}-hint">{{ field.hint }}</div>
+            {% endif %}
+            {% if field.error %}
+            <p class="govuk-error-message" id="field-{{ field.question_id }}-error">
+              <span class="govuk-visually-hidden">Error:</span> {{ field.error }}
+            </p>
             {% endif %}
             <div class="govuk-radios{% if field.question_type == 'radio_inline' %} govuk-radios--inline{% endif %}" data-module="govuk-radios">
               {% for option in field.options %}
@@ -65,14 +87,19 @@
           </fieldset>
 
           {% elif field.question_type == "checkbox" %}
-          <fieldset class="govuk-fieldset">
+          <fieldset class="govuk-fieldset" {% if field.error %}aria-describedby="field-{{ field.question_id }}-error"{% endif %}>
             <legend class="govuk-fieldset__legend">
               <label class="govuk-label" for="field-{{ field.question_id }}-1">
                 {{ field.question_text }}
               </label>
             </legend>
             {% if field.hint %}
-            <div class="govuk-hint">{{ field.hint }}</div>
+            <div class="govuk-hint" id="field-{{ field.question_id }}-hint">{{ field.hint }}</div>
+            {% endif %}
+            {% if field.error %}
+            <p class="govuk-error-message" id="field-{{ field.question_id }}-error">
+              <span class="govuk-visually-hidden">Error:</span> {{ field.error }}
+            </p>
             {% endif %}
             <div class="govuk-checkboxes" data-module="govuk-checkboxes">
               {% for option in field.options %}
@@ -94,11 +121,16 @@
           {% elif field.question_type == "address" %}
           <label class="govuk-label">{{ field.question_text }}</label>
           {% if field.hint %}
-          <div class="govuk-hint">{{ field.hint }}</div>
+          <div class="govuk-hint" id="field-{{ field.question_id }}-hint">{{ field.hint }}</div>
+          {% endif %}
+          {% if field.error %}
+          <p class="govuk-error-message" id="field-{{ field.question_id }}-error">
+            <span class="govuk-visually-hidden">Error:</span> {{ field.error }}
+          </p>
           {% endif %}
           <div class="govuk-form-group">
             <label class="govuk-label" for="address_line1_{{ field.question_id }}">Address line 1</label>
-            <input class="govuk-input govuk-input--width-20" type="text"
+            <input class="govuk-input govuk-input--width-20{% if field.error %} govuk-input--error{% endif %}" type="text"
                    id="address_line1_{{ field.question_id }}"
                    name="address_line1_{{ field.question_id }}"
                    autocomplete="address-line1"
@@ -106,7 +138,7 @@
           </div>
           <div class="govuk-form-group">
             <label class="govuk-label" for="address_line2_{{ field.question_id }}">Address line 2 (optional)</label>
-            <input class="govuk-input govuk-input--width-20" type="text"
+            <input class="govuk-input govuk-input--width-20{% if field.error %} govuk-input--error{% endif %}" type="text"
                    id="address_line2_{{ field.question_id }}"
                    name="address_line2_{{ field.question_id }}"
                    autocomplete="address-line2"
@@ -114,7 +146,7 @@
           </div>
           <div class="govuk-form-group">
             <label class="govuk-label" for="address_city_{{ field.question_id }}">Town or city</label>
-            <input class="govuk-input govuk-input--width-20" type="text"
+            <input class="govuk-input govuk-input--width-20{% if field.error %} govuk-input--error{% endif %}" type="text"
                    id="address_city_{{ field.question_id }}"
                    name="address_city_{{ field.question_id }}"
                    autocomplete="address-level2"
@@ -122,7 +154,7 @@
           </div>
           <div class="govuk-form-group">
             <label class="govuk-label" for="address_county_{{ field.question_id }}">County (optional)</label>
-            <input class="govuk-input govuk-input--width-20" type="text"
+            <input class="govuk-input govuk-input--width-20{% if field.error %} govuk-input--error{% endif %}" type="text"
                    id="address_county_{{ field.question_id }}"
                    name="address_county_{{ field.question_id }}"
                    autocomplete="address-level1"
@@ -130,7 +162,7 @@
           </div>
           <div class="govuk-form-group">
             <label class="govuk-label" for="address_postcode_{{ field.question_id }}">Postcode</label>
-            <input class="govuk-input govuk-input--width-10" type="text"
+            <input class="govuk-input govuk-input--width-10{% if field.error %} govuk-input--error{% endif %}" type="text"
                    id="address_postcode_{{ field.question_id }}"
                    name="address_postcode_{{ field.question_id }}"
                    autocomplete="postal-code"
@@ -142,26 +174,38 @@
             {{ field.question_text }}
           </label>
           {% if field.hint %}
-          <div class="govuk-hint">{{ field.hint }}</div>
+          <div class="govuk-hint" id="field-{{ field.question_id }}-hint">{{ field.hint }}</div>
           {% endif %}
-          <input class="govuk-input govuk-input--width-10"
+          {% if field.error %}
+          <p class="govuk-error-message" id="field-{{ field.question_id }}-error">
+            <span class="govuk-visually-hidden">Error:</span> {{ field.error }}
+          </p>
+          {% endif %}
+          <input class="govuk-input govuk-input--width-10{% if field.error %} govuk-input--error{% endif %}"
                  type="number" step="any"
                  id="field-{{ field.question_id }}"
                  name="{{ field.question_id }}"
-                 value="{{ field.current_value|default:'' }}">
+                 value="{{ field.current_value|default:'' }}"
+                 {% if field.error %}aria-describedby="field-{{ field.question_id }}-error{% if field.hint %} field-{{ field.question_id }}-hint{% endif %}"{% elif field.hint %}aria-describedby="field-{{ field.question_id }}-hint"{% endif %}>
 
           {% else %}
           <label class="govuk-label" for="field-{{ field.question_id }}">
             {{ field.question_text }}
           </label>
           {% if field.hint %}
-          <div class="govuk-hint">{{ field.hint }}</div>
+          <div class="govuk-hint" id="field-{{ field.question_id }}-hint">{{ field.hint }}</div>
           {% endif %}
-          <input class="govuk-input"
+          {% if field.error %}
+          <p class="govuk-error-message" id="field-{{ field.question_id }}-error">
+            <span class="govuk-visually-hidden">Error:</span> {{ field.error }}
+          </p>
+          {% endif %}
+          <input class="govuk-input{% if field.error %} govuk-input--error{% endif %}"
                  type="text"
                  id="field-{{ field.question_id }}"
                  name="{{ field.question_id }}"
-                 value="{{ field.current_value|default:'' }}">
+                 value="{{ field.current_value|default:'' }}"
+                 {% if field.error %}aria-describedby="field-{{ field.question_id }}-error{% if field.hint %} field-{{ field.question_id }}-hint{% endif %}"{% elif field.hint %}aria-describedby="field-{{ field.question_id }}-hint"{% endif %}>
           {% endif %}
 
         </div>

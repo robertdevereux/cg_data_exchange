@@ -5041,3 +5041,88 @@ class TestTableRoutedQuestionValidation(TestCase):
         self._init_row('TRV_S2')
         r = self._post_set('TRV_S2', 'TRV_SET1', {'TRV_SET_Q1': 'ok'})
         self.assertEqual(r.status_code, 302)
+
+    # ── GDS error-pattern assertions — single question node ───────────────────
+
+    def test_single_q_error_renders_govuk_error_summary(self):
+        """Validation error on single-Q node renders a govuk-error-summary block."""
+        self._init_row('TRV_S1')
+        r = self._post_q('TRV_S1', 'TRV_Q1', '')
+        self.assertContains(r, 'govuk-error-summary')
+
+    def test_single_q_error_summary_has_anchor_link(self):
+        """Error summary contains a link anchored to the field ID."""
+        self._init_row('TRV_S1')
+        r = self._post_q('TRV_S1', 'TRV_Q1', '')
+        self.assertContains(r, 'href="#field-TRV_Q1"')
+
+    def test_single_q_error_applies_form_group_error_class(self):
+        """Validation error applies govuk-form-group--error to the field wrapper."""
+        self._init_row('TRV_S1')
+        r = self._post_q('TRV_S1', 'TRV_Q1', '')
+        self.assertContains(r, 'govuk-form-group--error')
+
+    def test_single_q_error_renders_govuk_error_message(self):
+        """Validation error renders a govuk-error-message element with the correct id."""
+        self._init_row('TRV_S1')
+        r = self._post_q('TRV_S1', 'TRV_Q1', '')
+        self.assertContains(r, 'govuk-error-message')
+        self.assertContains(r, 'id="field-TRV_Q1-error"')
+
+    def test_single_q_error_input_has_error_class(self):
+        """Validation error applies govuk-input--error to the input element."""
+        self._init_row('TRV_S1')
+        r = self._post_q('TRV_S1', 'TRV_Q1', '')
+        self.assertContains(r, 'govuk-input--error')
+
+    def test_single_q_error_input_has_aria_describedby(self):
+        """Validation error links input to its error message via aria-describedby."""
+        self._init_row('TRV_S1')
+        r = self._post_q('TRV_S1', 'TRV_Q1', '')
+        self.assertContains(r, 'aria-describedby="field-TRV_Q1-error"')
+
+    def test_single_q_no_routing_error_in_validation_context(self):
+        """routing_error is NOT used for field-validation errors; reserved for config errors."""
+        self._init_row('TRV_S1')
+        r = self._post_q('TRV_S1', 'TRV_Q1', '')
+        # config-error prose must not appear on a normal validation failure
+        self.assertNotContains(r, 'configuration problem')
+
+    # ── GDS error-pattern assertions — set node ───────────────────────────────
+
+    def test_set_node_error_renders_govuk_error_summary(self):
+        """Validation error on set node renders a govuk-error-summary block."""
+        self._init_row('TRV_S2')
+        r = self._post_set('TRV_S2', 'TRV_SET1', {'TRV_SET_Q1': ''})
+        self.assertContains(r, 'govuk-error-summary')
+
+    def test_set_node_error_summary_has_anchor_link(self):
+        """Error summary contains a link anchored to the failing member field ID."""
+        self._init_row('TRV_S2')
+        r = self._post_set('TRV_S2', 'TRV_SET1', {'TRV_SET_Q1': ''})
+        self.assertContains(r, 'href="#field-TRV_SET_Q1"')
+
+    def test_set_node_error_applies_form_group_error_class(self):
+        """Validation error on a set member applies govuk-form-group--error."""
+        self._init_row('TRV_S2')
+        r = self._post_set('TRV_S2', 'TRV_SET1', {'TRV_SET_Q1': ''})
+        self.assertContains(r, 'govuk-form-group--error')
+
+    def test_set_node_error_renders_govuk_error_message(self):
+        """Validation error on a set member renders a govuk-error-message element."""
+        self._init_row('TRV_S2')
+        r = self._post_set('TRV_S2', 'TRV_SET1', {'TRV_SET_Q1': ''})
+        self.assertContains(r, 'govuk-error-message')
+        self.assertContains(r, 'id="field-TRV_SET_Q1-error"')
+
+    def test_set_node_error_input_has_error_class(self):
+        """Validation error on a set member applies govuk-input--error to the input."""
+        self._init_row('TRV_S2')
+        r = self._post_set('TRV_S2', 'TRV_SET1', {'TRV_SET_Q1': ''})
+        self.assertContains(r, 'govuk-input--error')
+
+    def test_set_node_no_routing_error_in_validation_context(self):
+        """routing_error is NOT used for field-validation errors on set nodes."""
+        self._init_row('TRV_S2')
+        r = self._post_set('TRV_S2', 'TRV_SET1', {'TRV_SET_Q1': ''})
+        self.assertNotContains(r, 'configuration problem')

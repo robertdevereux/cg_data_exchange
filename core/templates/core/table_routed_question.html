@@ -10,44 +10,66 @@
   <div class="govuk-grid-row">
     <div class="govuk-grid-column-two-thirds">
 
-      <form method="post" action="">
-        {% csrf_token %}
-
-        {% if routing_error %}
-        <div class="govuk-error-summary" data-module="govuk-error-summary">
-          <div role="alert">
-            <h2 class="govuk-error-summary__title">There is a problem</h2>
-            <div class="govuk-error-summary__body">
-              <p>{{ routing_error }}</p>
-            </div>
+      {% if errors %}
+      <div class="govuk-error-summary" data-module="govuk-error-summary">
+        <div role="alert">
+          <h2 class="govuk-error-summary__title">There is a problem</h2>
+          <div class="govuk-error-summary__body">
+            <ul class="govuk-list govuk-error-summary__list">
+              {% for error in errors %}
+              <li>
+                <a href="#field-{{ error.qid }}">{{ error.message }}</a>
+              </li>
+              {% endfor %}
+            </ul>
           </div>
         </div>
-        {% endif %}
+      </div>
+      {% endif %}
+
+      {% if routing_error %}
+      <div class="govuk-error-summary" data-module="govuk-error-summary">
+        <div role="alert">
+          <h2 class="govuk-error-summary__title">There is a problem</h2>
+          <div class="govuk-error-summary__body">
+            <p>{{ routing_error }}</p>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      <form method="post" action="">
+        {% csrf_token %}
 
         {% if question.guidance %}
         <div class="govuk-inset-text">{{ question.guidance|render_markdown }}</div>
         {% endif %}
 
-        <div class="govuk-form-group">
+        <div class="govuk-form-group{% if question.error %} govuk-form-group--error{% endif %}">
 
           {% if question.question_type == "radio" or question.question_type == "radio_inline" %}
-          <fieldset class="govuk-fieldset">
+          <fieldset class="govuk-fieldset" {% if question.error %}aria-describedby="field-{{ question.question_id }}-error"{% endif %}>
             <legend class="govuk-fieldset__legend govuk-fieldset__legend--l">
               <h1 class="govuk-fieldset__heading">{{ question.question_text }}</h1>
             </legend>
             {% if question.hint %}
-            <div class="govuk-hint">{{ question.hint }}</div>
+            <div class="govuk-hint" id="field-{{ question.question_id }}-hint">{{ question.hint }}</div>
+            {% endif %}
+            {% if question.error %}
+            <p class="govuk-error-message" id="field-{{ question.question_id }}-error">
+              <span class="govuk-visually-hidden">Error:</span> {{ question.error }}
+            </p>
             {% endif %}
             <div class="govuk-radios{% if question.question_type == 'radio_inline' %} govuk-radios--inline{% endif %}" data-module="govuk-radios">
               {% for option in question.options %}
               <div class="govuk-radios__item">
                 <input class="govuk-radios__input"
-                       id="{{ question.question_id }}_{{ forloop.counter }}"
+                       id="field-{{ question.question_id }}-{{ forloop.counter }}"
                        name="{{ question.question_id }}" type="radio"
                        value="{{ option }}"
                        {% if question.current_value == option %}checked{% endif %}>
                 <label class="govuk-label govuk-radios__label"
-                       for="{{ question.question_id }}_{{ forloop.counter }}">
+                       for="field-{{ question.question_id }}-{{ forloop.counter }}">
                   {{ option }}
                 </label>
               </div>
@@ -56,23 +78,28 @@
           </fieldset>
 
           {% elif question.question_type == "checkbox" %}
-          <fieldset class="govuk-fieldset">
+          <fieldset class="govuk-fieldset" {% if question.error %}aria-describedby="field-{{ question.question_id }}-error"{% endif %}>
             <legend class="govuk-fieldset__legend govuk-fieldset__legend--l">
               <h1 class="govuk-fieldset__heading">{{ question.question_text }}</h1>
             </legend>
             {% if question.hint %}
-            <div class="govuk-hint">{{ question.hint }}</div>
+            <div class="govuk-hint" id="field-{{ question.question_id }}-hint">{{ question.hint }}</div>
+            {% endif %}
+            {% if question.error %}
+            <p class="govuk-error-message" id="field-{{ question.question_id }}-error">
+              <span class="govuk-visually-hidden">Error:</span> {{ question.error }}
+            </p>
             {% endif %}
             <div class="govuk-checkboxes" data-module="govuk-checkboxes">
               {% for option in question.options %}
               <div class="govuk-checkboxes__item">
                 <input class="govuk-checkboxes__input"
-                       id="{{ question.question_id }}_{{ forloop.counter }}"
+                       id="field-{{ question.question_id }}-{{ forloop.counter }}"
                        name="{{ question.question_id }}" type="checkbox"
                        value="{{ option }}"
                        {% if option in question.current_value %}checked{% endif %}>
                 <label class="govuk-label govuk-checkboxes__label"
-                       for="{{ question.question_id }}_{{ forloop.counter }}">
+                       for="field-{{ question.question_id }}-{{ forloop.counter }}">
                   {{ option }}
                 </label>
               </div>
@@ -81,22 +108,31 @@
           </fieldset>
 
           {% else %}
-          <label class="govuk-label govuk-label--l" for="field_{{ question.question_id }}">
+          <label class="govuk-label govuk-label--l" for="field-{{ question.question_id }}">
             {{ question.question_text }}
           </label>
           {% if question.hint %}
-          <div class="govuk-hint" id="{{ question.question_id }}-hint">{{ question.hint }}</div>
+          <div class="govuk-hint" id="field-{{ question.question_id }}-hint">{{ question.hint }}</div>
+          {% endif %}
+          {% if question.error %}
+          <p class="govuk-error-message" id="field-{{ question.question_id }}-error">
+            <span class="govuk-visually-hidden">Error:</span> {{ question.error }}
+          </p>
           {% endif %}
           {% if question.question_type == "number" %}
-          <input class="govuk-input govuk-input--width-10"
-                 type="number" step="any" id="field_{{ question.question_id }}"
-                 name="{{ question.question_id }}" value="{{ question.current_value }}"
-                 {% if question.hint %}aria-describedby="{{ question.question_id }}-hint"{% endif %}>
+          <input class="govuk-input govuk-input--width-10{% if question.error %} govuk-input--error{% endif %}"
+                 type="number" step="any"
+                 id="field-{{ question.question_id }}"
+                 name="{{ question.question_id }}"
+                 value="{{ question.current_value }}"
+                 {% if question.error %}aria-describedby="field-{{ question.question_id }}-error{% if question.hint %} field-{{ question.question_id }}-hint{% endif %}"{% elif question.hint %}aria-describedby="field-{{ question.question_id }}-hint"{% endif %}>
           {% else %}
-          <input class="govuk-input"
-                 type="text" id="field_{{ question.question_id }}"
-                 name="{{ question.question_id }}" value="{{ question.current_value }}"
-                 {% if question.hint %}aria-describedby="{{ question.question_id }}-hint"{% endif %}>
+          <input class="govuk-input{% if question.error %} govuk-input--error{% endif %}"
+                 type="text"
+                 id="field-{{ question.question_id }}"
+                 name="{{ question.question_id }}"
+                 value="{{ question.current_value }}"
+                 {% if question.error %}aria-describedby="field-{{ question.question_id }}-error{% if question.hint %} field-{{ question.question_id }}-hint{% endif %}"{% elif question.hint %}aria-describedby="field-{{ question.question_id }}-hint"{% endif %}>
           {% endif %}
           {% endif %}
 
