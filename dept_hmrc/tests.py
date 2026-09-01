@@ -403,7 +403,7 @@ class TestTriageSetRowSkip(TestCase):
     def test_empty_category_rows_are_skipped(self, mock_active):
         """S5 and S6 (no Yes answers) must not appear; S4 (has a Yes answer) must appear."""
         mock_active.side_effect = lambda _case: {
-            'HMRC_S4': [{'question_id': 'HMRC_16', 'detail_section': None}],
+            'HMRC_S4': [{'question_id': 'HMRC_16', 'detail_type': 'section', 'detail_id': 'HMRC_S8'}],
             'HMRC_S5': [],
             'HMRC_S6': [],
         }
@@ -2735,7 +2735,7 @@ class TestTriageDirectSectionDispatch(TestCase):
     def test_hmrc_16_yes_dispatches_directly_to_s8(self, mock_active):
         """HMRC_16=Yes → redirects to /section/HMRC_S8/start/, no intermediate listing page."""
         mock_active.side_effect = lambda _case: {
-            'HMRC_S4': [{'question_id': 'HMRC_16', 'detail_section': None}],
+            'HMRC_S4': [{'question_id': 'HMRC_16', 'detail_type': 'section', 'detail_id': 'HMRC_S8'}],
             'HMRC_S5': [], 'HMRC_S6': [],
         }
         self._set_action('hmrc_s4')
@@ -2749,7 +2749,7 @@ class TestTriageDirectSectionDispatch(TestCase):
     def test_hmrc_17_yes_dispatches_directly_to_s7(self, mock_active):
         """HMRC_17=Yes → redirects to /section/HMRC_S7/start/, no intermediate listing page."""
         mock_active.side_effect = lambda _case: {
-            'HMRC_S4': [{'question_id': 'HMRC_17', 'detail_section': None}],
+            'HMRC_S4': [{'question_id': 'HMRC_17', 'detail_type': 'section', 'detail_id': 'HMRC_S7'}],
             'HMRC_S5': [], 'HMRC_S6': [],
         }
         self._set_action('hmrc_s4')
@@ -2763,7 +2763,7 @@ class TestTriageDirectSectionDispatch(TestCase):
     def test_hmrc_32_yes_dispatches_directly_to_s9(self, mock_active):
         """HMRC_32=Yes → redirects to /section/HMRC_S9/start/, no intermediate listing page."""
         mock_active.side_effect = lambda _case: {
-            'HMRC_S4': [{'question_id': 'HMRC_32', 'detail_section': None}],
+            'HMRC_S4': [{'question_id': 'HMRC_32', 'detail_type': 'section', 'detail_id': 'HMRC_S9'}],
             'HMRC_S5': [], 'HMRC_S6': [],
         }
         self._set_action('hmrc_s4')
@@ -2779,7 +2779,7 @@ class TestTriageDirectSectionDispatch(TestCase):
     def test_hmrc_18_yes_dispatches_to_schedule_listing(self, mock_active):
         """HMRC_18=Yes → schedule entry still redirects to schedule listing, not a bare section."""
         mock_active.side_effect = lambda _case: {
-            'HMRC_S4': [{'question_id': 'HMRC_18', 'detail_section': None}],
+            'HMRC_S4': [{'question_id': 'HMRC_18', 'detail_type': 'schedule', 'detail_id': 'HMRC_SCH5'}],
             'HMRC_S5': [], 'HMRC_S6': [],
         }
         self._set_action('hmrc_s4')
@@ -2787,3 +2787,140 @@ class TestTriageDirectSectionDispatch(TestCase):
         self.assertEqual(r.status_code, 302)
         self.assertIn('HMRC_SCH5', r['Location'])
         self.assertNotIn('/section/HMRC_S', r['Location'])
+
+
+class TestTriageSetRollup(TestCase):
+    """
+    Unit tests for _triage_set_rollup and _item_rollup_status.
+
+    Covers all three states (not_started / in_progress / complete) for:
+      - empty set_items (triage section's own status)
+      - section-type items
+      - schedule-type items (schedule with multiple sections)
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.regime = _create_iht_base()
+        cls.sch1 = Schedule.objects.create(
+            schedule_id='HMRC_SCH1', schedule_name='Estate type',
+            regime=cls.regime, display_order=1,
+        )
+        # Triage section (HMRC_S4) — used as section_id arg to _triage_set_rollup
+        cls.s4 = Section.objects.create(
+            section_id='HMRC_S4', section_name='Common assets and liabilities',
+            section_type=0, schedule=cls.sch1, display_order=1,
+        )
+        # Section-type detail sections (re-parented directly onto regime)
+        cls.s7 = Section.objects.create(
+            section_id='HMRC_S7', section_name='Bank accounts',
+            section_type=0, regime=cls.regime, display_order=10,
+        )
+        cls.s8 = Section.objects.create(
+            section_id='HMRC_S8', section_name='Residential property',
+            section_type=0, regime=cls.regime, display_order=11,
+        )
+        # Schedule-type detail sections (two sections under one test schedule)
+        cls.rollup_sch = Schedule.objects.create(
+            schedule_id='ROLLUP_TEST_SCH', schedule_name='Rollup test schedule',
+            regime=cls.regime, display_order=20,
+        )
+        cls.rollup_s1 = Section.objects.create(
+            section_id='ROLLUP_TEST_S1', section_name='Rollup section A',
+            section_type=0, schedule=cls.rollup_sch, display_order=1,
+        )
+        cls.rollup_s2 = Section.objects.create(
+            section_id='ROLLUP_TEST_S2', section_name='Rollup section B',
+            section_type=0, schedule=cls.rollup_sch, display_order=2,
+        )
+        cls.alice = User.objects.get(username='alice')
+
+    def _statuses(self, **status_by_section_id):
+        """
+        Delete and recreate SectionStatus rows for alice. Return a fresh QS.
+        Only section_ids with a non-None value get a row created.
+        """
+        SectionStatus.objects.filter(user=self.alice, regime=self.regime).delete()
+        for sid, status in status_by_section_id.items():
+            if status is not None:
+                SectionStatus.objects.create(
+                    user=self.alice, regime=self.regime,
+                    section=Section.objects.get(section_id=sid),
+                    status=status,
+                )
+        return SectionStatus.objects.filter(user=self.alice, regime=self.regime)
+
+    # ── Empty set_items: triage section's own status drives the result ─────────
+
+    def test_empty_items_no_status_record_is_not_started(self):
+        """Empty set_items with no SectionStatus row → not_started."""
+        from dept_hmrc.views.iht.orchestrate import _triage_set_rollup
+        statuses = self._statuses()
+        self.assertEqual(_triage_set_rollup('HMRC_S4', [], statuses), 'not_started')
+
+    def test_empty_items_in_progress_status_is_in_progress(self):
+        """Empty set_items with in_progress SectionStatus → in_progress."""
+        from dept_hmrc.views.iht.orchestrate import _triage_set_rollup
+        statuses = self._statuses(HMRC_S4='in_progress')
+        self.assertEqual(_triage_set_rollup('HMRC_S4', [], statuses), 'in_progress')
+
+    def test_empty_items_complete_status_is_complete(self):
+        """Empty set_items with complete SectionStatus → complete."""
+        from dept_hmrc.views.iht.orchestrate import _triage_set_rollup
+        statuses = self._statuses(HMRC_S4='complete')
+        self.assertEqual(_triage_set_rollup('HMRC_S4', [], statuses), 'complete')
+
+    # ── Section-type items ────────────────────────────────────────────────────
+
+    def test_section_type_all_not_started(self):
+        """All section-type detail sections have no status → not_started."""
+        from dept_hmrc.views.iht.orchestrate import _triage_set_rollup
+        statuses = self._statuses()
+        items = [
+            {'question_id': 'HMRC_17', 'detail_type': 'section', 'detail_id': 'HMRC_S7'},
+            {'question_id': 'HMRC_16', 'detail_type': 'section', 'detail_id': 'HMRC_S8'},
+        ]
+        self.assertEqual(_triage_set_rollup('HMRC_S4', items, statuses), 'not_started')
+
+    def test_section_type_one_complete_rest_not_started_is_in_progress(self):
+        """One section-type item complete, one not started → in_progress."""
+        from dept_hmrc.views.iht.orchestrate import _triage_set_rollup
+        statuses = self._statuses(HMRC_S7='complete')
+        items = [
+            {'question_id': 'HMRC_17', 'detail_type': 'section', 'detail_id': 'HMRC_S7'},
+            {'question_id': 'HMRC_16', 'detail_type': 'section', 'detail_id': 'HMRC_S8'},
+        ]
+        self.assertEqual(_triage_set_rollup('HMRC_S4', items, statuses), 'in_progress')
+
+    def test_section_type_all_complete(self):
+        """All section-type detail sections complete → complete."""
+        from dept_hmrc.views.iht.orchestrate import _triage_set_rollup
+        statuses = self._statuses(HMRC_S7='complete', HMRC_S8='complete')
+        items = [
+            {'question_id': 'HMRC_17', 'detail_type': 'section', 'detail_id': 'HMRC_S7'},
+            {'question_id': 'HMRC_16', 'detail_type': 'section', 'detail_id': 'HMRC_S8'},
+        ]
+        self.assertEqual(_triage_set_rollup('HMRC_S4', items, statuses), 'complete')
+
+    # ── Schedule-type items ───────────────────────────────────────────────────
+
+    def test_schedule_type_all_sections_not_started(self):
+        """Schedule item with all sections having no status → not_started."""
+        from dept_hmrc.views.iht.orchestrate import _triage_set_rollup
+        statuses = self._statuses()
+        items = [{'question_id': 'ROLLUP_Q', 'detail_type': 'schedule', 'detail_id': 'ROLLUP_TEST_SCH'}]
+        self.assertEqual(_triage_set_rollup('HMRC_S4', items, statuses), 'not_started')
+
+    def test_schedule_type_one_section_complete_rest_not_started_is_in_progress(self):
+        """Schedule item with one section complete, one not started → in_progress."""
+        from dept_hmrc.views.iht.orchestrate import _triage_set_rollup
+        statuses = self._statuses(ROLLUP_TEST_S1='complete')
+        items = [{'question_id': 'ROLLUP_Q', 'detail_type': 'schedule', 'detail_id': 'ROLLUP_TEST_SCH'}]
+        self.assertEqual(_triage_set_rollup('HMRC_S4', items, statuses), 'in_progress')
+
+    def test_schedule_type_all_sections_complete(self):
+        """Schedule item with all sections complete → complete."""
+        from dept_hmrc.views.iht.orchestrate import _triage_set_rollup
+        statuses = self._statuses(ROLLUP_TEST_S1='complete', ROLLUP_TEST_S2='complete')
+        items = [{'question_id': 'ROLLUP_Q', 'detail_type': 'schedule', 'detail_id': 'ROLLUP_TEST_SCH'}]
+        self.assertEqual(_triage_set_rollup('HMRC_S4', items, statuses), 'complete')

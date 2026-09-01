@@ -682,31 +682,65 @@ def _get_active_triage_items(verified_case):
         answers = get_answers(verified_case, q_ids)
         result[sid] = [
             {
-                'question_id':    qid,
-                'detail_section': None,  # wired per-button when built
+                'question_id': qid,
+                'detail_type': QUESTION_SCHEDULE_MAP[qid][0],
+                'detail_id':   QUESTION_SCHEDULE_MAP[qid][1],
             }
             for qid in q_ids
-            if answers.get(qid) == 'Yes'
+            if answers.get(qid) == 'Yes' and qid in QUESTION_SCHEDULE_MAP
         ]
     return result
 
 
-def _triage_set_rollup(section_id, set_items, statuses):
-    """Rollup status for one triage set's Level 1 row."""
-    if not set_items:
-        obj    = statuses.filter(section_id=section_id).first()
-        status = obj.status if obj else 'not_started'
-        return 'complete' if status == 'complete' else 'not_started'
+def _item_rollup_status(item, statuses):
+    """
+    Return not_started/in_progress/complete for a single triage item.
+    section-type: read that section's SectionStatus directly.
+    schedule-type: roll up all sections belonging to the schedule.
+    """
+    if item['detail_type'] == 'section':
+        obj = statuses.filter(section_id=item['detail_id']).first()
+        return obj.status if obj else 'not_started'
 
-    for item in set_items:
-        detail_sid = item['detail_section']
-        if detail_sid is None:
-            return 'not_started'
-        obj    = statuses.filter(section_id=detail_sid).first()
-        status = obj.status if obj else 'not_started'
-        if status != 'complete':
-            return 'in_progress'
-    return 'complete'
+    # schedule-type: check every section under the schedule
+    from core.models import Section as CoreSection
+    section_ids = list(
+        CoreSection.objects
+        .filter(schedule_id=item['detail_id'])
+        .values_list('section_id', flat=True)
+    )
+    if not section_ids:
+        return 'not_started'
+    section_statuses = [
+        (statuses.filter(section_id=sid).first() or None)
+        for sid in section_ids
+    ]
+    actual = [obj.status if obj is not None else 'not_started' for obj in section_statuses]
+    if all(s == 'complete' for s in actual):
+        return 'complete'
+    if all(s == 'not_started' for s in actual):
+        return 'not_started'
+    return 'in_progress'
+
+
+def _triage_set_rollup(section_id, set_items, statuses):
+    """
+    Rollup status for one triage set's Level 1 row.
+    Three states: not_started / in_progress / complete.
+    Empty set: return the triage section's own SectionStatus.
+    Non-empty: not_started if all items not_started; complete if all complete;
+    in_progress otherwise.
+    """
+    if not set_items:
+        obj = statuses.filter(section_id=section_id).first()
+        return obj.status if obj else 'not_started'
+
+    item_statuses = [_item_rollup_status(item, statuses) for item in set_items]
+    if all(s == 'complete' for s in item_statuses):
+        return 'complete'
+    if all(s == 'not_started' for s in item_statuses):
+        return 'not_started'
+    return 'in_progress'
 
 
 def _get_built_schedule_items(active_items, section_id, schedule_map):
