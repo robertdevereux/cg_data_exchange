@@ -988,6 +988,11 @@ be silently skipped. Fix: `sorted(settings.DATABASES, key=lambda a: (0 if a == '
   paths (`_process_answer`, `_process_set_answer`, `section_table_routed_question`).
   Fixes missing date/personal_name extraction in table-routed views; adds validation
   to `section_table_routed_question` (previously had none). Doc impact: none.
+- `c5db7b6` — Fix `_triage_set_rollup` two bugs: (1) `_get_active_triage_items` now
+  populates `detail_type`/`detail_id` from `QUESTION_SCHEDULE_MAP` instead of hardcoding
+  `None`; (2) rollup now returns all three states (not_started/in_progress/complete) for
+  both empty and non-empty sets. New `_item_rollup_status` helper handles schedule-type
+  items by rolling up all child sections. 9 new `TestTriageSetRollup` tests. Doc impact: none.
 
 ---
 
