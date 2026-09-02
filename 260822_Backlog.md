@@ -992,6 +992,8 @@ be silently skipped. Fix: `sorted(settings.DATABASES, key=lambda a: (0 if a == '
   populates `detail_type`/`detail_id` from `QUESTION_SCHEDULE_MAP` instead of hardcoding
   `None`; (2) rollup returns all three states. New `_item_rollup_status` helper handles
   schedule-type items. 9 new tests. Doc impact: none.
+- `6c5c3b7` — Fix `_get_crumbs`: regime breadcrumb now links to `regime_choose_identity`
+  instead of `None`. Doc impact: none.
 - `6153397` — GDS error display for `table_routed_question.html` and `table_routed_set.html`:
   proper `<ul><li><a>` error summary, `govuk-form-group--error`, `govuk-error-message`,
   `govuk-input--error`, `aria-describedby`. `routing_error` reserved for config-error case
