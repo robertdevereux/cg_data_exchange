@@ -994,6 +994,13 @@ be silently skipped. Fix: `sorted(settings.DATABASES, key=lambda a: (0 if a == '
   schedule-type items. 9 new tests. Doc impact: none.
 - `6c5c3b7` — Fix `_get_crumbs`: regime breadcrumb now links to `regime_choose_identity`
   instead of `None`. Doc impact: none.
+- `90248a4` — Comment out "Switch client" link in `base.html`. Doc impact: none.
+- `6ddb5c1` — `call_core` single-item path: append breadcrumb segment and set `return_url = top_level_url`,
+  mirroring `regime_top_level`'s multi-item behaviour. 5 new `TestCallCoreSingleItemBreadcrumb` tests.
+  Doc impact: none.
+- `76a5948` — Override `return_url` back to orchestrator URL in `iht_start_new_estate`,
+  `_entry_deceased_details`, `_entry_reckoner` after `call_core` (those callers need matching/exit
+  logic to run at the orchestrator, not `regime_top_level`). Doc impact: none.
 - `6153397` — GDS error display for `table_routed_question.html` and `table_routed_set.html`:
   proper `<ul><li><a>` error summary, `govuk-form-group--error`, `govuk-error-message`,
   `govuk-input--error`, `aria-describedby`. `routing_error` reserved for config-error case
