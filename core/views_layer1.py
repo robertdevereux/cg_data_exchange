@@ -18,7 +18,7 @@ from django.urls import reverse
 from core.models import Regime, Schedule, SectionStatus
 from core.nav_reference import resolve_user
 from core.permissions import get_permitted_sections
-from core.session import get_acting_for_name, get_session, update_session
+from core.session import get_acting_for_name, get_session, set_crumb, update_session
 
 _STATUS_LABEL = {
     'not_started': 'Not started',
@@ -234,17 +234,7 @@ def regime_schedule_sections(request, regime_id, schedule_id):
         kwargs={'regime_id': regime_id, 'schedule_id': schedule_id},
     )
 
-    # Build breadcrumbs: truncate session crumbs to the regime level (to avoid
-    # stacking on repeated visits), then append the schedule name.
-    base_crumbs = pss.get('breadcrumbs', [])
-    truncated = base_crumbs
-    for i, crumb in enumerate(base_crumbs):
-        if crumb.get('url') == regime_home_url:
-            truncated = base_crumbs[:i + 1]
-            break
-    crumbs = truncated + [
-        {'label': schedule.schedule_name, 'url': section_list_url},
-    ]
+    crumbs = set_crumb(pss, schedule.schedule_name, section_list_url)
 
     update_session(request, {
         'return_url':        section_list_url,
@@ -346,10 +336,9 @@ def regime_top_level(request, regime_id):
             })
 
     regime_home_url = pss.get('regime_home_url', '/')
-    base_crumbs     = pss.get('breadcrumbs', [])
     top_level_url   = reverse('core:regime_top_level', kwargs={'regime_id': regime_id})
 
-    crumbs = base_crumbs + [{'label': title or regime.regime_name, 'url': top_level_url}]
+    crumbs = set_crumb(pss, title or regime.regime_name, top_level_url)
 
     update_session(request, {
         'return_url':      top_level_url,   # so section_done returns here

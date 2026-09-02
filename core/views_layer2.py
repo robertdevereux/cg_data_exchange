@@ -157,10 +157,9 @@ def _evaluate_routing(routing_table, current_node, all_answers):
 # ── Breadcrumb helper ────────────────────────────────────────────────────────
 
 def _build_crumbs(pss, final_label):
-    """Append final_label to the session breadcrumbs built by Layer 1."""
-    crumbs = list(pss.get('breadcrumbs', []))
-    crumbs.append({'label': final_label, 'url': None})
-    return crumbs
+    """Return a breadcrumb trail with the current page appended as a leaf (url=None)."""
+    from .session import set_crumb
+    return set_crumb(pss, final_label, None)
 
 
 # ── Session bootstrap helper (used by section_start) ─────────────────────────

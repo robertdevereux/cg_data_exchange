@@ -225,15 +225,19 @@ def call_core(request, regime, actor, user, items, title=None, url_prefix=''):
         return _prefix(f'/regime/{regime.regime_id}/sections/')
 
     if len(ordered_items) == 1:
-        from django.urls import reverse as _reverse
-        top_level_url = _reverse('core:regime_top_level',
-                                 kwargs={'regime_id': regime.regime_id})
-        crumbs = pss.get('breadcrumbs', [])
-        crumbs = crumbs + [{'label': title or regime.regime_name, 'url': top_level_url}]
-        update_session(request, {
-            'return_url':  top_level_url,
-            'breadcrumbs': crumbs,
-        })
+        if title:
+            # Only set breadcrumb + return_url when a meaningful title is provided.
+            # Without a title the caller has no top-level list to show, so there
+            # is nothing to append to the trail and return_url should stay as
+            # regime_home_url (already written above).
+            from django.urls import reverse as _reverse
+            from .session import set_crumb as _set_crumb
+            top_level_url = _reverse('core:regime_top_level',
+                                     kwargs={'regime_id': regime.regime_id})
+            update_session(request, {
+                'return_url':  top_level_url,
+                'breadcrumbs': _set_crumb(pss, title, top_level_url),
+            })
         item = ordered_items[0]
         if item['type'] == 'section':
             return f'/section/{item["id"]}/start/'

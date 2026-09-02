@@ -2769,6 +2769,213 @@ class TestCompletionReturnToTopLevel(TestCase):
                             'section_done must NOT redirect to regime_home_url')
 
 
+class TestSetCrumbHelper(TestCase):
+    """Unit tests for core.session.set_crumb."""
+
+    def _pss(self, crumbs):
+        return {'breadcrumbs': crumbs}
+
+    def test_appends_when_url_not_in_trail(self):
+        """url not yet in trail → new entry appended."""
+        from core.session import set_crumb
+        pss = self._pss([{'label': 'A', 'url': '/a/'}])
+        result = set_crumb(pss, 'B', '/b/')
+        self.assertEqual(result, [
+            {'label': 'A', 'url': '/a/'},
+            {'label': 'B', 'url': '/b/'},
+        ])
+
+    def test_truncates_when_url_already_in_trail(self):
+        """url already in trail → truncate back to that entry, don't append."""
+        from core.session import set_crumb
+        pss = self._pss([
+            {'label': 'A', 'url': '/a/'},
+            {'label': 'B', 'url': '/b/'},
+            {'label': 'C', 'url': '/c/'},
+        ])
+        result = set_crumb(pss, 'B revisited', '/b/')
+        # Should truncate to [:2] — the existing entry at /b/, not a new one
+        self.assertEqual(result, [
+            {'label': 'A', 'url': '/a/'},
+            {'label': 'B', 'url': '/b/'},
+        ])
+
+    def test_truncate_preserves_existing_label_not_new_one(self):
+        """When truncating, the existing crumb's label is kept (not replaced)."""
+        from core.session import set_crumb
+        pss = self._pss([
+            {'label': 'Original label', 'url': '/target/'},
+            {'label': 'Later', 'url': '/later/'},
+        ])
+        result = set_crumb(pss, 'New label', '/target/')
+        self.assertEqual(result[-1]['label'], 'Original label')
+
+    def test_none_url_always_appends(self):
+        """url=None (leaf crumb) always appends, never truncates."""
+        from core.session import set_crumb
+        pss = self._pss([
+            {'label': 'A', 'url': None},
+            {'label': 'B', 'url': '/b/'},
+        ])
+        result = set_crumb(pss, 'C', None)
+        self.assertEqual(len(result), 3)
+        self.assertIsNone(result[-1]['url'])
+
+    def test_empty_trail(self):
+        """Empty trail → just appends."""
+        from core.session import set_crumb
+        result = set_crumb({}, 'First', '/first/')
+        self.assertEqual(result, [{'label': 'First', 'url': '/first/'}])
+
+    def test_truncate_to_first_entry(self):
+        """url matches the first entry → trail becomes length 1."""
+        from core.session import set_crumb
+        pss = self._pss([
+            {'label': 'Root', 'url': '/root/'},
+            {'label': 'Child', 'url': '/child/'},
+            {'label': 'Grandchild', 'url': '/grandchild/'},
+        ])
+        result = set_crumb(pss, 'Root again', '/root/')
+        self.assertEqual(result, [{'label': 'Root', 'url': '/root/'}])
+
+    def test_does_not_mutate_pss(self):
+        """set_crumb must not mutate pss['breadcrumbs'] in place."""
+        from core.session import set_crumb
+        original = [{'label': 'A', 'url': '/a/'}]
+        pss = {'breadcrumbs': original}
+        set_crumb(pss, 'B', '/b/')
+        self.assertEqual(pss['breadcrumbs'], original)
+
+
+class TestBreadcrumbRevisit(TestCase):
+    """
+    Visiting a page whose URL is already in pss['breadcrumbs'] must truncate
+    the trail back to that point, not append a duplicate segment.
+
+    Covers the two Layer 1 views that write breadcrumbs to the session:
+      - regime_top_level
+      - regime_schedule_sections
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Permission
+
+        cls.regime = Regime.objects.create(
+            regime_id='TEST_REVISIT',
+            regime_name='Revisit Test Regime',
+            dept_id='TEST',
+            display_order=97,
+        )
+        cls.schedule = Schedule.objects.create(
+            schedule_id='REVISIT_SCH1',
+            schedule_name='Revisit Schedule',
+            regime=cls.regime,
+            display_order=1,
+        )
+        cls.section_a = Section.objects.create(
+            section_id='REVISIT_S_A',
+            section_name='Revisit Section A',
+            section_type=0,
+            schedule=cls.schedule,
+            display_order=1,
+        )
+        cls.carla = User.objects.get(username='carla')
+        Permission.objects.create(
+            actor=cls.carla, user=cls.carla, regime=cls.regime,
+            section=None, case=None, can_delegate=False,
+        )
+
+    def _top_level_url(self):
+        return reverse('core:regime_top_level',
+                       kwargs={'regime_id': 'TEST_REVISIT'})
+
+    def _section_list_url(self):
+        return reverse('core:regime_schedule_sections',
+                       kwargs={'regime_id': 'TEST_REVISIT',
+                               'schedule_id': 'REVISIT_SCH1'})
+
+    def _seed_session(self, crumbs, top_level_items=None):
+        self.client.login(username='carla', password='testpass123')
+        session = self.client.session
+        pss = session.setdefault('pss', {})
+        pss['user_id']         = self.carla.pk
+        pss['actor_id']        = self.carla.pk
+        pss['regime_id']       = 'TEST_REVISIT'
+        pss['regime_home_url'] = '/fake-home/'
+        pss['breadcrumbs']     = crumbs
+        pss['top_level_items'] = top_level_items or [
+            {'type': 'schedule', 'id': 'REVISIT_SCH1'},
+        ]
+        session.save()
+
+    # ── regime_top_level ──────────────────────────────────────────────────────
+
+    def test_top_level_revisit_truncates_not_appends(self):
+        """
+        GET regime_top_level when its URL is already in the trail must truncate
+        back to that entry — not push a duplicate on top.
+        """
+        top_url = self._top_level_url()
+        self._seed_session([
+            {'label': 'Home', 'url': '/home/'},
+            {'label': 'Revisit Test Regime', 'url': top_url},   # already there
+            {'label': 'Revisit Schedule',    'url': self._section_list_url()},  # deeper
+        ])
+        self.client.get(top_url)
+        pss = self.client.session.get('pss', {})
+        crumbs = pss.get('breadcrumbs', [])
+        self.assertEqual(len(crumbs), 2,
+            f'Trail should truncate back to top_level entry; got {crumbs}')
+        self.assertEqual(crumbs[-1]['url'], top_url)
+
+    def test_top_level_first_visit_appends(self):
+        """GET regime_top_level when NOT yet in trail appends normally."""
+        top_url = self._top_level_url()
+        self._seed_session([
+            {'label': 'Home', 'url': '/home/'},
+        ])
+        self.client.get(top_url)
+        pss = self.client.session.get('pss', {})
+        crumbs = pss.get('breadcrumbs', [])
+        self.assertEqual(len(crumbs), 2)
+        self.assertEqual(crumbs[-1]['url'], top_url)
+
+    # ── regime_schedule_sections ──────────────────────────────────────────────
+
+    def test_schedule_sections_revisit_truncates_not_appends(self):
+        """
+        GET regime_schedule_sections when its URL is already in the trail must
+        truncate back to that entry, not push a duplicate.
+        """
+        top_url  = self._top_level_url()
+        list_url = self._section_list_url()
+        self._seed_session([
+            {'label': 'Home',             'url': '/home/'},
+            {'label': 'Revisit Test Regime', 'url': top_url},
+            {'label': 'Revisit Schedule', 'url': list_url},   # already there
+            {'label': 'Some Section',     'url': None},        # leaf from deeper nav
+        ])
+        self.client.get(list_url)
+        pss = self.client.session.get('pss', {})
+        crumbs = pss.get('breadcrumbs', [])
+        self.assertEqual(len(crumbs), 3,
+            f'Trail should truncate back to schedule entry; got {crumbs}')
+        self.assertEqual(crumbs[-1]['url'], list_url)
+
+    def test_schedule_sections_first_visit_appends(self):
+        """GET regime_schedule_sections when NOT yet in trail appends normally."""
+        list_url = self._section_list_url()
+        self._seed_session([
+            {'label': 'Home', 'url': '/home/'},
+        ])
+        self.client.get(list_url)
+        pss = self.client.session.get('pss', {})
+        crumbs = pss.get('breadcrumbs', [])
+        self.assertEqual(len(crumbs), 2)
+        self.assertEqual(crumbs[-1]['url'], list_url)
+
+
 class TestCallCoreSingleItemBreadcrumb(TestCase):
     """
     call_core's single-item short-circuit path must mirror what regime_top_level
@@ -2857,18 +3064,28 @@ class TestCallCoreSingleItemBreadcrumb(TestCase):
         pss, url = self._call_core_via_fake_view()
         self.assertEqual(url, '/section/SI_S1/start/')
 
-    def test_single_item_sets_return_url_to_top_level(self):
-        """Single-item path sets return_url to the top-level URL (not regime_home_url)."""
+    def test_single_item_with_title_sets_return_url_to_top_level(self):
+        """Single-item path with a title sets return_url to the top-level URL."""
         top_level_url = reverse('core:regime_top_level',
                                 kwargs={'regime_id': 'TEST_SINGLEITEM'})
-        pss, _ = self._call_core_via_fake_view()
+        pss, _ = self._call_core_via_fake_view(title='My assets')
         self.assertEqual(
             pss.get('return_url'), top_level_url,
-            'return_url must point to regime_top_level, not regime_home_url',
+            'return_url must point to regime_top_level when title is provided',
+        )
+
+    def test_single_item_without_title_leaves_return_url_unchanged(self):
+        """Single-item path with no title does NOT overwrite return_url to top_level_url."""
+        top_level_url = reverse('core:regime_top_level',
+                                kwargs={'regime_id': 'TEST_SINGLEITEM'})
+        pss, _ = self._call_core_via_fake_view(title=None)
+        self.assertNotEqual(
+            pss.get('return_url'), top_level_url,
+            'return_url must NOT be top_level_url when no title is provided',
         )
 
     def test_single_item_appends_breadcrumb_segment(self):
-        """Single-item path appends a crumb for the top-level title to breadcrumbs."""
+        """Single-item path with a title appends a crumb for that title."""
         top_level_url = reverse('core:regime_top_level',
                                 kwargs={'regime_id': 'TEST_SINGLEITEM'})
         existing = [{'label': 'Home', 'url': '/'}]
@@ -2878,17 +3095,19 @@ class TestCallCoreSingleItemBreadcrumb(TestCase):
         self.assertEqual(crumbs[-1]['label'], 'My assets')
         self.assertEqual(crumbs[-1]['url'], top_level_url)
 
-    def test_single_item_uses_regime_name_when_no_title(self):
-        """When title=None, the appended crumb label falls back to regime.regime_name."""
-        pss, _ = self._call_core_via_fake_view(title=None)
+    def test_single_item_without_title_does_not_append_crumb(self):
+        """Single-item path with no title does NOT append a breadcrumb segment."""
+        existing = [{'label': 'Home', 'url': '/'}]
+        pss, _ = self._call_core_via_fake_view(title=None, existing_crumbs=existing)
         crumbs = pss.get('breadcrumbs', [])
-        self.assertEqual(crumbs[-1]['label'], self.regime.regime_name)
+        self.assertEqual(len(crumbs), 1,
+            'no crumb should be appended when title=None')
 
     def test_single_item_breadcrumb_matches_multi_item_pattern(self):
         """
-        The crumb produced by the single-item path is structurally identical
-        to what regime_top_level appends for the multi-item case: same label
-        key and same top_level_url value.
+        The crumb produced by the single-item path (when title is provided) is
+        structurally identical to what regime_top_level appends for the multi-item
+        case: same label key and same top_level_url value.
         """
         top_level_url = reverse('core:regime_top_level',
                                 kwargs={'regime_id': 'TEST_SINGLEITEM'})

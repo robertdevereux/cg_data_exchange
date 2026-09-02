@@ -53,6 +53,27 @@ def get_acting_for_name(pss: dict):
         return None
 
 
+def set_crumb(pss: dict, label: str, url) -> list:
+    """
+    Return a new breadcrumb trail that ends at (label, url).
+
+    If url is non-None and already appears in pss['breadcrumbs'], the trail is
+    truncated back to (and including) that existing entry — so revisiting an
+    earlier page via its breadcrumb link resets the trail to that point rather
+    than appending a duplicate.
+
+    If url is None (leaf crumb for the current page) or not yet in the trail,
+    the new entry is appended as before.
+    """
+    crumbs = list(pss.get('breadcrumbs', []))
+    if url is not None:
+        for i, crumb in enumerate(crumbs):
+            if crumb.get('url') == url:
+                return crumbs[:i + 1]
+    crumbs.append({'label': label, 'url': url})
+    return crumbs
+
+
 def clear_working_session(request) -> None:
     """Wipe all PSS working-context state (used when an agent switches client).
 
