@@ -1408,6 +1408,159 @@ class TestStartNewEstate(TestCase):
         )
 
 
+class TestSingleItemEntryReturnUrl(TestCase):
+    """
+    iht_start_new_estate, _entry_deceased_details, and _entry_reckoner all call
+    call_core with a single section item and no title.  After each call, return_url
+    must point at the IHT orchestrator URL — NOT at regime_top_level — so that
+    section_done sends the user back for matching/exit logic.
+
+    Also confirms that none of these entry points produce a duplicate
+    'Inheritance Tax' segment in pss['breadcrumbs']: _get_crumbs already puts
+    one IHT crumb on the trail; call_core must not append another when title=None.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.regime = _create_iht_base()
+        cls.s1 = Section.objects.create(
+            section_id='HMRC_S1', section_name="Deceased's details",
+            section_type=0, regime=cls.regime, display_order=1,
+        )
+        cls.s2 = Section.objects.create(
+            section_id='HMRC_S2', section_name='Estate ready reckoner',
+            section_type=0, regime=cls.regime, display_order=2,
+        )
+        cls.alice = User.objects.get(username='alice')
+        Permission.objects.create(
+            actor=cls.alice, user=cls.alice, regime=cls.regime,
+            section=None, can_delegate=False,
+        )
+
+    def setUp(self):
+        self.client = Client()
+        self.client.login(username='alice', password='testpass123')
+
+    def _orchestrator_url(self):
+        return HOME_URL   # /hmrc/regime/HMRC_IHT/
+
+    def _top_level_url(self):
+        from django.urls import reverse
+        return reverse('core:regime_top_level', kwargs={'regime_id': 'HMRC_IHT'})
+
+    # ── iht_start_new_estate ──────────────────────────────────────────────────
+
+    def test_start_new_estate_return_url_is_orchestrator(self):
+        """After iht_start_new_estate, return_url must be the orchestrator URL."""
+        self.client.get('/hmrc/iht/cases/new/')
+        pss = self.client.session.get('pss', {})
+        self.assertEqual(
+            pss.get('return_url'), self._orchestrator_url(),
+            'return_url must be orchestrator URL, not regime_top_level',
+        )
+
+    def test_start_new_estate_no_duplicate_iht_crumb(self):
+        """iht_start_new_estate must not produce two Inheritance Tax breadcrumb entries."""
+        self.client.get('/hmrc/iht/cases/new/')
+        pss = self.client.session.get('pss', {})
+        crumbs = pss.get('breadcrumbs', [])
+        iht_crumbs = [c for c in crumbs if c.get('label') == 'Inheritance Tax']
+        self.assertLessEqual(
+            len(iht_crumbs), 1,
+            f'Expected at most one Inheritance Tax crumb; got {len(iht_crumbs)}: {crumbs}',
+        )
+
+    # ── _entry_deceased_details (dispatched via deceased_details action) ───────
+
+    def _setup_verified_case_for_alice(self):
+        """Create a verified case so the orchestrator dispatches to _entry_deceased_details."""
+        case, _ = Case.objects.get_or_create(
+            case_id='sieu-test-dec-details',
+            defaults={
+                'user': self.alice, 'regime': self.regime,
+                'status': 'draft', 'reference': 'IHT-SIEU-001',
+            },
+        )
+        for sid in ('HMRC_S1',):
+            SectionStatus.objects.get_or_create(
+                user=self.alice, regime=self.regime,
+                section=Section.objects.get(section_id=sid),
+                defaults={'status': 'complete'},
+            )
+        session = self.client.session
+        pss = session.setdefault('pss', {})
+        pss['user_id']  = self.alice.pk
+        pss['actor_id'] = self.alice.pk
+        session['case_id'] = str(case.case_id)
+        session['iht_current_action'] = 'deceased_details'
+        session.save()
+
+    def test_entry_deceased_details_return_url_is_orchestrator(self):
+        """After _entry_deceased_details, return_url must be the orchestrator URL."""
+        self._setup_verified_case_for_alice()
+        self.client.get(HOME_URL)
+        pss = self.client.session.get('pss', {})
+        self.assertEqual(
+            pss.get('return_url'), self._orchestrator_url(),
+            'return_url must be orchestrator URL after _entry_deceased_details',
+        )
+
+    def test_entry_deceased_details_no_duplicate_iht_crumb(self):
+        """_entry_deceased_details must not produce two Inheritance Tax breadcrumb entries."""
+        self._setup_verified_case_for_alice()
+        self.client.get(HOME_URL)
+        pss = self.client.session.get('pss', {})
+        crumbs = pss.get('breadcrumbs', [])
+        iht_crumbs = [c for c in crumbs if c.get('label') == 'Inheritance Tax']
+        self.assertLessEqual(len(iht_crumbs), 1,
+            f'Expected at most one Inheritance Tax crumb; got {len(iht_crumbs)}: {crumbs}')
+
+    # ── _entry_reckoner (dispatched via reckoner action) ──────────────────────
+
+    def _setup_reckoner_for_alice(self):
+        """Create a verified case with S1+S2 complete so orchestrator dispatches to _entry_reckoner."""
+        case, _ = Case.objects.get_or_create(
+            case_id='sieu-test-reckoner',
+            defaults={
+                'user': self.alice, 'regime': self.regime,
+                'status': 'draft', 'reference': 'IHT-SIEU-002',
+            },
+        )
+        for sid in ('HMRC_S1', 'HMRC_S2'):
+            SectionStatus.objects.get_or_create(
+                user=self.alice, regime=self.regime,
+                section=Section.objects.get(section_id=sid),
+                defaults={'status': 'complete'},
+            )
+        session = self.client.session
+        pss = session.setdefault('pss', {})
+        pss['user_id']  = self.alice.pk
+        pss['actor_id'] = self.alice.pk
+        session['case_id'] = str(case.case_id)
+        session['iht_current_action'] = 'reckoner'
+        session.save()
+
+    def test_entry_reckoner_return_url_is_orchestrator(self):
+        """After _entry_reckoner, return_url must be the orchestrator URL."""
+        self._setup_reckoner_for_alice()
+        self.client.get(HOME_URL)
+        pss = self.client.session.get('pss', {})
+        self.assertEqual(
+            pss.get('return_url'), self._orchestrator_url(),
+            'return_url must be orchestrator URL after _entry_reckoner',
+        )
+
+    def test_entry_reckoner_no_duplicate_iht_crumb(self):
+        """_entry_reckoner must not produce two Inheritance Tax breadcrumb entries."""
+        self._setup_reckoner_for_alice()
+        self.client.get(HOME_URL)
+        pss = self.client.session.get('pss', {})
+        crumbs = pss.get('breadcrumbs', [])
+        iht_crumbs = [c for c in crumbs if c.get('label') == 'Inheritance Tax']
+        self.assertLessEqual(len(iht_crumbs), 1,
+            f'Expected at most one Inheritance Tax crumb; got {len(iht_crumbs)}: {crumbs}')
+
+
 CHOOSE_URL = '/hmrc/regime/HMRC_IHT/choose/'
 
 
