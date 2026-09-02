@@ -2769,6 +2769,137 @@ class TestCompletionReturnToTopLevel(TestCase):
                             'section_done must NOT redirect to regime_home_url')
 
 
+class TestCallCoreSingleItemBreadcrumb(TestCase):
+    """
+    call_core's single-item short-circuit path must mirror what regime_top_level
+    does for the multi-item case: append a breadcrumb segment for the top-level
+    title and set return_url to the top-level URL — before redirecting straight
+    to the section.
+
+    Confirmed bug: previously the single-item path only called update_session
+    once (setting return_url = regime_home_url), then returned the section URL
+    without touching breadcrumbs or overwriting return_url to top_level_url.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Permission
+
+        cls.regime = Regime.objects.create(
+            regime_id='TEST_SINGLEITEM',
+            regime_name='Single Item Test Regime',
+            dept_id='TEST',
+            display_order=98,
+        )
+        cls.section = Section.objects.create(
+            section_id='SI_S1',
+            section_name='Single Item Section',
+            section_type=0,
+            regime=cls.regime,
+            display_order=1,
+        )
+        cls.carla = User.objects.get(username='carla')
+        Permission.objects.create(
+            actor=cls.carla,
+            user=cls.carla,
+            regime=cls.regime,
+            section=None,
+            case=None,
+            can_delegate=False,
+        )
+
+    def _call_core_via_fake_view(self, title=None, existing_crumbs=None):
+        """
+        Invoke call_core(items=[single section]) inside a minimal fake view,
+        then return the session pss dict for inspection.
+        """
+        from core.interfaces import call_core
+        from core.session import get_session, update_session
+
+        self.client.login(username='carla', password='testpass123')
+        regime_home = '/fake-regime-home/'
+
+        session = self.client.session
+        pss = session.setdefault('pss', {})
+        pss['user_id']         = self.carla.pk
+        pss['actor_id']        = self.carla.pk
+        pss['regime_id']       = self.regime.regime_id
+        pss['regime_home_url'] = regime_home
+        pss['breadcrumbs']     = existing_crumbs or []
+        session.save()
+
+        # Use a real request via the test client — call call_core from a trivial view
+        import django.test
+        from django.http import HttpResponse
+
+        # We need a real request object. Use RequestFactory.
+        from django.test import RequestFactory
+        factory = RequestFactory()
+        req = factory.get('/')
+        req.user = self.carla
+        req.session = self.client.session
+
+        result_url = call_core(
+            req, self.regime, self.carla, self.carla,
+            items=[{'type': 'section', 'id': 'SI_S1'}],
+            title=title,
+        )
+
+        # Flush session changes made by call_core back to the client session store
+        req.session.save()
+
+        # Re-read via client session
+        self.client.session.load()
+        return req.session.get('pss', {}), result_url
+
+    def test_single_item_redirects_to_section_start(self):
+        """Single-item path still redirects to /section/{id}/start/."""
+        pss, url = self._call_core_via_fake_view()
+        self.assertEqual(url, '/section/SI_S1/start/')
+
+    def test_single_item_sets_return_url_to_top_level(self):
+        """Single-item path sets return_url to the top-level URL (not regime_home_url)."""
+        top_level_url = reverse('core:regime_top_level',
+                                kwargs={'regime_id': 'TEST_SINGLEITEM'})
+        pss, _ = self._call_core_via_fake_view()
+        self.assertEqual(
+            pss.get('return_url'), top_level_url,
+            'return_url must point to regime_top_level, not regime_home_url',
+        )
+
+    def test_single_item_appends_breadcrumb_segment(self):
+        """Single-item path appends a crumb for the top-level title to breadcrumbs."""
+        top_level_url = reverse('core:regime_top_level',
+                                kwargs={'regime_id': 'TEST_SINGLEITEM'})
+        existing = [{'label': 'Home', 'url': '/'}]
+        pss, _ = self._call_core_via_fake_view(title='My assets', existing_crumbs=existing)
+        crumbs = pss.get('breadcrumbs', [])
+        self.assertEqual(len(crumbs), 2, 'one crumb should have been appended')
+        self.assertEqual(crumbs[-1]['label'], 'My assets')
+        self.assertEqual(crumbs[-1]['url'], top_level_url)
+
+    def test_single_item_uses_regime_name_when_no_title(self):
+        """When title=None, the appended crumb label falls back to regime.regime_name."""
+        pss, _ = self._call_core_via_fake_view(title=None)
+        crumbs = pss.get('breadcrumbs', [])
+        self.assertEqual(crumbs[-1]['label'], self.regime.regime_name)
+
+    def test_single_item_breadcrumb_matches_multi_item_pattern(self):
+        """
+        The crumb produced by the single-item path is structurally identical
+        to what regime_top_level appends for the multi-item case: same label
+        key and same top_level_url value.
+        """
+        top_level_url = reverse('core:regime_top_level',
+                                kwargs={'regime_id': 'TEST_SINGLEITEM'})
+        pss, _ = self._call_core_via_fake_view(title='Assets')
+        crumbs = pss.get('breadcrumbs', [])
+        last = crumbs[-1]
+        self.assertIn('label', last)
+        self.assertIn('url', last)
+        self.assertEqual(last['url'], top_level_url)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase 1 cache tests — fixed table section (section_type=1)
 # ─────────────────────────────────────────────────────────────────────────────

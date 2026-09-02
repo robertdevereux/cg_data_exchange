@@ -225,6 +225,15 @@ def call_core(request, regime, actor, user, items, title=None, url_prefix=''):
         return _prefix(f'/regime/{regime.regime_id}/sections/')
 
     if len(ordered_items) == 1:
+        from django.urls import reverse as _reverse
+        top_level_url = _reverse('core:regime_top_level',
+                                 kwargs={'regime_id': regime.regime_id})
+        crumbs = pss.get('breadcrumbs', [])
+        crumbs = crumbs + [{'label': title or regime.regime_name, 'url': top_level_url}]
+        update_session(request, {
+            'return_url':  top_level_url,
+            'breadcrumbs': crumbs,
+        })
         item = ordered_items[0]
         if item['type'] == 'section':
             return f'/section/{item["id"]}/start/'
