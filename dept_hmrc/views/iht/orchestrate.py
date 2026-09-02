@@ -288,6 +288,11 @@ def iht_start_new_estate(request):
         items=[{'type': 'section', 'id': 'HMRC_S1'}],
         url_prefix='hmrc',
     )
+    # call_core's single-item path now writes return_url = top_level_url so
+    # section pages show a breadcrumb and return to the right place.  For this
+    # view the orchestrator URL must be the return destination (matching runs
+    # there), so override return_url explicitly after the call.
+    update_session(request, {'return_url': orchestrator_url})
     return redirect(entry_url)
 
 
@@ -317,12 +322,17 @@ def _entry_deceased_details(request, regime, actor, user):
     """
     View/amend deceased details — enter S1.
     """
+    pss = get_session(request)
+    orchestrator_url = pss.get('regime_home_url', request.path)
     _enter_core(request)
     entry_url = call_core(
         request, regime, actor, user,
         items=[{'type': 'section', 'id': 'HMRC_S1'}],
         url_prefix='hmrc',
     )
+    # call_core's single-item path writes return_url = top_level_url; override
+    # so section_done returns to the orchestrator where exit logic runs.
+    update_session(request, {'return_url': orchestrator_url})
     return redirect(entry_url)
 
 
@@ -333,12 +343,17 @@ def _entry_reckoner(request, regime, actor, user):
     Exit logic in _exit_reckoner / handle_reckoner decides whether
     to proceed to S3 or return home.
     """
+    pss = get_session(request)
+    orchestrator_url = pss.get('regime_home_url', request.path)
     _enter_core(request)
     entry_url = call_core(
         request, regime, actor, user,
         items=[{'type': 'section', 'id': 'HMRC_S2'}],
         url_prefix='hmrc',
     )
+    # call_core's single-item path writes return_url = top_level_url; override
+    # so section_done returns to the orchestrator where exit logic runs.
+    update_session(request, {'return_url': orchestrator_url})
     return redirect(entry_url)
 
 

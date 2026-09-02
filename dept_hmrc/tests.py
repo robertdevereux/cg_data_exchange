@@ -1344,17 +1344,19 @@ class TestStartNewEstate(TestCase):
 
     def test_return_url_set_to_orchestrator_via_pss(self):
         """
-        call_core reads regime_home_url from PSS and writes it as return_url.
-        iht_start_new_estate pre-writes PSS regime_home_url to the orchestrator
-        URL before calling call_core, so return_url must be the orchestrator URL
-        (not /hmrc/iht/cases/new/).
+        iht_start_new_estate must leave return_url as the orchestrator URL so
+        that section_done sends the user back there for matching.
+
+        call_core's single-item path now writes return_url = top_level_url;
+        iht_start_new_estate overrides it back to orchestrator_url after the
+        call, so the final return_url must still be the orchestrator URL.
         """
         self.client.get('/hmrc/iht/cases/new/')
         pss = self.client.session.get('pss', {})
         self.assertEqual(
             pss.get('return_url'),
             HOME_URL,
-            'call_core must set return_url from PSS regime_home_url (orchestrator URL)',
+            'iht_start_new_estate must override return_url to the orchestrator URL',
         )
 
     def test_sets_current_action_to_start(self):
