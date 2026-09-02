@@ -821,7 +821,8 @@ def _setup(request):
 def _get_crumbs(regime):
     return [
         {'label': 'HMRC',             'url': '/hmrc/'},
-        {'label': regime.regime_name, 'url': None},
+        {'label': regime.regime_name, 'url': reverse('dept_hmrc:regime_choose_identity',
+                                                     kwargs={'regime_id': regime.regime_id})},
     ]
 
 
