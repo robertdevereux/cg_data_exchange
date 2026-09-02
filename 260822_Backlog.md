@@ -994,6 +994,10 @@ be silently skipped. Fix: `sorted(settings.DATABASES, key=lambda a: (0 if a == '
   schedule-type items. 9 new tests. Doc impact: none.
 - `6c5c3b7` — Fix `_get_crumbs`: regime breadcrumb now links to `regime_choose_identity`
   instead of `None`. Doc impact: none.
+- `7cbf2bd` — Add `set_crumb(pss, label, url)` to `core/session.py`; wire all three
+  breadcrumb call sites (`_build_crumbs`, `regime_top_level`, `regime_schedule_sections`,
+  `call_core` single-item). Fixes duplicate crumb on revisit via breadcrumb link.
+  11 new tests. Doc impact: none.
 - `90248a4` — Comment out "Switch client" link in `base.html`. Doc impact: none.
 - `6ddb5c1` — `call_core` single-item path: append breadcrumb segment and set `return_url = top_level_url`,
   mirroring `regime_top_level`'s multi-item behaviour. 5 new `TestCallCoreSingleItemBreadcrumb` tests.
