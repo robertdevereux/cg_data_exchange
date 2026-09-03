@@ -5602,3 +5602,202 @@ class TestResetDemoEstatesCommand(TestCase):
         output = self._run(regime='TEST_SIMPLE', confirm=True)
         self.assertIn('User:', output)
         self.assertIn('Case:', output)
+
+
+class TestResetUnpromotedCasesCommand(TestCase):
+    """
+    Unit tests for the reset_unpromoted_cases management command.
+
+    The command finds Case rows for the target regime whose user is a known
+    fixture account (abandoned drafts, never promoted to a deceased record),
+    deletes them (cascade cleans up Answer/AnswerHistory/AnswerTable/
+    AnswerTableHistory/Permission), and explicitly removes the corresponding
+    SectionStatus / ScheduleStatus rows.  The User row is never touched.
+
+    Uses TEST_SECTIONS (bob is the fixture user with data there) and
+    TEST_SIMPLE as a second regime to verify cross-regime isolation.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.regime    = Regime.objects.get(regime_id='TEST_SECTIONS')
+        cls.regime_b  = Regime.objects.get(regime_id='TEST_SIMPLE')
+        cls.bob       = User.objects.get(username='bob')
+        cls.section   = Section.objects.get(section_id='SECTIONS_S1')
+
+    def setUp(self):
+        """
+        Create a fresh unpromoted draft Case for bob in TEST_SECTIONS, with
+        one Answer, one SectionStatus, and one Question already loaded by
+        the fixture.  Everything is created inside the test transaction and
+        will roll back after each test.
+        """
+        self.case = Case.objects.create(
+            case_id='unprom-test-bob-case',
+            user=self.bob,
+            regime=self.regime,
+            status=Case.DRAFT,
+        )
+        # TEST_22 (first name) is used in SECTIONS_S1 and is always present.
+        self.question = Question.objects.get(question_id='TEST_22')
+        Answer.objects.create(
+            user=self.bob,
+            actor=self.bob,
+            regime=self.regime,
+            case=self.case,
+            section=self.section,
+            question=self.question,
+            answer='Bob',
+        )
+        SectionStatus.objects.get_or_create(
+            user=self.bob,
+            regime=self.regime,
+            section=self.section,
+            defaults={'status': 'in_progress'},
+        )
+
+    def tearDown(self):
+        # Belt-and-braces cleanup in case a test fails before the command runs.
+        Case.objects.filter(case_id='unprom-test-bob-case').delete()
+        SectionStatus.objects.filter(
+            user=self.bob, regime=self.regime, section=self.section,
+        ).delete()
+
+    def _run(self, regime='TEST_SECTIONS', confirm=False):
+        from io import StringIO
+        from django.core.management import call_command
+        out = StringIO()
+        kwargs = {'regime': regime, 'stdout': out}
+        if confirm:
+            kwargs['confirm'] = True
+        call_command('reset_unpromoted_cases', **kwargs)
+        return out.getvalue()
+
+    # ── Output structure ──────────────────────────────────────────────────────
+
+    def test_regime_printed_in_output(self):
+        """Regime ID always appears at the top of output."""
+        output = self._run(regime='TEST_SECTIONS')
+        self.assertIn('Regime: TEST_SECTIONS', output)
+
+    def test_regime_printed_when_no_cases_found(self):
+        """Regime ID is shown even when no matching cases exist."""
+        output = self._run(regime='NONEXISTENT_REGIME')
+        self.assertIn('Regime: NONEXISTENT_REGIME', output)
+
+    def test_dry_run_lists_case_id(self):
+        """Dry run lists the unpromoted case."""
+        output = self._run(regime='TEST_SECTIONS')
+        self.assertIn('unprom-test-bob-case', output)
+
+    def test_dry_run_lists_executor_username(self):
+        """Dry run shows the executor's username."""
+        output = self._run(regime='TEST_SECTIONS')
+        self.assertIn('bob', output)
+
+    # ── Dry run leaves everything untouched ──────────────────────────────────
+
+    def test_dry_run_does_not_delete_case(self):
+        self._run(regime='TEST_SECTIONS', confirm=False)
+        self.assertTrue(Case.objects.filter(case_id='unprom-test-bob-case').exists())
+
+    def test_dry_run_does_not_delete_section_status(self):
+        self._run(regime='TEST_SECTIONS', confirm=False)
+        self.assertTrue(
+            SectionStatus.objects.filter(
+                user=self.bob, regime=self.regime, section=self.section,
+            ).exists()
+        )
+
+    # ── --confirm: cascade and explicit deletion ──────────────────────────────
+
+    def test_confirm_deletes_case(self):
+        """--confirm removes the Case row."""
+        self._run(regime='TEST_SECTIONS', confirm=True)
+        self.assertFalse(Case.objects.filter(case_id='unprom-test-bob-case').exists())
+
+    def test_confirm_cascades_answers(self):
+        """--confirm cascades deletion to Answer rows tied to the case."""
+        self._run(regime='TEST_SECTIONS', confirm=True)
+        self.assertFalse(
+            Answer.objects.filter(case_id='unprom-test-bob-case').exists()
+        )
+
+    def test_confirm_deletes_section_status_explicitly(self):
+        """
+        --confirm removes SectionStatus for (bob, TEST_SECTIONS) even though
+        SectionStatus has no FK to Case and would not be touched by cascade.
+        """
+        self._run(regime='TEST_SECTIONS', confirm=True)
+        self.assertFalse(
+            SectionStatus.objects.filter(
+                user=self.bob, regime=self.regime, section=self.section,
+            ).exists()
+        )
+
+    def test_confirm_never_deletes_user_row(self):
+        """--confirm leaves the fixture User (bob) in the database."""
+        self._run(regime='TEST_SECTIONS', confirm=True)
+        self.assertTrue(User.objects.filter(username='bob').exists())
+
+    def test_fixture_user_can_log_in_after_confirm(self):
+        """Bob can still authenticate after his cases are wiped."""
+        self._run(regime='TEST_SECTIONS', confirm=True)
+        client = Client()
+        logged_in = client.login(username='bob', password='testpass123')
+        self.assertTrue(logged_in)
+
+    def test_fixture_user_starts_with_clean_slate(self):
+        """
+        After --confirm, bob has no SectionStatus rows for the wiped regime,
+        confirming a fresh case can be started without stale navigation state.
+        """
+        self._run(regime='TEST_SECTIONS', confirm=True)
+        residual = SectionStatus.objects.filter(
+            user=self.bob, regime=self.regime,
+        )
+        self.assertEqual(residual.count(), 0)
+
+    # ── Cross-regime isolation ────────────────────────────────────────────────
+
+    def test_confirm_does_not_touch_other_regime_section_statuses(self):
+        """
+        SectionStatus rows for bob in TEST_SIMPLE are not deleted when the
+        command targets TEST_SECTIONS.
+        """
+        regime_b_section = Section.objects.filter(
+            regime=self.regime_b,
+        ).first()
+        if regime_b_section is None:
+            self.skipTest('No sections in TEST_SIMPLE')
+        ss, created = SectionStatus.objects.get_or_create(
+            user=self.bob,
+            regime=self.regime_b,
+            section=regime_b_section,
+            defaults={'status': 'in_progress'},
+        )
+        try:
+            self._run(regime='TEST_SECTIONS', confirm=True)
+            self.assertTrue(
+                SectionStatus.objects.filter(
+                    user=self.bob, regime=self.regime_b, section=regime_b_section,
+                ).exists()
+            )
+        finally:
+            if created:
+                ss.delete()
+
+    # ── Audit report in output ────────────────────────────────────────────────
+
+    def test_confirm_reports_case_count(self):
+        output = self._run(regime='TEST_SECTIONS', confirm=True)
+        self.assertIn('Case:', output)
+
+    def test_confirm_reports_section_status_count(self):
+        output = self._run(regime='TEST_SECTIONS', confirm=True)
+        self.assertIn('SectionStatus:', output)
+
+    def test_user_untouched_message_in_output(self):
+        """Confirmation output reminds operator that User rows are untouched."""
+        output = self._run(regime='TEST_SECTIONS', confirm=True)
+        self.assertIn('User rows untouched', output)
