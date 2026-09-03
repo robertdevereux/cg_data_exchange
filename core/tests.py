@@ -5476,3 +5476,129 @@ class TestTableRoutedQuestionValidation(TestCase):
         self._init_row('TRV_S2')
         r = self._post_set('TRV_S2', 'TRV_SET1', {'TRV_SET_Q1': ''})
         self.assertNotContains(r, 'configuration problem')
+
+
+class TestResetDemoEstatesCommand(TestCase):
+    """
+    Unit tests for the reset_demo_estates management command.
+
+    Key invariant: target_qs is scoped to non-fixture users who have a Case
+    for the targeted regime.  Users with cases only in *other* regimes must
+    not appear in the listing and must not be deleted.
+
+    Uses TEST_SIMPLE and TEST_SECTIONS (loaded by load_test_data) as stand-ins
+    for two distinct regimes so no HMRC fixture data is required.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.regime_a = Regime.objects.get(regime_id='TEST_SIMPLE')
+        cls.regime_b = Regime.objects.get(regime_id='TEST_SECTIONS')
+
+        # Two non-fixture users, each tied to exactly one regime via a Case.
+        cls.user_a = User.objects.create_user(
+            username='estate_user_a',
+            password='pw',
+            first_name='Estate',
+            last_name='UserA',
+        )
+        cls.user_b = User.objects.create_user(
+            username='estate_user_b',
+            password='pw',
+            first_name='Estate',
+            last_name='UserB',
+        )
+        cls.case_a = Case.objects.create(
+            case_id='cmd-test-case-a',
+            user=cls.user_a,
+            regime=cls.regime_a,
+            status=Case.DRAFT,
+        )
+        cls.case_b = Case.objects.create(
+            case_id='cmd-test-case-b',
+            user=cls.user_b,
+            regime=cls.regime_b,
+            status=Case.DRAFT,
+        )
+
+    def _run(self, regime='TEST_SIMPLE', confirm=False):
+        from io import StringIO
+        from django.core.management import call_command
+        out = StringIO()
+        kwargs = {'regime': regime, 'stdout': out}
+        if confirm:
+            kwargs['confirm'] = True
+        call_command('reset_demo_estates', **kwargs)
+        return out.getvalue()
+
+    # ── Regime printed in all output paths ───────────────────────────────────
+
+    def test_regime_printed_in_dry_run_output(self):
+        """The regime ID is always shown at the top of dry-run output."""
+        output = self._run(regime='TEST_SIMPLE')
+        self.assertIn('Regime: TEST_SIMPLE', output)
+
+    def test_regime_printed_when_no_users_found(self):
+        """The regime ID is shown even when no matching users exist."""
+        output = self._run(regime='NONEXISTENT_REGIME')
+        self.assertIn('Regime: NONEXISTENT_REGIME', output)
+
+    # ── Regime scoping: cross-regime isolation ────────────────────────────────
+
+    def test_user_included_when_targeting_their_regime(self):
+        """user_a (case in TEST_SIMPLE) appears when targeting TEST_SIMPLE."""
+        output = self._run(regime='TEST_SIMPLE')
+        self.assertIn('estate_user_a', output)
+
+    def test_user_excluded_when_targeting_other_regime(self):
+        """user_a (case in TEST_SIMPLE) does NOT appear when targeting TEST_SECTIONS."""
+        output = self._run(regime='TEST_SECTIONS')
+        self.assertNotIn('estate_user_a', output)
+
+    def test_user_b_included_when_targeting_their_regime(self):
+        """user_b (case in TEST_SECTIONS) appears when targeting TEST_SECTIONS."""
+        output = self._run(regime='TEST_SECTIONS')
+        self.assertIn('estate_user_b', output)
+
+    def test_user_b_excluded_when_targeting_other_regime(self):
+        """user_b (case in TEST_SECTIONS) does NOT appear when targeting TEST_SIMPLE."""
+        output = self._run(regime='TEST_SIMPLE')
+        self.assertNotIn('estate_user_b', output)
+
+    # ── Fixture usernames are always protected ────────────────────────────────
+
+    def test_fixture_users_never_listed(self):
+        """alice and bob (fixture accounts) never appear even if they have cases."""
+        output = self._run(regime='TEST_SIMPLE')
+        self.assertNotIn("'alice'", output)
+        self.assertNotIn("'bob'", output)
+
+    # ── Dry-run leaves data untouched ─────────────────────────────────────────
+
+    def test_dry_run_does_not_delete(self):
+        """Running without --confirm leaves user_a in the database."""
+        self._run(regime='TEST_SIMPLE', confirm=False)
+        self.assertTrue(User.objects.filter(username='estate_user_a').exists())
+
+    # ── --confirm deletes only the targeted regime's users ────────────────────
+
+    def test_confirm_deletes_targeted_user_and_leaves_other(self):
+        """
+        --confirm on TEST_SIMPLE deletes user_a (and their case via CASCADE)
+        but leaves user_b (whose case is in TEST_SECTIONS) untouched.
+
+        Uses a sub-transaction so the deletion does not affect other tests in
+        the class — TestCase wraps each test in its own transaction anyway,
+        so teardown automatically rolls back the deletion.
+        """
+        self._run(regime='TEST_SIMPLE', confirm=True)
+        self.assertFalse(User.objects.filter(username='estate_user_a').exists())
+        self.assertFalse(Case.objects.filter(case_id='cmd-test-case-a').exists())
+        self.assertTrue(User.objects.filter(username='estate_user_b').exists())
+        self.assertTrue(Case.objects.filter(case_id='cmd-test-case-b').exists())
+
+    def test_confirm_reports_deleted_counts(self):
+        """Output after --confirm lists per-table counts including User and Case."""
+        output = self._run(regime='TEST_SIMPLE', confirm=True)
+        self.assertIn('User:', output)
+        self.assertIn('Case:', output)

@@ -1,19 +1,26 @@
 """
 Management command: reset_demo_estates
 =======================================
-Lists (and optionally deletes) User rows that are not part of the known
-fixture set — i.e. the deceased-proxy records created by
-promote_case_to_verified() during IHT demo sessions.
+Lists (and optionally deletes) User rows that:
+  - are not part of the known fixture set, AND
+  - are the `user` on at least one Case for the target regime.
+
+This identifies the deceased-proxy records created by promote_case_to_verified()
+during IHT (or other department) demo sessions, while leaving unrelated
+department accounts untouched.
 
 Default (no flags): list only — nothing is changed.
+--regime REGIME_ID: target a specific regime (default: HMRC_IHT).
 With --confirm:     delete those users; Django CASCADE removes every
                     dependent Case, Answer, AnswerHistory, AnswerTable,
                     AnswerTableHistory, SectionStatus, ScheduleStatus, and
                     Permission row in one atomic operation.
 
 Usage:
-    python manage.py reset_demo_estates            # list only
-    python manage.py reset_demo_estates --confirm  # delete
+    python manage.py reset_demo_estates                         # list HMRC_IHT
+    python manage.py reset_demo_estates --regime HMRC_IHT       # same, explicit
+    python manage.py reset_demo_estates --confirm               # delete HMRC_IHT
+    python manage.py reset_demo_estates --regime OTHER --confirm # delete OTHER
 """
 
 from django.contrib.auth import get_user_model
@@ -32,6 +39,8 @@ from core.models import (
 
 User = get_user_model()
 
+DEFAULT_REGIME = 'HMRC_IHT'
+
 # Usernames that are part of the known fixture set and must never be deleted.
 FIXTURE_USERNAMES = {
     'alice',
@@ -45,13 +54,19 @@ FIXTURE_USERNAMES = {
 
 class Command(BaseCommand):
     help = (
-        'List (or with --confirm delete) deceased-proxy User rows created '
-        'by promote_case_to_verified during IHT demo sessions.  '
-        'Known fixture accounts (alice, bob, carla, solicitor1, super_admin, '
-        'admin) are always excluded.'
+        'List (or with --confirm delete) deceased-proxy User rows that are '
+        'the user on at least one Case for the target regime, excluding '
+        'known fixture accounts.  Defaults to HMRC_IHT; use --regime to '
+        'target another regime.'
     )
 
     def add_arguments(self, parser):
+        parser.add_argument(
+            '--regime',
+            default=DEFAULT_REGIME,
+            metavar='REGIME_ID',
+            help=f'Regime to target (default: {DEFAULT_REGIME}).',
+        )
         parser.add_argument(
             '--confirm',
             action='store_true',
@@ -59,14 +74,29 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        target_qs = User.objects.exclude(username__in=FIXTURE_USERNAMES)
+        regime_id = options['regime']
+
+        self.stdout.write(f'Regime: {regime_id}')
+        self.stdout.write('')
+
+        target_qs = (
+            User.objects
+            .exclude(username__in=FIXTURE_USERNAMES)
+            .filter(cases__regime_id=regime_id)
+            .distinct()
+        )
         count = target_qs.count()
 
         if count == 0:
-            self.stdout.write('No estate (deceased-proxy) users found.')
+            self.stdout.write(
+                f'No estate (deceased-proxy) users with a case in {regime_id} found.'
+            )
             return
 
-        self.stdout.write(f'Estate users not in known fixture set: {count}')
+        self.stdout.write(
+            f'Estate users with a case in {regime_id} '
+            f'(not in known fixture set): {count}'
+        )
         self.stdout.write('')
         for user in target_qs.order_by('username'):
             self.stdout.write(
@@ -85,8 +115,8 @@ class Command(BaseCommand):
             return
 
         # Gather pre-delete counts for the audit report.
-        # Use pk__in so each filter is a simple IN clause — avoids a subquery
-        # that could race against the deletion.
+        # Materialise pk_list so each count query is a simple IN clause,
+        # avoiding a subquery that could race against the deletion.
         pk_list = list(target_qs.values_list('pk', flat=True))
         pre = {
             'User':               count,
